@@ -648,7 +648,7 @@ therefore always pairs with a registry revision it was tested against, and
 ```console
 $ block version
 block v0.1.0
-registry 37f6d315b913 (45 recipes from https://github.com/nao1215/block-registry)
+registry 5f753c063013 (45 recipes from https://github.com/nao1215/block-registry)
 ```
 
 ## Security
