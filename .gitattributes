@@ -1,0 +1,20 @@
+# Normalize line endings to LF on checkout across every platform. block hashes
+# committed files and compares the digest against a recorded one: registry/ is a
+# vendored copy of block-registry, and registry/SNAPSHOT holds the sha256 of the
+# recipes as they were vendored. On Windows CI, git's autocrlf would otherwise
+# check those .toml files out with CRLF, so every byte-for-byte comparison —
+# the snapshot check, the golden files under e2e/ — would differ from the digest
+# recorded on Linux. Forcing eol=lf keeps the comparison deterministic on Linux,
+# macOS, and Windows alike.
+* text=auto eol=lf
+
+# Binary assets must never be EOL-translated (it would corrupt them).
+*.png -text
+*.gif -text
+*.jpg -text
+*.jpeg -text
+*.ico -text
+*.bin -text
+*.pdf -text
+*.gz -text
+*.zip -text
