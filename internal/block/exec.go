@@ -3,12 +3,13 @@ package block
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"syscall"
+
+	"github.com/nao1215/block/internal/diag"
 )
 
 // signalExit is the shell convention for a process killed by a signal.
@@ -21,7 +22,7 @@ const signalExit = 128
 // cleanly, and its own exit status is what block reports.
 func (a *App) Exec(ctx context.Context, args []string, stdin *os.File) (int, error) {
 	if len(args) == 0 {
-		return 0, errors.New("exec needs a command to run, e.g. block exec forge --version")
+		return 0, diag.CommandNotFound.Errorf("exec needs a command to run, e.g. block exec forge --version")
 	}
 	t, err := a.Toolchain()
 	if err != nil {
@@ -55,7 +56,7 @@ func RunCommand(cmd *exec.Cmd, name string, stdin io.Reader, stdout, stderr io.W
 		cmd.Dir, _ = os.Getwd()
 	}
 	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("exec %s: %w", name, err)
+		return 0, diag.CommandFailedToStart.Errorf("exec %s: %w", name, err)
 	}
 	stop := forwardSignals(cmd)
 	err := cmd.Wait()
@@ -72,7 +73,7 @@ func RunCommand(cmd *exec.Cmd, name string, stdin io.Reader, stdout, stderr io.W
 		}
 		return exitErr.ExitCode(), nil
 	default:
-		return 0, fmt.Errorf("exec %s: %w", name, err)
+		return 0, diag.CommandFailedToStart.Errorf("exec %s: %w", name, err)
 	}
 }
 

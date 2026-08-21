@@ -145,7 +145,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: block.lock not found; run "block lock"
+            equals: 'block: BLK1003: block.lock not found; run "block lock"
 
 '
           changes:
@@ -173,7 +173,7 @@ scenarios:
           exit_code: 1
           stderr:
             equals: |
-              block: block.lock is stale; run "block lock"
+              block: BLK1005: block.lock is stale; run "block lock"
                 foundry: block.toml wants "1.6" but block.lock was resolved from "1.7"
                 hermes is declared in block.toml but missing from block.lock
           changes:
@@ -280,7 +280,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            matches: 'block: foundry: checksum mismatch for http://[^ ]+/foundry_v1\.7\.4_${env:BLOCK_ASSET_PLATFORM}\.tar\.gz: want sha256 0000[0-9a-f]{60}, got [0-9a-f]{64}'
+            matches: 'block: BLK3002: foundry: checksum mismatch for http://[^ ]+/foundry_v1\.7\.4_${env:BLOCK_ASSET_PLATFORM}\.tar\.gz: want sha256 0000[0-9a-f]{60}, got [0-9a-f]{64}'
       - assert:
           dir:
             path: fresh/tools
@@ -326,7 +326,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: "block: foundry: refusing insecure url http://mirror.example.com/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_${env:BLOCK_ASSET_PLATFORM}.tar.gz: only https is allowed"
+            contains: "block: BLK6001: foundry: refusing insecure url http://mirror.example.com/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_${env:BLOCK_ASSET_PLATFORM}.tar.gz: only https is allowed"
 
   - name: a hand-edited lockfile with an invalid digest is rejected before any network access
     env:
@@ -359,7 +359,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: block.lock: tool "foundry" (${env:BLOCK_PLATFORM}): sha256 "nothex" is not a 64-character hex digest
+            equals: 'block: BLK1004: block.lock: tool "foundry" (${env:BLOCK_PLATFORM}): sha256 "nothex" is not a 64-character hex digest
 
 '
 
@@ -380,7 +380,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: block.lock: unsupported lockfile version 2 (this block writes version 1)\n"
+            equals: "block: BLK1004: block.lock: unsupported lockfile version 2 (this block writes version 1)\n"
 
   # A lockfile arrives through pull requests and hand edits, and its version
   # becomes a directory name under $BLOCK_HOME. A version carrying a path
@@ -418,7 +418,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: block.lock: tool "foundry": invalid version "1.7/../../../outside"'
+            contains: 'block: BLK1004: block.lock: tool "foundry": invalid version "1.7/../../../outside"'
           # Nothing was downloaded, nothing was installed, nothing was removed.
           changes:
             created: []
@@ -466,7 +466,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: block.lock: tool "foundry": invalid version'
+            contains: 'block: BLK1004: block.lock: tool "foundry": invalid version'
           changes:
             created: []
             modified: []
@@ -511,7 +511,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: block.lock: tool "foundry": version 9.9.9 does not satisfy the constraint "1.7" it was resolved from
+            equals: 'block: BLK1004: block.lock: tool "foundry": version 9.9.9 does not satisfy the constraint "1.7" it was resolved from
 
 '
           changes:

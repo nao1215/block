@@ -164,7 +164,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: block.lock not found; run "block lock" and "block sync"
+            equals: 'block: BLK1003: block.lock not found; run "block lock" and "block sync"
 
 '
       - run:
@@ -174,7 +174,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: foundry 1.7.4 is not installed; run "block sync"
+            equals: 'block: BLK4004: foundry 1.7.4 is not installed; run "block sync"
 
 '
           changes:
@@ -235,7 +235,7 @@ scenarios:
             equals: ""
           stderr:
             equals: |
-              block: block.lock is stale; run "block lock"
+              block: BLK1005: block.lock is stale; run "block lock"
                 hermes is declared in block.toml but missing from block.lock
           changes:
             created: []
@@ -274,7 +274,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            matches: 'block: foundry 1\.7\.4 is damaged: executable "cast" is missing; run "block sync"'
+            matches: 'block: BLK4003: foundry 1\.7\.4 is damaged: executable "cast" is missing; run "block sync"'
       # sync repairs it instead of trusting the directory.
       - run:
           command: block sync
@@ -305,7 +305,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: command "no-such-tool" not found in the locked toolchain or on PATH
+            equals: 'block: BLK5001: command "no-such-tool" not found in the locked toolchain or on PATH
 
 '
 

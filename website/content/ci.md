@@ -57,7 +57,7 @@ platforms = ["darwin/arm64", "linux/amd64"]
 Otherwise the runner stops with
 
 ```text
-block: block.lock is stale; run "block lock"
+block: BLK1005: block.lock is stale; run "block lock"
   foundry: block.lock has no artifact for linux/amd64
 ```
 

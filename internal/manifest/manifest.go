@@ -24,6 +24,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/platform"
 	"github.com/nao1215/block/internal/recipe"
 	"github.com/nao1215/block/internal/version"
@@ -97,7 +98,10 @@ func Load(path string) (*Manifest, error) {
 	}
 	m, err := Parse(data)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
+		// Every way a manifest can be wrong shares one code: the reader has
+		// one file to go and correct, and which line of the parser noticed is
+		// not something they can act on differently.
+		return nil, diag.ManifestInvalid.Errorf("%s: %w", filepath.Base(path), err)
 	}
 	return m, nil
 }
@@ -183,7 +187,7 @@ func Find(dir string) (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("%s not found in the current directory or any parent", FileName)
+			return "", diag.ManifestMissing.Errorf("%s not found in the current directory or any parent", FileName)
 		}
 		dir = parent
 	}

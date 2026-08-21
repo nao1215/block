@@ -57,6 +57,7 @@ block.toml  ──block lock──▶  block.lock  ──block sync──▶  in
 | `block sync` | never | never | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | never | never | never | never | yes |
 | `block list [ecosystem]` | never | never | never | never | no |
+| `block explain <code>` | never | never | never | never | no |
 | `forge`, `cast`, … (a shim) | never | never | never | never | yes |
 
 "never" is a guarantee, not a default: no flag turns any of those cells into a
@@ -148,6 +149,7 @@ In GitHub Actions:
 | [Commands](https://nao1215.github.io/block/commands/) | what each command does, and the boundaries none of them cross |
 | [Reference](https://nao1215.github.io/block/reference/) | `block.toml`, `block.lock`, the store, version resolution, the recipe format |
 | [Tools](./doc/tools.md) | every CLI block can install, by blockchain system |
+| [Error codes](https://nao1215.github.io/block/errors/) | every `BLK` code block can report, and what to do about it |
 | [CI](https://nao1215.github.io/block/ci/) | GitHub Actions, GitLab, CircleCI, Docker, and keeping pins current |
 | [Security](https://nao1215.github.io/block/security/) | what block guarantees while downloading and running third-party binaries |
 

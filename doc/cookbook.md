@@ -116,7 +116,7 @@ block list etheruem
 ```
 
 ```text
-block: unknown ecosystem "etheruem"
+block: BLK1010: unknown ecosystem "etheruem"
 available ecosystems: aptos, avalanche, bitcoin, cardano, celestia, cosmos, ethereum, fabric, ibc, icp, ipfs, near, solana, starknet, stellar, zk, zksync
 ```
 
@@ -192,7 +192,7 @@ installs from the same file the macOS laptop wrote. Without that list, `lock`
 resolves for the machine it runs on, and the runner meets:
 
 ```text
-block: block.lock is stale; run "block lock"
+block: BLK1005: block.lock is stale; run "block lock"
   foundry: block.lock has no artifact for linux/amd64
 ```
 
@@ -478,7 +478,7 @@ The lockfile also records a fingerprint of the definition, so editing the
 source later makes the pin stale rather than silently keeping the old artifact:
 
 ```text
-block: block.lock is stale; run "block lock"
+block: BLK1005: block.lock is stale; run "block lock"
   foo: the source definition changed since block.lock was resolved
 ```
 
@@ -743,17 +743,33 @@ block refuses in exactly the situations where guessing would defeat the point
 of locking. Every message names the command that fixes it, and no message ever
 means "block did it for you".
 
+Each refusal carries a code — `BLK1003`, `BLK3002` — which is the part that
+does not change when the sentence beside it is reworded. Look one up without
+leaving the terminal:
+
+```shell
+block explain BLK1003
+```
+
+The whole list, with what block observed and what to do about it, is at
+[Error codes](https://nao1215.github.io/block/errors/). The thousands digit
+says where the fix lives: `1` the project's own files, `2` resolving against an
+upstream, `3` the download, `4` the install, `5` running a command, `6` a
+refusal on security grounds. Every one of them exits 1; exit 2 belongs to
+`block lock --check` and means the lockfile would change, which is a result
+rather than an error.
+
 Nothing has been locked yet:
 
 ```text
-block: block.lock not found; run "block lock" and "block sync"
+block: BLK1003: block.lock not found; run "block lock" and "block sync"
 ```
 
 The manifest changed and the lockfile has not caught up. Every disagreement is
 listed, not just the first:
 
 ```text
-block: block.lock is stale; run "block lock"
+block: BLK1005: block.lock is stale; run "block lock"
   foundry: block.toml wants "1.6" but block.lock was resolved from "1.7"
   hermes is declared in block.toml but missing from block.lock
 ```
@@ -762,7 +778,7 @@ The lockfile is current, but nothing is installed — a fresh clone, or a cleare
 store:
 
 ```text
-block: foundry 1.7.1 is not installed; run "block sync"
+block: BLK4004: foundry 1.7.1 is not installed; run "block sync"
 ```
 
 An install was interrupted. block writes a completion marker last and renames
@@ -770,19 +786,19 @@ the directory into place atomically, so an install without that marker — or
 missing one of its executables — is replaced rather than run:
 
 ```text
-block: foundry 1.7.1 is damaged: executable "cast" is missing; run "block sync"
+block: BLK4003: foundry 1.7.1 is damaged: executable "cast" is missing; run "block sync"
 ```
 
 You asked for a command nothing locks, and `PATH` has no other:
 
 ```text
-block: command "no-such-tool" not found in the locked toolchain or on PATH
+block: BLK5001: command "no-such-tool" not found in the locked toolchain or on PATH
 ```
 
 A download does not match the digest recorded when the pin was made:
 
 ```text
-block: foundry: checksum mismatch for https://github.com/foundry-rs/foundry/releases/download/v1.7.1/foundry_v1.7.1_linux_amd64.tar.gz: want sha256 0000…, got 9f86…
+block: BLK3002: foundry: checksum mismatch for https://github.com/foundry-rs/foundry/releases/download/v1.7.1/foundry_v1.7.1_linux_amd64.tar.gz: want sha256 0000…, got 9f86…
 ```
 
 That is the check working. Nothing is extracted and nothing is installed. Run
@@ -794,26 +810,26 @@ The upstream ships no build for the machine you are on, and block says so
 rather than substituting something else:
 
 ```text
-block: maconly: unsupported platform linux/amd64 (available: darwin/arm64)
+block: BLK2007: maconly: unsupported platform linux/amd64 (available: darwin/arm64)
 ```
 
 The name is not in the registry — with the two ways forward:
 
 ```text
-block: unknown tool "solana": it is not in the registry (run "block list" to see the supported tools); define [tools.solana.source] in block.toml to use it anyway
+block: BLK1007: unknown tool "solana": it is not in the registry (run "block list" to see the supported tools); define [tools.solana.source] in block.toml to use it anyway
 ```
 
 No release matches the constraint you wrote:
 
 ```text
-block: foundry: no version of foundry-rs/foundry matches "3"
+block: BLK2001: foundry: no version of foundry-rs/foundry matches "3"
 ```
 
 `block lock` calls the GitHub API, and an unauthenticated runner has 60 calls
 an hour:
 
 ```text
-block: foundry: github api: rate limit exceeded (set GITHUB_TOKEN to raise the limit); resets at 2023-11-14T22:13:20Z
+block: BLK2005: foundry: github api: rate limit exceeded (set GITHUB_TOKEN to raise the limit); resets at 2023-11-14T22:13:20Z
 ```
 
 `sync` and `exec` never call the API, so this can only ever interrupt a
@@ -822,21 +838,21 @@ re-lock — never a build.
 A constraint that looks like a range is refused rather than guessed at:
 
 ```text
-block: block.toml: tool "foundry": invalid version constraint "^1.7": component "^1" is not a number
+block: BLK1002: block.toml: tool "foundry": invalid version constraint "^1.7": component "^1" is not a number
 ```
 
 Two tools claiming the same command name is reported, not resolved by `PATH`
 order:
 
 ```text
-block: tools "agave" and "my-solana-fork" both provide the command "solana"; remove one from block.toml
+block: BLK1009: tools "agave" and "my-solana-fork" both provide the command "solana"; remove one from block.toml
 ```
 
 The same inside one tool, where two paths in the archive end in one command
 name:
 
 ```text
-block: tool "foo" lists "bin/foo" and "sbin/foo", which are both the command "foo"
+block: BLK1009: tool "foo" lists "bin/foo" and "sbin/foo", which are both the command "foo"
 ```
 
 Command names are compared without regard to case, on every platform. Windows
@@ -845,14 +861,14 @@ everywhere, so a toolchain that installs on Linux and collides on Windows is
 refused by whoever runs `block lock` rather than by whoever runs Windows:
 
 ```text
-block: tool "foo" lists "foo" and "FOO", which are both the command "FOO"
+block: BLK1009: tool "foo" lists "foo" and "FOO", which are both the command "FOO"
 ```
 
 A shim run outside a block project, for a command nothing else on `PATH`
 provides:
 
 ```text
-block: forge: no block project here and no forge elsewhere on PATH
+block: BLK5004: forge: no block project here and no forge elsewhere on PATH
 ```
 
 ## The store

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `BLK` diagnostic codes on every refusal, a `block explain <code>` lookup,
+  and a generated reference page (`doc/errors.md`, published at
+  https://nao1215.github.io/block/errors/). The thousands digit says where the
+  fix lives; every coded error exits 1.
+- `block --help` carries the documentation, error-code, bug-report and
+  GitHub Sponsors addresses.
 - Three lifecycle commands: `block lock [tool...]` (resolve; `--check` reports without
   writing and exits 2 when the lock would change), `block sync` (install,
   never resolves or writes the lock) and `block exec <command>` (run, never

@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/nao1215/block/internal/archive"
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/recipe"
 )
 
@@ -49,7 +50,7 @@ func Open() (*Store, error) {
 	}
 	root, err := defaultRoot()
 	if err != nil {
-		return nil, fmt.Errorf("cannot determine the block home directory (set %s): %w", EnvHome, err)
+		return nil, diag.StoreUnwritable.Errorf("cannot determine the block home directory (set %s): %w", EnvHome, err)
 	}
 	return &Store{Root: root}, nil
 }
@@ -70,15 +71,15 @@ func (s *Store) InstallDir(name, ver, sha string) (string, error) {
 		sha = sha[:shortDigest]
 	}
 	if err := safeComponent("tool name", name); err != nil {
-		return "", fmt.Errorf("refusing to install %s %s: %w", name, ver, err)
+		return "", diag.UnsafeStorePath.Errorf("refusing to install %s %s: %w", name, ver, err)
 	}
 	if err := safeComponent("version", ver); err != nil {
-		return "", fmt.Errorf("refusing to install %s %s: %w", name, ver, err)
+		return "", diag.UnsafeStorePath.Errorf("refusing to install %s %s: %w", name, ver, err)
 	}
 	toolsRoot := filepath.Join(s.Root, "tools")
 	dir := filepath.Join(toolsRoot, name, ver+"-"+sha)
 	if err := containedIn(toolsRoot, dir); err != nil {
-		return "", fmt.Errorf("refusing to install %s %s: %w", name, ver, err)
+		return "", diag.UnsafeStorePath.Errorf("refusing to install %s %s: %w", name, ver, err)
 	}
 	return dir, nil
 }
@@ -140,10 +141,10 @@ func verifyBins(dir string, bins []string) error {
 		}
 		st, err := os.Stat(target)
 		if err != nil {
-			return fmt.Errorf("executable %q is missing", b)
+			return diag.ExecutableMissing.Errorf("executable %q is missing", b)
 		}
 		if !isExecutable(st) {
-			return fmt.Errorf("%q is not an executable file", b)
+			return diag.ExecutableMissing.Errorf("%q is not an executable file", b)
 		}
 	}
 	return nil
@@ -160,7 +161,7 @@ func BinPath(dir, bin string) (string, error) {
 	target := filepath.Join(dir, filepath.FromSlash(bin)) + ExeSuffix
 	rel, err := filepath.Rel(dir, target)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid bin entry %q: path escapes the install directory", bin)
+		return "", diag.PathEscape.Errorf("invalid bin entry %q: path escapes the install directory", bin)
 	}
 	return target, nil
 }
@@ -176,7 +177,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 		return nil
 	}
 	if len(bins) == 0 {
-		return errors.New("no executables declared")
+		return diag.ExecutableMissing.Errorf("no executables declared")
 	}
 	for _, b := range bins {
 		if err := recipe.ValidateBin(b); err != nil {
@@ -187,16 +188,20 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 	// remove it so the fresh one can take its place.
 	if _, err := os.Stat(dir); err == nil {
 		if err := os.RemoveAll(dir); err != nil {
-			return fmt.Errorf("removing the incomplete install %s: %w", dir, err)
+			return diag.StoreUnwritable.Errorf("removing the incomplete install %s: %w", dir, err)
 		}
 	}
 	parent := filepath.Dir(dir)
 	if err := os.MkdirAll(parent, dirMode); err != nil {
-		return err
+		return diag.StoreUnwritable.Wrap(err)
 	}
+	// Everything is built in a sibling temporary directory and renamed into
+	// place at the end, so a failure anywhere below leaves the store exactly
+	// as it was — including an install of this very tool that is already
+	// there and working.
 	tmp, err := os.MkdirTemp(parent, "."+filepath.Base(dir)+".tmp-*")
 	if err != nil {
-		return err
+		return diag.StoreUnwritable.Wrap(err)
 	}
 	defer os.RemoveAll(tmp) //nolint:errcheck // best-effort cleanup
 	switch {
@@ -216,7 +221,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 			return fmt.Errorf("install %s: %w", assetName, err)
 		}
 	default:
-		return fmt.Errorf("raw executable %s needs exactly one bin name", assetName)
+		return diag.ExecutableMissing.Errorf("raw executable %s needs exactly one bin name", assetName)
 	}
 	if err := ensureExecutable(tmp, bins); err != nil {
 		return fmt.Errorf("archive %s: %w", assetName, err)
@@ -234,7 +239,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 		if s.IsInstalled(dir, bins) {
 			return nil
 		}
-		return err
+		return diag.StoreUnwritable.Wrap(err)
 	}
 	return nil
 }
@@ -256,7 +261,7 @@ func ensureExecutable(dir string, bins []string) error {
 			continue
 		}
 		if err := os.Chmod(target, st.Mode().Perm()|binMode); err != nil {
-			return fmt.Errorf("making %q executable: %w", b, err)
+			return diag.StoreUnwritable.Errorf("making %q executable: %w", b, err)
 		}
 	}
 	return nil
@@ -298,7 +303,7 @@ func BinDirs(installDir string, bins []string) []string {
 
 // ErrNotInstalled reports a tool that was never installed, as opposed to one
 // whose install is damaged.
-var ErrNotInstalled = errors.New("is not installed")
+var ErrNotInstalled = diag.NotInstalled.Wrap(errors.New("is not installed"))
 
 // Verify reports why an install cannot be used, or nil when it is complete.
 func (s *Store) Verify(dir string, bins []string) error {
@@ -306,10 +311,10 @@ func (s *Store) Verify(dir string, bins []string) error {
 		return ErrNotInstalled
 	}
 	if st, err := os.Stat(filepath.Join(dir, markerName)); err != nil || !st.Mode().IsRegular() {
-		return errors.New("was installed incompletely")
+		return diag.InstallDamaged.Errorf("was installed incompletely")
 	}
 	if err := verifyBins(dir, bins); err != nil {
-		return fmt.Errorf("is damaged: %w", err)
+		return diag.InstallDamaged.Errorf("is damaged: %w", err)
 	}
 	return nil
 }

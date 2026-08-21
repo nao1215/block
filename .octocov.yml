@@ -15,7 +15,7 @@ coverage:
     # Maintenance commands. Neither is part of block — `go install` does not
     # build them — and both are run by make targets and by CI, which is what
     # says they work.
-    - "github.com/nao1215/block/scripts/gen-tools-doc/main.go"
+    - "github.com/nao1215/block/scripts/gen-docs/main.go"
     - "github.com/nao1215/block/scripts/registry-snapshot/main.go"
   badge:
     path: doc/coverage.svg

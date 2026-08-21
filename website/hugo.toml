@@ -51,6 +51,11 @@ pageRef = "/tools"
 weight = 46
 
 [[menus.main]]
+name = "Errors"
+pageRef = "/errors"
+weight = 48
+
+[[menus.main]]
 name = "Compare"
 pageRef = "/comparison"
 weight = 50
@@ -86,6 +91,10 @@ target = "assets/doc/cookbook.md"
 [[module.mounts]]
 source = "../doc/tools.md"
 target = "assets/doc/tools.md"
+
+[[module.mounts]]
+source = "../doc/errors.md"
+target = "assets/doc/errors.md"
 
 # Images served as-is.
 [[module.mounts]]

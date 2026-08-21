@@ -162,7 +162,7 @@ scenarios:
           stdout:
             equals: ""
           stderr:
-            equals: 'block: foundry 1.7.4 is not installed; run "block sync"
+            equals: 'block: BLK4004: foundry 1.7.4 is not installed; run "block sync"
 
 '
       - assert:
@@ -209,7 +209,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: forge: no block project here and no forge elsewhere on PATH\n"
+            equals: "block: BLK5004: forge: no block project here and no forge elsewhere on PATH\n"
       # A forge installed some other way keeps working: putting the shim
       # directory on PATH does not take the command away from the system.
       - fixture:

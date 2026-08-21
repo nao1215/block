@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nao1215/block/internal/diag"
 )
 
 // DefaultBaseURL is the public GitHub API.
@@ -31,7 +33,7 @@ const (
 )
 
 // ErrNotFound reports a missing repository, tag or release.
-var ErrNotFound = errors.New("not found")
+var ErrNotFound = diag.UpstreamNotFound.Wrap(errors.New("not found"))
 
 // Client talks to the GitHub REST API.
 type Client struct {
@@ -157,7 +159,7 @@ func (c *Client) Commit(ctx context.Context, repo, ref string) (string, error) {
 		return "", err
 	}
 	if cm.SHA == "" {
-		return "", fmt.Errorf("github api: no commit for %s@%s", repo, ref)
+		return "", diag.UpstreamError.Errorf("github api: no commit for %s@%s", repo, ref)
 	}
 	return cm.SHA, nil
 }
@@ -177,12 +179,12 @@ func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("github api: %w", err)
+		return diag.UpstreamError.Errorf("github api: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only body
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
-		return fmt.Errorf("github api: %w", err)
+		return diag.UpstreamError.Errorf("github api: %w", err)
 	}
 	switch {
 	case resp.StatusCode == http.StatusNotFound:
@@ -191,12 +193,12 @@ func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
 		if resp.Header.Get("X-RateLimit-Remaining") == "0" {
 			return rateLimitError(resp.Header.Get("X-RateLimit-Reset"))
 		}
-		return fmt.Errorf("github api: %s returned %s", endpoint, resp.Status)
+		return diag.UpstreamError.Errorf("github api: %s returned %s", endpoint, resp.Status)
 	case resp.StatusCode/100 != 2: //nolint:mnd // HTTP status class
-		return fmt.Errorf("github api: %s returned %s", endpoint, resp.Status)
+		return diag.UpstreamError.Errorf("github api: %s returned %s", endpoint, resp.Status)
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("github api: invalid response from %s: %w", endpoint, err)
+		return diag.UpstreamError.Errorf("github api: invalid response from %s: %w", endpoint, err)
 	}
 	return nil
 }
@@ -206,5 +208,5 @@ func rateLimitError(reset string) error {
 	if secs, err := strconv.ParseInt(reset, 10, 64); err == nil {
 		msg += "; resets at " + time.Unix(secs, 0).UTC().Format(time.RFC3339)
 	}
-	return errors.New(msg)
+	return diag.RateLimited.Errorf("%s", msg)
 }

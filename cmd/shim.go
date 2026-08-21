@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/nao1215/block/internal/block"
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/manifest"
 	"github.com/nao1215/block/internal/platform"
 	"github.com/nao1215/block/internal/shim"
@@ -36,34 +37,34 @@ func runShim(ctx context.Context, argv0 string, args []string, stdin io.Reader, 
 	command := shim.CommandName(argv0)
 	depth, _ := strconv.Atoi(os.Getenv(depthEnv))
 	if depth >= maxDepth {
-		fmt.Fprintf(stderr, "block: %s: shims are calling each other in a loop; check PATH for more than one block shim directory\n", command)
+		fmt.Fprintf(stderr, "block: %s: %s: shims are calling each other in a loop; check PATH for more than one block shim directory\n", diag.ShimLoop, command)
 		return exitFailure
 	}
 	st, err := store.Open()
 	if err != nil {
-		fmt.Fprintf(stderr, "block: %v\n", err)
+		fmt.Fprintf(stderr, "block: %s\n", diag.Message(err))
 		return exitFailure
 	}
 	dir, findErr := manifest.Find(workingDir())
 	if findErr != nil {
 		return fallback(ctx, st, command, args, depth, stdin, stdout, stderr,
-			fmt.Sprintf("block: %s: no block project here and no %s elsewhere on PATH", command, command))
+			fmt.Sprintf("block: %s: %s: no block project here and no %s elsewhere on PATH", diag.ShimNoFallback, command, command))
 	}
 	toolchain, err := block.OpenToolchain(dir, platform.Current(), st)
 	if err != nil {
 		// A project that is stale or not synced is a mistake to report, not
 		// one to work around by running some other build of the tool.
-		fmt.Fprintf(stderr, "block: %v\n", err)
+		fmt.Fprintf(stderr, "block: %s\n", diag.Message(err))
 		return exitFailure
 	}
 	if _, ok := toolchain.ResolveCommand(command); !ok {
 		return fallback(ctx, st, command, args, depth, stdin, stdout, stderr,
-			fmt.Sprintf("block: %s: %s does not lock a tool providing %q, and no %s was found elsewhere on PATH",
-				command, manifest.FileName, command, command))
+			fmt.Sprintf("block: %s: %s: %s does not lock a tool providing %q, and no %s was found elsewhere on PATH",
+				diag.ShimNoFallback, command, manifest.FileName, command, command))
 	}
 	code, err := toolchain.Run(ctx, command, args, stdin, stdout, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "block: %v\n", err)
+		fmt.Fprintf(stderr, "block: %s\n", diag.Message(err))
 		return exitFailure
 	}
 	return code
@@ -83,7 +84,7 @@ func fallback(ctx context.Context, st *store.Store, command string, args []strin
 	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", depthEnv, depth+1))
 	code, err := block.RunCommand(cmd, command, stdin, stdout, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "block: %v\n", err)
+		fmt.Fprintf(stderr, "block: %s\n", diag.Message(err))
 		return exitFailure
 	}
 	return code

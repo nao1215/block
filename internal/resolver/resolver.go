@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/github"
 	"github.com/nao1215/block/internal/platform"
 	"github.com/nao1215/block/internal/recipe"
@@ -73,7 +74,7 @@ func Resolve(ctx context.Context, rel Releases, src recipe.Source, c version.Con
 		return Resolution{}, err
 	}
 	if len(vs) == 0 {
-		return Resolution{}, fmt.Errorf("no version of %s matches %q", src.Repo, c)
+		return Resolution{}, diag.NoMatchingVersion.Errorf("no version of %s matches %q", src.Repo, c)
 	}
 	if src.Type == recipe.TypeHTTP {
 		return Exact(ctx, rel, src, vs[len(vs)-1])
@@ -97,7 +98,7 @@ func Resolve(ctx context.Context, rel Releases, src recipe.Source, c version.Con
 		}
 		return res, nil
 	}
-	return Resolution{}, fmt.Errorf("no published release of %s matches %q (checked the newest %d tags)", src.Repo, c, lookups)
+	return Resolution{}, diag.NoPublishedRelease.Errorf("no published release of %s matches %q (checked the newest %d tags)", src.Repo, c, lookups)
 }
 
 // Exact resolves an already chosen version, for example to add a platform to
@@ -145,7 +146,7 @@ func ArtifactFor(res Resolution, src recipe.Source, p platform.Platform) (Artifa
 		return Artifact{URL: name}, nil
 	}
 	if res.Release == nil {
-		return Artifact{}, errors.New("release not resolved")
+		return Artifact{}, diag.Internal.Errorf("release not resolved")
 	}
 	a, ok := res.Release.Asset(name)
 	if !ok {
@@ -153,7 +154,7 @@ func ArtifactFor(res Resolution, src recipe.Source, p platform.Platform) (Artifa
 		for _, x := range res.Release.Assets {
 			names = append(names, x.Name)
 		}
-		return Artifact{}, fmt.Errorf("release %s of %s has no asset %q (assets: %s)", src.Tag(res.Version), src.Repo, name, strings.Join(names, ", "))
+		return Artifact{}, diag.AssetMissing.Errorf("release %s of %s has no asset %q (assets: %s)", src.Tag(res.Version), src.Repo, name, strings.Join(names, ", "))
 	}
 	return Artifact{URL: a.BrowserDownloadURL, SHA256: a.SHA256()}, nil
 }

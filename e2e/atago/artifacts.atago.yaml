@@ -78,7 +78,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: maconly: unsupported platform ${env:BLOCK_PLATFORM} (available: ${env:BLOCK_OTHER_PLATFORM})\n"
+            equals: "block: BLK2007: maconly: unsupported platform ${env:BLOCK_PLATFORM} (available: ${env:BLOCK_OTHER_PLATFORM})\n"
           changes:
             created: []
 
@@ -101,7 +101,7 @@ scenarios:
           exit_code: 1
           stderr:
             contains:
-              - 'block: foo: release v1.2.0 of example/foo has no asset "foo-1.2.0-'
+              - 'block: BLK2004: foo: release v1.2.0 of example/foo has no asset "foo-1.2.0-'
               - "foo_1.2.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz"
 
   - name: an archive that escapes its directory is refused
@@ -123,7 +123,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: evil: extract evil_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: refusing to extract "../escape": path escapes the destination'
+            contains: 'block: BLK6002: evil: extract evil_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: refusing to extract "../escape": path escapes the destination'
       - assert:
           file:
             path: home/tools/escape
@@ -178,7 +178,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: nobin: archive nobin_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: executable "nobin" is missing'
+            contains: 'block: BLK4002: nobin: archive nobin_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: executable "nobin" is missing'
       - assert:
           dir:
             path: home/tools/nobin
@@ -306,6 +306,6 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: quirky: unsupported platform ${env:BLOCK_PLATFORM} (available: ${env:BLOCK_OTHER_PLATFORM})\n"
+            equals: "block: BLK2007: quirky: unsupported platform ${env:BLOCK_PLATFORM} (available: ${env:BLOCK_OTHER_PLATFORM})\n"
           changes:
             created: []
