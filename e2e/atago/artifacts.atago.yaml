@@ -345,7 +345,7 @@ scenarios:
           dir:
             path: home/tools/bundle
             recursive: true
-            glob: "bundle-cli"
+            glob: "bundle-cli${env:BLOCK_EXE}"
       - assert:
           dir:
             path: home/tools/bundle
@@ -364,11 +364,14 @@ scenarios:
           stdout:
             contains: "bundle-node 2.0.0 (fake)"
 
+  # Bitcoin Core spells arm64 "aarch64-linux-gnu" on Linux but
+  # "arm64-apple-darwin" on macOS, so whole platform strings are mapped. Two
+  # scenarios, because the two halves need different manifests: naming
+  # platforms is what makes the per-platform URLs visible, and naming none is
+  # what makes the install this machine's.
   - name: an upstream whose platform strings are not os and arch uses a target map
     env: *t1
     steps:
-      # Bitcoin Core spells arm64 "aarch64-linux-gnu" on Linux but
-      # "arm64-apple-darwin" on macOS, so whole platform strings are mapped.
       - fixture:
           file: block.toml
           content: |
@@ -389,6 +392,8 @@ scenarios:
             "linux/arm64" = "aarch64-linux-gnu"
             "darwin/amd64" = "x86_64-apple-darwin"
             "darwin/arm64" = "arm64-apple-darwin"
+            "windows/amd64" = "win64"
+            "windows/arm64" = "win64-arm"
       - run:
           command: block lock
       - assert:
@@ -402,14 +407,41 @@ scenarios:
             contains:
               - "/blobs/quirky-29.4/quirky-29.4-x86_64-linux-gnu.tar.gz"
               - "/blobs/quirky-29.4/quirky-29.4-arm64-apple-darwin.tar.gz"
+
+  - name: a tool from a target map installs and runs on this machine
+    env: *t1
+    steps:
+      # No platforms list, so the pin is for whichever machine this is — and
+      # the target map has to name it.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.quirky]
+            version = "29"
+
+            [tools.quirky.source]
+            type = "http"
+            repo = "example/quirky"
+            url = "${env:FAKEGH_URL}/blobs/quirky-{version}/quirky-{version}-{target}.tar.gz"
+            strip_components = 1
+            bin = ["bin/quirkyd"]
+
+            [tools.quirky.source.target]
+            "linux/amd64" = "x86_64-linux-gnu"
+            "linux/arm64" = "aarch64-linux-gnu"
+            "darwin/amd64" = "x86_64-apple-darwin"
+            "darwin/arm64" = "arm64-apple-darwin"
+            "windows/amd64" = "win64"
+            "windows/arm64" = "win64-arm"
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - assert:
           exit_code: 0
           stdout:
-            equals: |
-              quirky  29.4  installed
-              shims: quirkyd
+            contains:
+              - "quirky  29.4  installed"
+              - "shims: quirkyd"
       - run:
           command: block exec quirkyd -version
       - assert:

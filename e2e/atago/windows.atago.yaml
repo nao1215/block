@@ -4,11 +4,14 @@
 # case, and a child's exit status surviving the extra process Windows puts in
 # the way.
 #
-# This file is the whole Windows suite. The rest of e2e/atago pins registry
-# tools — foundry, hermes — and those upstreams publish no Windows build,
-# which the registry records and block correctly reports; running them there
-# would assert that Foundry ships something it does not. The fixtures used
-# here do publish for Windows.
+# This file is not the Windows suite: the whole of e2e/atago runs on Windows,
+# and what is here is only what has no meaning anywhere else. A behaviour that
+# is the same on three platforms belongs in the file that covers it, asserted
+# once — an exit status, a stale lockfile, a zip being unpacked. What is left
+# is the handful of things Windows alone does: the .exe suffix on an installed
+# executable and on a shim, a shim that is a hard link or a copy because a
+# symlink needs privileges, PATH resolved by PATHEXT and without regard to
+# case, and a run cancelled where there are no POSIX signals to send.
 #
 # Every scenario is gated on `only: os: windows`, so the file is inert on the
 # other two platforms rather than a second suite someone has to remember.
@@ -122,45 +125,6 @@ scenarios:
           stdout:
             equals: |
               zipper 3.0.0 (fake)
-
-  # The child's exit status has to survive the extra process Windows puts in
-  # the way, both through exec and through a shim.
-  - name: the tool's exit status survives on both routes
-    only:
-      os: windows
-    env: *t1
-    steps:
-      - fixture:
-          file: block.toml
-          content: |
-            [tools.zipper]
-            version = "3"
-
-            [tools.zipper.source]
-            type = "github_release"
-            repo = "example/zipper"
-            asset = "zipper_{version}_{os}_{arch}.zip"
-            bin = ["zipper"]
-      - run:
-          command: block lock
-      - run:
-          command: block sync
-      - run:
-          command: block exec zipper --exit 3
-      - assert:
-          exit_code: 3
-          stderr:
-            equals: ""
-      - run:
-          command: "${workdir}/home/shims/zipper.exe --exit 5"
-      - assert:
-          exit_code: 5
-          stderr:
-            equals: ""
-
-  # Windows resolves a command on PATH without regard to case, so block has to
-  # answer to the same name however it is typed rather than reporting the
-  # command as unknown.
   - name: a command name is matched without regard to case
     only:
       os: windows
@@ -262,56 +226,6 @@ scenarios:
           exit_code: 1
           stderr:
             contains: 'zipper: no block project here and no zipper elsewhere on PATH'
-
-  # And the refusals have to read the same on Windows: a lockfile that does
-  # not match the manifest stops sync before anything is installed.
-  - name: a stale lockfile stops sync here too
-    only:
-      os: windows
-    env: *t1
-    steps:
-      - fixture:
-          file: block.toml
-          content: |
-            [tools.zipper]
-            version = "3"
-
-            [tools.zipper.source]
-            type = "github_release"
-            repo = "example/zipper"
-            asset = "zipper_{version}_{os}_{arch}.zip"
-            bin = ["zipper"]
-      - run:
-          command: block lock
-      - fixture:
-          file: block.toml
-          content: |
-            [tools.zipper]
-            version = "3"
-
-            [tools.zipper.source]
-            type = "github_release"
-            repo = "example/zipper"
-            asset = "zipper_{version}_{os}_{arch}.zip"
-            bin = ["zipper"]
-
-            [tools.foo]
-            version = "1.2"
-
-            [tools.foo.source]
-            type = "github_release"
-            repo = "example/foo"
-            asset = "foo_{version}_{os}_{arch}.tar.gz"
-            bin = ["foo"]
-      - run:
-          command: block sync
-      - assert:
-          exit_code: 1
-          stderr:
-            contains: 'foo is declared in block.toml but missing from block.lock'
-
-  # A long-running tool — a node, a local test network — has to be stoppable,
-  # and block has to report what happened to it rather than its own status.
   - name: a cancelled run ends the tool and reports it
     only:
       os: windows

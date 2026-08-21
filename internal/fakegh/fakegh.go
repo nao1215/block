@@ -129,7 +129,26 @@ func Fixtures() []Repo {
 		return release{tag: tag, at: at, bins: []string{bin},
 			assets: platformAssets(base+"_"+strings.TrimPrefix(tag, "v")+"_{os}_{arch}"+ext, platforms, nil, nil)}
 	}
+	// cometbft is the registry tool the suite uses where a scenario is about
+	// the registry itself rather than about resolution: its recipe is the one
+	// in block-registry that ships for every platform block supports, so a
+	// scenario written with it runs the same everywhere. foundry and hermes
+	// below publish no Windows build, which is upstream's choice and a thing
+	// the suite asserts once, deliberately.
+	cometbft := func(tag string, at int, pre bool) release {
+		return release{tag: tag, at: at, prerelease: pre, bins: []string{"cometbft"},
+			assets: platformAssets("cometbft_"+strings.TrimPrefix(tag, "v")+"_{os}_{arch}.tar.gz", allPlatforms, nil, nil)}
+	}
 	return []Repo{
+		{owner: "cometbft", name: "cometbft", digest: true, releases: []release{
+			cometbft("v1.6.0", 1, false),
+			cometbft("v1.7.0", 1, false),
+			cometbft("v1.7.1", 1, false),
+			cometbft("v1.7.4", 1, false),
+			cometbft("v1.7.5", 2, false),
+			cometbft("v1.8.0-rc1", 1, true),
+			cometbft("v1.9.0", 2, true),
+		}},
 		{owner: "foundry-rs", name: "foundry", digest: true, releases: []release{
 			foundry("v1.6.0", 1, false),
 			foundry("v1.7.0", 1, false),
@@ -494,10 +513,13 @@ func (s *Server) serveVersionedBlob(w http.ResponseWriter, r *http.Request, dir,
 }
 
 // knownTargets are the upstream platform strings the quirky fixture ships,
-// spelled the way Bitcoin Core spells them.
+// spelled the way Bitcoin Core spells them — plus the two Windows ones, so a
+// scenario about target maps can install and run on every platform the suite
+// runs on rather than only where this particular upstream happens to build.
 var knownTargets = map[string]bool{ //nolint:gochecknoglobals // immutable table
 	"x86_64-linux-gnu": true, "aarch64-linux-gnu": true,
 	"x86_64-apple-darwin": true, "arm64-apple-darwin": true,
+	"win64": true, "win64-arm": true,
 }
 
 func (s *Server) writeArchive(w http.ResponseWriter, name string, rel release) {
