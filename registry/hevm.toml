@@ -1,0 +1,22 @@
+# hevm: an EVM implementation for symbolic execution and equivalence checks.
+# https://github.com/ethereum/hevm
+#
+# Releases are tagged on a "release/" line rather than with a bare "v", and
+# ship one raw executable per platform. There is no Linux arm64 build.
+name = "hevm"
+ecosystems = ["ethereum"]
+description = "EVM implementation for symbolic execution and equivalence checking"
+
+[source]
+type = "github_release"
+repo = "ethereum/hevm"
+tag_prefix = "release/"
+asset = "hevm-{arch}-{os}"
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+bin = ["hevm"]
+
+[source.os]
+darwin = "macos"
+
+[source.arch]
+amd64 = "x86_64"

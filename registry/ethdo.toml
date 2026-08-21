@@ -1,0 +1,15 @@
+# ethdo: command-line client for the Ethereum consensus layer.
+# https://github.com/wealdtech/ethdo
+#
+# Upstream publishes a tarball per Unix platform; the Windows build is a .zip,
+# which one asset template cannot express alongside them.
+name = "ethdo"
+ecosystems = ["ethereum"]
+description = "Command-line client for Ethereum consensus-layer accounts and validators"
+
+[source]
+type = "github_release"
+repo = "wealdtech/ethdo"
+asset = "ethdo-{version}-{os}-{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64"]
+bin = ["ethdo"]

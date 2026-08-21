@@ -1,0 +1,20 @@
+# dfx: the Internet Computer SDK's command-line tool.
+# https://github.com/dfinity/sdk
+#
+# Tags are bare version numbers with no "v". Upstream also publishes
+# unversioned "latest" assets; the versioned ones are what a lock needs.
+name = "dfx"
+ecosystems = ["icp"]
+description = "Internet Computer SDK CLI for building and deploying canisters"
+
+[source]
+type = "github_release"
+repo = "dfinity/sdk"
+tag_prefix = ""
+asset = "dfx-{version}-{arch}-{os}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["dfx"]
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

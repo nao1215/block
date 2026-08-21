@@ -1,0 +1,25 @@
+# ord: the ordinal theory index, explorer and wallet for Bitcoin.
+# https://github.com/ordinals/ord
+#
+# Tags are bare version numbers with no "v". Upstream ships no Linux arm64
+# build, and its Windows build is a .zip where the others are .tar.gz.
+name = "ord"
+ecosystems = ["bitcoin"]
+description = "Ordinal theory index, block explorer and wallet for Bitcoin"
+
+[source]
+type = "github_release"
+repo = "ordinals/ord"
+tag_prefix = ""
+asset = "ord-{version}-{arch}-{os}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+bin = ["ord"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

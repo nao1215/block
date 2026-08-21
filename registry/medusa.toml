@@ -1,0 +1,22 @@
+# Medusa: parallelised, coverage-guided fuzzer for smart contracts.
+# https://github.com/crytic/medusa
+#
+# Upstream builds one archive per platform and only three of them: Linux
+# x86-64, macOS arm64 and Windows x86-64.
+name = "medusa"
+ecosystems = ["ethereum"]
+description = "Parallelised coverage-guided fuzzer for EVM smart contracts"
+
+[source]
+type = "github_release"
+repo = "crytic/medusa"
+asset = "medusa-{os}-{arch}.tar.gz"
+platforms = ["linux/amd64", "darwin/arm64", "windows/amd64"]
+bin = ["medusa"]
+
+[source.os]
+darwin = "mac"
+windows = "win"
+
+[source.arch]
+amd64 = "x64"

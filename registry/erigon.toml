@@ -1,0 +1,17 @@
+# Erigon: the efficiency-focused Ethereum execution client.
+# https://github.com/erigontech/erigon
+#
+# The repository carries date-shaped tags from an older release scheme
+# (v2022.10.01); they are not semantic versions and are skipped, so the vX.Y.Z
+# line is what resolves. Upstream publishes Linux archives only.
+name = "erigon"
+ecosystems = ["ethereum"]
+description = "Efficiency-focused Ethereum execution client written in Go"
+
+[source]
+type = "github_release"
+repo = "erigontech/erigon"
+asset = "erigon_v{version}_{os}_{arch}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64"]
+bin = ["erigon"]

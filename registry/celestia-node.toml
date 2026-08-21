@@ -1,0 +1,21 @@
+# Celestia's data-availability node, run as `celestia`.
+# https://github.com/celestiaorg/celestia-node
+#
+# Testnet tags (v0.31.4-mocha, -arabica) are pre-releases and are skipped.
+name = "celestia-node"
+ecosystems = ["celestia", "cosmos"]
+description = "Celestia data-availability node: bridge, full and light nodes"
+
+[source]
+type = "github_release"
+repo = "celestiaorg/celestia-node"
+asset = "celestia-node_{os}_{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["celestia"]
+
+[source.os]
+linux = "Linux"
+darwin = "Darwin"
+
+[source.arch]
+amd64 = "x86_64"

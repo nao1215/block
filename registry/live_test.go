@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -66,15 +67,24 @@ func TestLiveRegistry(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), liveTimeout)
 			defer cancel()
 
-			v, err := newestStable(ctx, gh, rec.Source)
+			newest, err := newestStable(ctx, gh, rec.Source)
 			if err != nil {
 				t.Fatalf("version discovery: %v", err)
 			}
-			t.Logf("newest stable version: %s", v)
+			t.Logf("newest stable version: %s", newest)
 
-			res, err := resolver.Exact(ctx, gh, rec.Source, v)
+			// Resolved the way `block lock` would for a user who pinned the
+			// tool's current major line, rather than by demanding the newest
+			// tag exactly: upstreams push a tag before publishing its
+			// release, and a recipe is not broken while that gap is open.
+			c := version.MustParseConstraint(strconv.Itoa(newest.Major))
+			res, err := resolver.Resolve(ctx, gh, rec.Source, c)
 			if err != nil {
-				t.Fatalf("resolving %s: %v", v, err)
+				t.Fatalf("resolving %q: %v", c, err)
+			}
+			v := res.Version
+			if v != newest {
+				t.Logf("the newest tag %s has no published release yet; checking %s", newest, v)
 			}
 
 			// Every platform the recipe claims must have an artifact that
@@ -197,10 +207,13 @@ func retry(fn func() error) error {
 
 // probe runs an installed executable to confirm it is the program the recipe
 // promised and that it can start at all. Upstreams disagree about how to ask
-// for a version, so the usual spellings are tried in turn.
+// for a version, so the usual spellings are tried in turn, and --help last:
+// a supervisor like cosmovisor or a one-shot tool like rlpdump has no version
+// to report, and refusing to install it over that would be pedantry rather
+// than a check on the recipe.
 func probe(t *testing.T, bin string) {
 	t.Helper()
-	for _, args := range [][]string{{"--version"}, {"version"}, {"-version"}} {
+	for _, args := range [][]string{{"--version"}, {"version"}, {"-version"}, {"--help"}} {
 		ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
 		out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
 		cancel()
@@ -209,7 +222,7 @@ func probe(t *testing.T, bin string) {
 			return
 		}
 	}
-	t.Errorf("%s: none of --version, version or -version worked", filepath.Base(bin))
+	t.Errorf("%s: none of --version, version, -version or --help worked", filepath.Base(bin))
 }
 
 func firstLine(b []byte) string {

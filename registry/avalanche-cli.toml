@@ -1,0 +1,12 @@
+# Avalanche CLI: create and run Avalanche L1s and local networks.
+# https://github.com/ava-labs/avalanche-cli
+name = "avalanche-cli"
+ecosystems = ["avalanche"]
+description = "Creates and runs Avalanche L1s and local test networks"
+
+[source]
+type = "github_release"
+repo = "ava-labs/avalanche-cli"
+asset = "avalanche-cli_{version}_{os}_{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["avalanche"]

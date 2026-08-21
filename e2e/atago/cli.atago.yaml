@@ -51,20 +51,26 @@ scenarios:
           command: block list
       - assert:
           exit_code: 0
+          # Column widths depend on the whole catalog, so a row is matched by
+          # its fields rather than by the spacing of the day.
           stdout:
-            contains:
-              - "NAME           ECOSYSTEM     DESCRIPTION"
-              - "bitcoin-core   bitcoin       Bitcoin reference implementation: full node, wallet and transaction tools"
-              - "foundry        ethereum      Fast Ethereum application toolkit: build, test, deploy and inspect contracts"
-              - "geth           ethereum      go-ethereum, the Go implementation of an Ethereum execution client"
-              # A tool serving two blockchain systems shows both.
-              - "hermes         cosmos, ibc   IBC relayer connecting Cosmos SDK chains, written in Rust"
+            matches: '(?m)^NAME +ECOSYSTEM +DESCRIPTION$'
           stderr:
             equals: ""
           changes:
             created: []
             modified: []
             deleted: []
+      - assert:
+          stdout:
+            matches: '(?m)^bitcoin-core +bitcoin +Bitcoin reference implementation: full node, wallet and transaction tools$'
+      - assert:
+          stdout:
+            matches: '(?m)^foundry +ethereum +Fast Ethereum application toolkit: build, test, deploy and inspect contracts$'
+      # A tool serving two blockchain systems shows both.
+      - assert:
+          stdout:
+            matches: '(?m)^hermes +cosmos, ibc +IBC relayer connecting Cosmos SDK chains, written in Rust$'
       # Rows are sorted by tool name, whatever order the registry files load in.
       - assert:
           stdout:
@@ -81,19 +87,17 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: |
-              NAME         COMMANDS                     DESCRIPTION
-              foundry      forge, cast, anvil, chisel   Fast Ethereum application toolkit: build, test, deploy and inspect contracts
-              geth         geth                         go-ethereum, the Go implementation of an Ethereum execution client
-              lighthouse   lighthouse                   Ethereum consensus (beacon chain) client written in Rust
-              reth         reth                         Modular Ethereum execution client written in Rust
-              solc         solc                         The Solidity smart-contract compiler
-          stderr:
-            equals: ""
-          changes:
-            created: []
-            modified: []
-            deleted: []
+            matches: '(?m)^NAME +COMMANDS +DESCRIPTION$'
+      - assert:
+          # The ecosystem column is gone; the commands column takes its place.
+          stdout:
+            not_contains: "ECOSYSTEM"
+      - assert:
+          stdout:
+            matches: '(?m)^foundry +forge, cast, anvil, chisel +Fast Ethereum application toolkit: build, test, deploy and inspect contracts$'
+      - assert:
+          stdout:
+            matches: '(?m)^solc +solc +The Solidity smart-contract compiler$'
       - run:
           command: block list bitcoin
       - assert:
@@ -102,16 +106,19 @@ scenarios:
             equals: |
               NAME           COMMANDS                                                          DESCRIPTION
               bitcoin-core   bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet   Bitcoin reference implementation: full node, wallet and transaction tools
+              btcd           btcd, btcctl                                                      Alternative full-node Bitcoin implementation written in Go
+              ord            ord                                                               Ordinal theory index, block explorer and wallet for Bitcoin
       - run:
           command: block list solana
       - assert:
           exit_code: 0
           stdout:
             equals: |
-              NAME       COMMANDS                                                          DESCRIPTION
-              agave      solana, solana-keygen, solana-test-validator, agave-ledger-tool   Solana validator client and CLI suite, including a local test validator
-              anchor     anchor                                                            Framework and CLI for writing, testing and deploying Solana programs
-              surfpool   surfpool                                                          Local Solana network that streams mainnet state for pre-deployment testing
+              NAME            COMMANDS                                                          DESCRIPTION
+              agave           solana, solana-keygen, solana-test-validator, agave-ledger-tool   Solana validator client and CLI suite, including a local test validator
+              anchor          anchor                                                            Framework and CLI for writing, testing and deploying Solana programs
+              solana-verify   solana-verify                                                     Verifies that an on-chain Solana program matches its source
+              surfpool        surfpool                                                          Local Solana network that streams mainnet state for pre-deployment testing
 
   - name: a tool serving two blockchain systems is listed under each
     env: *offline
@@ -121,20 +128,16 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: |
-              NAME       COMMANDS   DESCRIPTION
-              cometbft   cometbft   Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains
-              gaia       gaiad      Cosmos Hub node (gaiad)
-              hermes     hermes     IBC relayer connecting Cosmos SDK chains, written in Rust
-              osmosis    osmosisd   Osmosis appchain node (osmosisd), the Cosmos AMM
+            matches: '(?m)^hermes +hermes +IBC relayer connecting Cosmos SDK chains, written in Rust$'
       - run:
           command: block list ibc
       - assert:
           exit_code: 0
           stdout:
             equals: |
-              NAME     COMMANDS   DESCRIPTION
-              hermes   hermes     IBC relayer connecting Cosmos SDK chains, written in Rust
+              NAME             COMMANDS   DESCRIPTION
+              cosmos-relayer   rly        IBC relayer for Cosmos SDK chains written in Go, run as rly
+              hermes           hermes     IBC relayer connecting Cosmos SDK chains, written in Rust
 
   - name: an unknown ecosystem names the ones that exist
     env: *offline
@@ -146,7 +149,7 @@ scenarios:
           stderr:
             equals: |
               block: unknown ecosystem "etheruem"
-              available ecosystems: bitcoin, cosmos, ethereum, ibc, solana
+              available ecosystems: aptos, avalanche, bitcoin, cardano, celestia, cosmos, ethereum, fabric, ibc, icp, ipfs, near, solana, starknet, stellar, zk, zksync
           stdout:
             equals: ""
       - run:

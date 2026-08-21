@@ -1,0 +1,21 @@
+# Starknet Foundry: snforge and sncast for testing and calling Cairo
+# contracts. https://github.com/foundry-rs/starknet-foundry
+name = "starknet-foundry"
+ecosystems = ["starknet"]
+description = "Testing and deployment toolkit for Cairo contracts: snforge and sncast"
+
+[source]
+type = "github_release"
+repo = "foundry-rs/starknet-foundry"
+asset = "starknet-foundry-v{version}-{arch}-{os}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["bin/snforge", "bin/sncast"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

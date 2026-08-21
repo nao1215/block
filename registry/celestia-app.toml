@@ -1,0 +1,19 @@
+# The Celestia consensus node, run as `celestia-appd`.
+# https://github.com/celestiaorg/celestia-app
+name = "celestia-app"
+ecosystems = ["celestia", "cosmos"]
+description = "Celestia consensus node (celestia-appd)"
+
+[source]
+type = "github_release"
+repo = "celestiaorg/celestia-app"
+asset = "celestia-app_{os}_{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["celestia-appd"]
+
+[source.os]
+linux = "Linux"
+darwin = "Darwin"
+
+[source.arch]
+amd64 = "x86_64"

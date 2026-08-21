@@ -1,0 +1,23 @@
+# Starkli: the Starknet command-line interface.
+# https://github.com/xJonathanLEI/starkli
+#
+# The asset carries no version: the release it belongs to is the version.
+# musl and Android builds exist upstream and are not what block installs.
+name = "starkli"
+ecosystems = ["starknet"]
+description = "Starknet command-line interface for accounts, contracts and calls"
+
+[source]
+type = "github_release"
+repo = "xJonathanLEI/starkli"
+asset = "starkli-{arch}-{os}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["starkli"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

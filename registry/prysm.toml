@@ -1,0 +1,23 @@
+# Prysm: the Go Ethereum consensus client's beacon node.
+# https://github.com/OffchainLabs/prysm
+#
+# Each executable is published as its own raw asset, so the beacon node and
+# the validator client are separate recipes rather than one archive. Upstream
+# names the Windows build with the .exe the others do not carry, which is why
+# the platform strings are mapped whole.
+name = "prysm"
+ecosystems = ["ethereum"]
+description = "Prysm beacon node, the Go Ethereum consensus-layer client"
+
+[source]
+type = "github_release"
+repo = "OffchainLabs/prysm"
+asset = "beacon-chain-v{version}-{target}"
+bin = ["beacon-chain"]
+
+[source.target]
+"linux/amd64" = "linux-amd64"
+"linux/arm64" = "linux-arm64"
+"darwin/amd64" = "darwin-amd64"
+"darwin/arm64" = "darwin-arm64"
+"windows/amd64" = "windows-amd64.exe"

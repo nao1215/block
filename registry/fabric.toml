@@ -1,0 +1,12 @@
+# Hyperledger Fabric: the permissioned blockchain's peer, orderer and tools.
+# https://github.com/hyperledger/fabric
+name = "fabric"
+ecosystems = ["fabric"]
+description = "Hyperledger Fabric peer, orderer and channel tooling"
+
+[source]
+type = "github_release"
+repo = "hyperledger/fabric"
+asset = "hyperledger-fabric-{os}-{arch}-{version}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64"]
+bin = ["bin/peer", "bin/orderer", "bin/configtxgen", "bin/configtxlator", "bin/cryptogen", "bin/discover", "bin/osnadmin"]

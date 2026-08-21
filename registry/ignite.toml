@@ -1,0 +1,12 @@
+# Ignite CLI: scaffolds, builds and serves Cosmos SDK blockchains.
+# https://github.com/ignite/cli
+name = "ignite"
+ecosystems = ["cosmos"]
+description = "Scaffolds, builds and serves Cosmos SDK blockchains"
+
+[source]
+type = "github_release"
+repo = "ignite/cli"
+asset = "ignite_{version}_{os}_{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["ignite"]

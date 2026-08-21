@@ -61,13 +61,24 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 	if len(lines)-1 != len(reg.Recipes()) {
 		t.Errorf("list printed %d rows for %d recipes", len(lines)-1, len(reg.Recipes()))
 	}
-	for _, row := range []string{
-		"bitcoin-core   bitcoin       Bitcoin reference implementation",
-		"foundry        ethereum      Fast Ethereum application toolkit",
-		"hermes         cosmos, ibc   IBC relayer",
+	// Column widths depend on the whole catalog, so a row is compared by
+	// its fields rather than by the spacing of the day.
+	row := func(out, name string) (string, bool) {
+		for _, line := range strings.Split(out, "\n") {
+			if fields := strings.Fields(line); len(fields) > 0 && fields[0] == name {
+				return line, true
+			}
+		}
+		return "", false
+	}
+	for _, want := range []struct{ name, ecosystem, description string }{
+		{"bitcoin-core", "bitcoin", "Bitcoin reference implementation"},
+		{"foundry", "ethereum", "Fast Ethereum application toolkit"},
+		{"hermes", "cosmos, ibc", "IBC relayer"},
 	} {
-		if !strings.Contains(out, row) {
-			t.Errorf("list is missing %q:\n%s", row, out)
+		line, ok := row(out, want.name)
+		if !ok || !strings.Contains(line, want.ecosystem) || !strings.Contains(line, want.description) {
+			t.Errorf("list is missing a %s row for %q:\n%s", want.name, want.description, out)
 		}
 	}
 	// How a tool is fetched is a registry concern, not something the
@@ -79,27 +90,27 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 	// Filtering by ecosystem drops the now-constant column and keeps the
 	// rows sorted by tool name.
 	code, out, _ = run(t, dir, "list", "ethereum")
-	if code != 0 || out != "NAME         COMMANDS                     DESCRIPTION\n"+
-		"foundry      forge, cast, anvil, chisel   Fast Ethereum application toolkit: build, test, deploy and inspect contracts\n"+
-		"geth         geth                         go-ethereum, the Go implementation of an Ethereum execution client\n"+
-		"lighthouse   lighthouse                   Ethereum consensus (beacon chain) client written in Rust\n"+
-		"reth         reth                         Modular Ethereum execution client written in Rust\n"+
-		"solc         solc                         The Solidity smart-contract compiler\n" {
-		t.Errorf("list ethereum = %d, %q", code, out)
+	lines = strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if code != 0 || !strings.HasPrefix(lines[0], "NAME") || !strings.Contains(lines[0], "COMMANDS") {
+		t.Fatalf("list ethereum = %d, %q", code, out)
 	}
-	// A tool serving two ecosystems is listed under each of them. Column
-	// widths differ per listing, so the row is compared by its fields.
-	hasRow := func(out, name string) bool {
-		for _, line := range strings.Split(out, "\n") {
-			if fields := strings.Fields(line); len(fields) > 0 && fields[0] == name {
-				return true
-			}
-		}
-		return false
+	if strings.Contains(lines[0], "ECOSYSTEM") {
+		t.Errorf("list ethereum keeps the now-constant ecosystem column:\n%s", out)
 	}
+	if len(lines)-1 != len(reg.ByEcosystem("ethereum")) {
+		t.Errorf("list ethereum printed %d rows for %d recipes", len(lines)-1, len(reg.ByEcosystem("ethereum")))
+	}
+	// The commands a tool provides are what this listing adds over the
+	// unfiltered one.
+	if line, ok := row(out, "foundry"); !ok || !strings.Contains(line, "forge, cast, anvil, chisel") {
+		t.Errorf("list ethereum has no foundry row naming its commands:\n%s", out)
+	}
+	// A tool serving two ecosystems is listed under each of them.
 	for _, ecosystem := range []string{"cosmos", "ibc"} {
-		if code, out, _ := run(t, dir, "list", ecosystem); code != 0 || !hasRow(out, "hermes") {
+		if code, out, _ := run(t, dir, "list", ecosystem); code != 0 {
 			t.Errorf("list %s = %d, %q", ecosystem, code, out)
+		} else if _, ok := row(out, "hermes"); !ok {
+			t.Errorf("list %s does not list hermes:\n%s", ecosystem, out)
 		}
 	}
 	// Every ecosystem the registry knows can be listed.
@@ -110,8 +121,8 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 		}
 	}
 	code, _, errOut := run(t, dir, "list", "etheruem")
-	if code != 1 || errOut != "block: unknown ecosystem \"etheruem\"\navailable ecosystems: bitcoin, cosmos, ethereum, ibc, solana\n" {
-		t.Errorf("list etheruem = %d, %q", code, errOut)
+	if want := "block: unknown ecosystem \"etheruem\"\navailable ecosystems: " + strings.Join(reg.Ecosystems(), ", ") + "\n"; code != 1 || errOut != want {
+		t.Errorf("list etheruem = %d, %q, want %q", code, errOut, want)
 	}
 	if code, _, errOut := run(t, dir, "list", "ethereum", "solana"); code != 1 || !strings.Contains(errOut, "accepts at most 1 arg") {
 		t.Errorf("list with two arguments = %d, %q", code, errOut)

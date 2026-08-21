@@ -1,0 +1,22 @@
+# near-cli-rs: the NEAR command-line interface, run as `near`.
+# https://github.com/near/near-cli-rs
+name = "near-cli"
+ecosystems = ["near"]
+description = "NEAR command-line interface for accounts, contracts and transactions"
+
+[source]
+type = "github_release"
+repo = "near/near-cli-rs"
+asset = "near-cli-rs-{arch}-{os}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64"]
+bin = ["near"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+windows = "pc-windows-msvc"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

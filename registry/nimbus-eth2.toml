@@ -1,0 +1,22 @@
+# Nimbus: the Nim Ethereum consensus client, built for low-resource machines.
+# https://github.com/status-im/nimbus-eth2
+#
+# Archives are named after the build commit as well as the version, and
+# upstream spells its platforms in its own way (Linux_arm64v8, macOS_arm64),
+# so both are mapped whole. There is no macOS x86-64 build.
+name = "nimbus-eth2"
+ecosystems = ["ethereum"]
+description = "Nimbus Ethereum consensus client, built for low-resource machines"
+
+[source]
+type = "github_release"
+repo = "status-im/nimbus-eth2"
+asset = "nimbus-eth2_{target}_{version}_{commit}.tar.gz"
+strip_components = 1
+bin = ["build/nimbus_beacon_node", "build/nimbus_validator_client"]
+
+[source.target]
+"linux/amd64" = "Linux_amd64"
+"linux/arm64" = "Linux_arm64v8"
+"darwin/arm64" = "macOS_arm64"
+"windows/amd64" = "Windows_amd64"

@@ -1,0 +1,16 @@
+# The Go IBC relayer maintained by the Cosmos team, run as `rly`.
+# https://github.com/cosmos/relayer
+#
+# The asset is named "Cosmos.Relayer" while the executable inside is `rly`,
+# and it sits in a directory the archive wraps around it.
+name = "cosmos-relayer"
+ecosystems = ["cosmos", "ibc"]
+description = "IBC relayer for Cosmos SDK chains written in Go, run as rly"
+
+[source]
+type = "github_release"
+repo = "cosmos/relayer"
+asset = "Cosmos.Relayer_{version}_{os}_{arch}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["rly"]

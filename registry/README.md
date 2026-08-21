@@ -5,28 +5,34 @@ list of its versions: a new upstream release needs no change here. Recipes
 change only when the upstream moves repositories, renames assets, changes how
 it distributes builds, or drops a platform.
 
-This directory is embedded into the `block` binary today and is laid out so
-it can move to its own repository (`block-registry`) unchanged.
+This directory is a snapshot of
+[block-registry](https://github.com/nao1215/block-registry), which is where
+recipes are written and reviewed. The snapshot is embedded into the `block`
+binary, so `block list` and `block lock` work offline and a block version
+always pairs with a registry it was tested against. Edit a recipe here only
+as part of syncing the snapshot; the canonical copy lives there.
 
-## Order of preference
+## Where a recipe may download from
 
-A recipe states exactly one install method. block executes it
-deterministically and never falls back to another at run time. When writing a
-recipe, pick the highest method the upstream actually supports:
+A recipe states exactly one download source. block executes it
+deterministically and never falls back to another at run time. Which sources
+are allowed is a rule block-registry writes down and its linter enforces, not
+a matter of taste:
 
-| priority | method | type | status |
+| tier | source | type | what bounds it |
 | --- | --- | --- | --- |
-| 1 | official prebuilt GitHub Release artifact | `github_release` | implemented |
-| 2 | official prebuilt artifact on the upstream's download server | `http` | implemented |
-| 3 | official package registry (`go install`, `cargo install`, npm, pipx) | — | not implemented |
-| 4 | limited build from official source | — | not implemented |
+| 1 | a GitHub Release asset of the repository the recipe already names | `github_release` | the artifact and the version tag come from the same project, and GitHub publishes the asset's SHA-256 |
+| 2 | a prebuilt artifact on the upstream's own download server | `http` | the host must be listed for that repository in block-registry's `policy/hosts.toml`, with the reason a release asset will not do |
 
-Every tool in this directory — across Bitcoin, Ethereum, Solana, Cosmos and
-IBC — is served by the first two. A third type is added only when a tool
-genuinely cannot be obtained with them, and it will be a type whose meaning
-and safety boundary block understands. There is no `install = "curl … | bash"`,
-no `command = "make install"`, and no arbitrary-script escape hatch, ever.
-block does not manage language runtimes (Go, Rust, Node, Python) either.
+Today three recipes need tier 2 — `bitcoin-core`, `geth` and `geth-tools` —
+because those projects build binaries and publish them on their own server
+rather than attaching them to a GitHub release. Everything else is tier 1.
+
+There is no tier 3. No `install = "curl … | bash"`, no
+`command = "make install"`, no package-manager shell-out, and no
+arbitrary-script escape hatch, ever. block does not manage language runtimes
+(Go, Rust, Node, Python) either, so a tool distributed only through npm, PyPI
+or crates.io is not here.
 
 ## Recipe
 
@@ -65,8 +71,10 @@ arm64 = "aarch64"
 | `ecosystems`, `description` | metadata about the tool — block attaches no behaviour to either | same |
 
 Placeholders: `{version}` (as the upstream spells it, without the tag
-prefix), `{os}`, `{arch}`, `{target}`, and `{commit}` (`http` only — the first
-8 hex digits of the commit the version tag points at).
+prefix), `{os}`, `{arch}`, `{target}`, and `{commit}` — the first 8 hex digits
+of the commit the version tag points at, for upstreams that stamp the build
+commit into the artifact's name (vyper, Nimbus, go-ethereum). Resolving one
+costs an extra API call, so use it only where the upstream leaves no choice.
 
 Archives may be `.tar.gz` / `.tgz`, `.tar.bz2` / `.tbz2` or `.zip`. An asset
 name without one of those extensions is a single raw executable, installed
@@ -86,10 +94,10 @@ use for this chain?" — `block list` prints both, and whatever reads the
 registry later (a `block-registry` site, generated documentation) has them
 too.
 
-`ecosystems` is a required, non-empty list of canonical names. The current
-ones are `bitcoin`, `cosmos`, `ethereum`, `ibc` and `solana`; adding another
-means writing it in a recipe and nothing else, because block derives the
-available names from the snapshot rather than hard-coding them. A tool may
+`ecosystems` is a required, non-empty list of canonical names. `block list`
+with no argument prints the ones in use; adding another means writing it in a
+recipe and nothing else, because block derives the available names from the
+snapshot rather than hard-coding them. A tool may
 serve several systems — Hermes is used from both `cosmos` and `ibc` work —
 and is then listed under each. Keep the names lower-case: they are what users
 type after `block list`.
@@ -134,8 +142,9 @@ on demand) takes each recipe to the real upstream: it discovers the newest
 stable version the way block does, resolves the artifact for every declared
 platform and confirms it exists, then downloads the one for the runner,
 verifies its checksum, unpacks it, checks that every declared executable is
-there, and runs each one (`--version`, `version` or `-version`). Limit it
-while working on a recipe:
+there, and runs each one (`--version`, `version`, `-version`, then `--help`
+for the tools that have no version to report). Limit it while working on a
+recipe:
 
 ```shell
 make registry-live RECIPE=foundry

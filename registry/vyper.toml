@@ -1,0 +1,20 @@
+# Vyper: the Pythonic smart-contract language for the EVM.
+# https://github.com/vyperlang/vyper
+#
+# Releases ship one raw executable per platform, named after the build commit
+# as well as the version. Alpha and release-candidate tags (v0.5.0a1,
+# v0.4.3rc1) are pre-releases and are skipped. There is one macOS build; the
+# Windows one is the only asset whose name carries an extension.
+name = "vyper"
+ecosystems = ["ethereum"]
+description = "The Vyper smart-contract compiler, a Pythonic language for the EVM"
+
+[source]
+type = "github_release"
+repo = "vyperlang/vyper"
+asset = "vyper.{version}+commit.{commit}.{os}"
+platforms = ["linux/amd64", "darwin/arm64", "windows/amd64"]
+bin = ["vyper"]
+
+[source.os]
+windows = "windows.exe"

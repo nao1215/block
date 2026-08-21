@@ -1,0 +1,17 @@
+# Cosmovisor: supervises a Cosmos SDK node across chain upgrades.
+# https://github.com/cosmos/cosmos-sdk
+#
+# It lives in the cosmos-sdk monorepo and is tagged on its own line
+# (cosmovisor/v1.7.1), which is what tag_prefix selects. Upstream ships no
+# macOS arm64 build.
+name = "cosmovisor"
+ecosystems = ["cosmos"]
+description = "Supervises a Cosmos SDK node binary across scheduled chain upgrades"
+
+[source]
+type = "github_release"
+repo = "cosmos/cosmos-sdk"
+tag_prefix = "cosmovisor/v"
+asset = "cosmovisor-v{version}-{os}-{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64"]
+bin = ["cosmovisor"]

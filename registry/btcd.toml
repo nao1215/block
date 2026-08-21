@@ -1,0 +1,17 @@
+# btcd: an alternative full-node Bitcoin implementation written in Go.
+# https://github.com/btcsuite/btcd
+#
+# Upstream builds for a long list of platforms; only the four block installs
+# on are listed. Per-module tags (wire/v2.0.1) are not versions of btcd and
+# are ignored because they do not carry the "v" prefix at the start.
+name = "btcd"
+ecosystems = ["bitcoin"]
+description = "Alternative full-node Bitcoin implementation written in Go"
+
+[source]
+type = "github_release"
+repo = "btcsuite/btcd"
+asset = "btcd-{os}-{arch}-v{version}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["btcd", "btcctl"]

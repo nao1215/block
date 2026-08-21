@@ -1,0 +1,18 @@
+# Kubo: the reference IPFS implementation, run as `ipfs`.
+# https://github.com/ipfs/kubo
+#
+# IPFS is where most chains put the data they do not keep on-chain, so the
+# node belongs beside them. The archive unpacks into kubo/. The Windows
+# builds are .zip where the others are .tar.gz, which one asset template
+# cannot express.
+name = "kubo"
+ecosystems = ["ipfs"]
+description = "Reference IPFS implementation, the ipfs node and CLI"
+
+[source]
+type = "github_release"
+repo = "ipfs/kubo"
+asset = "kubo_v{version}_{os}-{arch}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["ipfs"]

@@ -1,0 +1,19 @@
+# circom: the compiler for the circom zero-knowledge circuit language.
+# https://github.com/iden3/circom
+#
+# Releases ship one raw executable per platform; there is no macOS arm64
+# build, and the Windows one is the only name carrying an extension.
+name = "circom"
+ecosystems = ["zk"]
+description = "Compiler for the circom zero-knowledge circuit language"
+
+[source]
+type = "github_release"
+repo = "iden3/circom"
+asset = "circom-{target}"
+bin = ["circom"]
+
+[source.target]
+"linux/amd64" = "linux-amd64"
+"darwin/amd64" = "macos-amd64"
+"windows/amd64" = "windows-amd64.exe"

@@ -1,0 +1,25 @@
+# Scarb: the Cairo package manager and build tool.
+# https://github.com/software-mansion/scarb
+#
+# The archive wraps everything in a versioned directory whose bin/ holds
+# scarb and the helpers it runs itself; only scarb is a command a person
+# types.
+name = "scarb"
+ecosystems = ["starknet"]
+description = "Cairo package manager and build tool for Starknet projects"
+
+[source]
+type = "github_release"
+repo = "software-mansion/scarb"
+asset = "scarb-v{version}-{arch}-{os}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["bin/scarb"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

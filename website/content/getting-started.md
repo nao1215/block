@@ -41,12 +41,23 @@ Do not know what to write? Ask:
 
 ```console
 $ block list ethereum
-NAME         COMMANDS                     DESCRIPTION
-foundry      forge, cast, anvil, chisel   Fast Ethereum application toolkit: build, test, deploy and inspect contracts
-geth         geth                         go-ethereum, the Go implementation of an Ethereum execution client
-lighthouse   lighthouse                   Ethereum consensus (beacon chain) client written in Rust
-reth         reth                         Modular Ethereum execution client written in Rust
-solc         solc                         The Solidity smart-contract compiler
+NAME              COMMANDS                                      DESCRIPTION
+anvil-zksync      anvil-zksync                                  In-memory ZKsync node for local development and testing
+echidna           echidna                                       Property-based fuzzer for EVM smart contracts
+erigon            erigon                                        Efficiency-focused Ethereum execution client written in Go
+ethdo             ethdo                                         Command-line client for Ethereum consensus-layer accounts and validators
+foundry           forge, cast, anvil, chisel                    Fast Ethereum application toolkit: build, test, deploy and inspect contracts
+geth              geth                                          go-ethereum, the Go implementation of an Ethereum execution client
+geth-tools        abigen, evm, rlpdump                          go-ethereum developer tools: abigen, evm and rlpdump
+hevm              hevm                                          EVM implementation for symbolic execution and equivalence checking
+lighthouse        lighthouse                                    Ethereum consensus (beacon chain) client written in Rust
+medusa            medusa                                        Parallelised coverage-guided fuzzer for EVM smart contracts
+nimbus-eth2       nimbus_beacon_node, nimbus_validator_client   Nimbus Ethereum consensus client, built for low-resource machines
+prysm             beacon-chain                                  Prysm beacon node, the Go Ethereum consensus-layer client
+prysm-validator   validator                                     Prysm validator client, run beside a beacon node to propose and attest
+reth              reth                                          Modular Ethereum execution client written in Rust
+solc              solc                                          The Solidity smart-contract compiler
+vyper             vyper                                         The Vyper smart-contract compiler, a Pythonic language for the EVM
 ```
 
 ## Lock, sync, run

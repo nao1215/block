@@ -1,0 +1,17 @@
+# AvalancheGo: the Avalanche network node.
+# https://github.com/ava-labs/avalanchego
+#
+# The macOS build is published as a .zip where Linux gets .tar.gz, which one
+# asset template cannot express, so only Linux is listed. Fuji release
+# candidates carry a pre-release suffix and are skipped.
+name = "avalanchego"
+ecosystems = ["avalanche"]
+description = "AvalancheGo, the node implementation of the Avalanche network"
+
+[source]
+type = "github_release"
+repo = "ava-labs/avalanchego"
+asset = "avalanchego-{os}-{arch}-v{version}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64"]
+bin = ["avalanchego"]

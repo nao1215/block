@@ -1,0 +1,17 @@
+# solana-verify: reproduces and verifies on-chain Solana program builds.
+# https://github.com/Ellipsis-Labs/solana-verifiable-build
+#
+# Releases ship two raw executables, and the macOS one is an arm64 build.
+name = "solana-verify"
+ecosystems = ["solana"]
+description = "Verifies that an on-chain Solana program matches its source"
+
+[source]
+type = "github_release"
+repo = "Ellipsis-Labs/solana-verifiable-build"
+asset = "solana-verify-{version}-{os}"
+platforms = ["linux/amd64", "darwin/arm64"]
+bin = ["solana-verify"]
+
+[source.os]
+darwin = "macos"

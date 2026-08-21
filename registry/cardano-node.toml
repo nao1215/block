@@ -1,0 +1,19 @@
+# Cardano's block-producing node and its CLI.
+# https://github.com/IntersectMBO/cardano-node
+#
+# Tags are bare version numbers with no "v". The Windows build is a .zip
+# where the others are .tar.gz, which one asset template cannot express.
+name = "cardano-node"
+ecosystems = ["cardano"]
+description = "Cardano block-producing node and the cardano-cli that drives it"
+
+[source]
+type = "github_release"
+repo = "IntersectMBO/cardano-node"
+tag_prefix = ""
+asset = "cardano-node-{version}-{os}-{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["bin/cardano-node", "bin/cardano-cli", "bin/cardano-submit-api"]
+
+[source.os]
+darwin = "macos"

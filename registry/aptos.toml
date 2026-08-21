@@ -1,0 +1,23 @@
+# The Aptos CLI: compile, test and publish Move packages, run a local net.
+# https://github.com/aptos-labs/aptos-core
+#
+# The CLI is released on its own tag line in the aptos-core monorepo
+# (aptos-cli-v9.5.0), separate from the node's. Upstream also publishes
+# Ubuntu-specific builds; the plain Linux ones are the portable pair.
+name = "aptos"
+ecosystems = ["aptos"]
+description = "Aptos CLI: compile, test and publish Move packages and run a local network"
+
+[source]
+type = "github_release"
+repo = "aptos-labs/aptos-core"
+tag_prefix = "aptos-cli-v"
+asset = "aptos-cli-{version}-{target}.zip"
+bin = ["aptos"]
+
+[source.target]
+"linux/amd64" = "Linux-x86_64"
+"linux/arm64" = "Linux-aarch64"
+"darwin/amd64" = "macOS-x86_64"
+"darwin/arm64" = "macOS-arm64"
+"windows/amd64" = "Windows-x86_64"

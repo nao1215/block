@@ -1,0 +1,18 @@
+# The go-ethereum developer tools: abigen, evm and rlpdump.
+# https://github.com/ethereum/go-ethereum
+#
+# Same download server and naming as the geth recipe, from the "alltools"
+# archive. geth itself is deliberately left out of bin: it belongs to the
+# geth recipe, and one command should come from one tool. clef used to ship
+# here and no longer does, so it is not listed either.
+name = "geth-tools"
+ecosystems = ["ethereum"]
+description = "go-ethereum developer tools: abigen, evm and rlpdump"
+
+[source]
+type = "http"
+repo = "ethereum/go-ethereum"
+url = "https://gethstore.blob.core.windows.net/builds/geth-alltools-{os}-{arch}-{version}-{commit}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64"]
+bin = ["abigen", "evm", "rlpdump"]

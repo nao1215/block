@@ -1,0 +1,18 @@
+# Prysm's validator client, published as its own executable beside the beacon
+# node. https://github.com/OffchainLabs/prysm
+name = "prysm-validator"
+ecosystems = ["ethereum"]
+description = "Prysm validator client, run beside a beacon node to propose and attest"
+
+[source]
+type = "github_release"
+repo = "OffchainLabs/prysm"
+asset = "validator-v{version}-{target}"
+bin = ["validator"]
+
+[source.target]
+"linux/amd64" = "linux-amd64"
+"linux/arm64" = "linux-arm64"
+"darwin/amd64" = "darwin-amd64"
+"darwin/arm64" = "darwin-arm64"
+"windows/amd64" = "windows-amd64.exe"

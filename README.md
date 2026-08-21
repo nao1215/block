@@ -36,12 +36,23 @@ And one question answered offline — *which tools can I use for this chain?*:
 
 ```console
 $ block list ethereum
-NAME         COMMANDS                     DESCRIPTION
-foundry      forge, cast, anvil, chisel   Fast Ethereum application toolkit: build, test, deploy and inspect contracts
-geth         geth                         go-ethereum, the Go implementation of an Ethereum execution client
-lighthouse   lighthouse                   Ethereum consensus (beacon chain) client written in Rust
-reth         reth                         Modular Ethereum execution client written in Rust
-solc         solc                         The Solidity smart-contract compiler
+NAME              COMMANDS                                      DESCRIPTION
+anvil-zksync      anvil-zksync                                  In-memory ZKsync node for local development and testing
+echidna           echidna                                       Property-based fuzzer for EVM smart contracts
+erigon            erigon                                        Efficiency-focused Ethereum execution client written in Go
+ethdo             ethdo                                         Command-line client for Ethereum consensus-layer accounts and validators
+foundry           forge, cast, anvil, chisel                    Fast Ethereum application toolkit: build, test, deploy and inspect contracts
+geth              geth                                          go-ethereum, the Go implementation of an Ethereum execution client
+geth-tools        abigen, evm, rlpdump                          go-ethereum developer tools: abigen, evm and rlpdump
+hevm              hevm                                          EVM implementation for symbolic execution and equivalence checking
+lighthouse        lighthouse                                    Ethereum consensus (beacon chain) client written in Rust
+medusa            medusa                                        Parallelised coverage-guided fuzzer for EVM smart contracts
+nimbus-eth2       nimbus_beacon_node, nimbus_validator_client   Nimbus Ethereum consensus client, built for low-resource machines
+prysm             beacon-chain                                  Prysm beacon node, the Go Ethereum consensus-layer client
+prysm-validator   validator                                     Prysm validator client, run beside a beacon node to propose and attest
+reth              reth                                          Modular Ethereum execution client written in Rust
+solc              solc                                          The Solidity smart-contract compiler
+vyper             vyper                                         The Vyper smart-contract compiler, a Pythonic language for the EVM
 ```
 
 block resolves the tools a project needs, fetches and verifies them, pins
@@ -290,27 +301,23 @@ for this blockchain system?*
 
 ```console
 $ block list                     # every supported tool, and what it is
-NAME           ECOSYSTEM     DESCRIPTION
-agave          solana        Solana validator client and CLI suite, including a local test validator
-anchor         solana        Framework and CLI for writing, testing and deploying Solana programs
-bitcoin-core   bitcoin       Bitcoin reference implementation: full node, wallet and transaction tools
-cometbft       cosmos        Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains
-foundry        ethereum      Fast Ethereum application toolkit: build, test, deploy and inspect contracts
-gaia           cosmos        Cosmos Hub node (gaiad)
-geth           ethereum      go-ethereum, the Go implementation of an Ethereum execution client
-hermes         cosmos, ibc   IBC relayer connecting Cosmos SDK chains, written in Rust
-lighthouse     ethereum      Ethereum consensus (beacon chain) client written in Rust
-osmosis        cosmos        Osmosis appchain node (osmosisd), the Cosmos AMM
-reth           ethereum      Modular Ethereum execution client written in Rust
-solc           ethereum      The Solidity smart-contract compiler
-surfpool       solana        Local Solana network that streams mainnet state for pre-deployment testing
+NAME              ECOSYSTEM          DESCRIPTION
+agave             solana             Solana validator client and CLI suite, including a local test validator
+anchor            solana             Framework and CLI for writing, testing and deploying Solana programs
+anvil-zksync      ethereum, zksync   In-memory ZKsync node for local development and testing
+... 42 more, sorted by name
 
 $ block list cosmos              # one system, with the commands each tool gives you
-NAME       COMMANDS   DESCRIPTION
-cometbft   cometbft   Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains
-gaia       gaiad      Cosmos Hub node (gaiad)
-hermes     hermes     IBC relayer connecting Cosmos SDK chains, written in Rust
-osmosis    osmosisd   Osmosis appchain node (osmosisd), the Cosmos AMM
+NAME             COMMANDS        DESCRIPTION
+celestia-app     celestia-appd   Celestia consensus node (celestia-appd)
+celestia-node    celestia        Celestia data-availability node: bridge, full and light nodes
+cometbft         cometbft        Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains
+cosmos-relayer   rly             IBC relayer for Cosmos SDK chains written in Go, run as rly
+cosmovisor       cosmovisor      Supervises a Cosmos SDK node binary across scheduled chain upgrades
+gaia             gaiad           Cosmos Hub node (gaiad)
+hermes           hermes          IBC relayer connecting Cosmos SDK chains, written in Rust
+ignite           ignite          Scaffolds, builds and serves Cosmos SDK blockchains
+osmosis          osmosisd        Osmosis appchain node (osmosisd), the Cosmos AMM
 ```
 
 A tool can serve more than one system — an IBC relayer belongs to both
@@ -321,7 +328,7 @@ exist:
 ```console
 $ block list etheruem
 block: unknown ecosystem "etheruem"
-available ecosystems: bitcoin, cosmos, ethereum, ibc, solana
+available ecosystems: aptos, avalanche, bitcoin, cardano, celestia, cosmos, ethereum, fabric, ibc, icp, ipfs, near, solana, starknet, stellar, zk, zksync
 ```
 
 Listing is discovery, not selection: block never derives a toolchain from an
@@ -577,53 +584,62 @@ A recipe changes only when an upstream renames its assets or moves
 repositories. New releases need nothing. Recipes are data, never commands.
 
 Not every blockchain CLI is a GitHub Release asset, and block does not stop
-there. A recipe names one of the source types below — the most
-self-contained, fastest and safest one the upstream allows — and block
-executes it deterministically, never falling back to another at run time:
+there. But where a recipe may download from is a rule, not a preference: the
+registry writes it down and its linter enforces it, so a catalog that keeps
+growing cannot quietly grow the set of hosts block fetches binaries from.
 
-A recipe picks the most self-contained method available, in this order:
-
-1. **official prebuilt GitHub Release artifact** — `github_release`
-2. **official prebuilt artifact on the upstream's download server** — `http`
-3. official package registry (`go install`, `cargo install`, npm, pipx) —
-   *not implemented*
-4. limited build from official source — *not implemented*
-
-| type | what it does | used by |
+| type | what it does | where it may point |
 | --- | --- | --- |
-| `github_release` | versions from git tags; download a release asset — a `.tar.gz` / `.tar.bz2` / `.zip` archive or a single raw executable — using GitHub's own sha256 when recorded | foundry, solc, reth, lighthouse, agave, anchor, surfpool, gaia, cometbft, osmosis, hermes |
-| `http` | versions from git tags; download a prebuilt artifact from the upstream's own HTTPS server; `{commit}` and `{target}` cover vendors that name builds by commit or by their own platform strings | bitcoin-core, geth |
+| `github_release` | versions from git tags; download a release asset — a `.tar.gz` / `.tar.bz2` / `.zip` archive or a single raw executable — using GitHub's own sha256 when recorded | a release of the same repository the tags come from, and nowhere else |
+| `http` | versions from git tags; download a prebuilt artifact over HTTPS; `{commit}` and `{target}` cover vendors that name builds by commit or by their own platform strings | only a host listed in [block-registry's `policy/hosts.toml`](https://github.com/nao1215/block-registry/blob/main/policy/hosts.toml), which names the one repository each host serves and why a release asset will not do |
 
-Types 3 and 4 will be added only when a blockchain CLI genuinely cannot be
-obtained otherwise, one backend at a time, and each will be a source type
-whose meaning and safety boundary block understands. There is no
-`install = "curl … | bash"` escape hatch and there never will be. block also
-does not manage the Go, Rust, Node or Python toolchains themselves — that is
-where a general-purpose version manager belongs, not block.
+42 of the 45 recipes take the first; three — Bitcoin Core, geth and the
+go-ethereum tools — take the second, because those projects build binaries
+and publish them on their own server rather than attaching them to a GitHub
+release. A `github.com` URL wearing type `http` is refused: it would be
+spelling out by hand what `github_release` does properly, and would throw
+away the digest GitHub publishes beside the asset.
 
-Every tool below is installed today with those two types alone (`block list
-<ecosystem>` shows the same, from the binary):
+There is no third type. No `install = "curl … | bash"`, no
+`command = "make install"`, no package-manager shell-out, and no
+arbitrary-script escape hatch — a recipe is data block interprets, and adding
+a tool can never add a way to run something. block also does not manage the
+Go, Rust, Node or Python toolchains themselves, which is where a
+general-purpose version manager belongs; a blockchain CLI distributed only
+through npm, PyPI or crates.io is therefore not in the registry.
+
+45 tools across 17 blockchain systems are installed today with those two
+types alone (`block list <ecosystem>` shows the same, from the binary):
 
 | ecosystem | tools |
 | --- | --- |
-| bitcoin | `bitcoin-core` (`bitcoind`, `bitcoin-cli`, `bitcoin-tx`, `bitcoin-util`, `bitcoin-wallet`) |
-| ethereum | `foundry` (`forge`, `cast`, `anvil`, `chisel`), `solc`, `geth`, `reth`, `lighthouse` |
-| solana | `agave` (`solana`, `solana-keygen`, `solana-test-validator`, `agave-ledger-tool`), `anchor`, `surfpool` |
-| cosmos | `gaia`, `cometbft`, `osmosis` |
-| ibc | `hermes` |
+| bitcoin | `bitcoin-core` (`bitcoind`, `bitcoin-cli`, …), `btcd`, `ord` |
+| ethereum | `foundry` (`forge`, `cast`, `anvil`, `chisel`), `solc`, `vyper`, `geth`, `geth-tools`, `erigon`, `reth`, `lighthouse`, `prysm`, `prysm-validator`, `nimbus-eth2`, `echidna`, `medusa`, `hevm`, `ethdo`, `anvil-zksync` |
+| solana | `agave` (`solana`, `solana-keygen`, `solana-test-validator`, …), `anchor`, `surfpool`, `solana-verify` |
+| cosmos | `gaia`, `cometbft`, `osmosis`, `ignite`, `cosmovisor`, `hermes`, `cosmos-relayer`, `celestia-app`, `celestia-node` |
+| ibc | `hermes`, `cosmos-relayer` |
+| celestia | `celestia-app`, `celestia-node` |
+| aptos / near | `aptos`, `near-cli` |
+| starknet | `scarb`, `starknet-foundry`, `starkli` |
+| cardano / stellar / avalanche | `cardano-node`, `stellar`, `avalanchego`, `avalanche-cli` |
+| icp / fabric | `dfx`, `fabric` |
+| zksync / zk / ipfs | `anvil-zksync`, `circom`, `kubo` |
 
-Platform coverage follows the upstream: `geth` ships Linux only, `reth` and
-`lighthouse` have no macOS x86-64 build, `gaia` builds amd64 only. Windows
-builds exist for `cometbft`, `solc`, `agave`, `anchor` and `surfpool`, which
-is enough for Solana and Cosmos work there. block reports anything else as an
-unsupported platform rather than substituting something else. See
+Platform coverage follows the upstream: `geth` and `erigon` ship Linux only,
+`reth` and `lighthouse` have no macOS x86-64 build, `gaia` builds amd64 only,
+`medusa` builds three platforms and no more. Windows builds exist for
+`cometbft`, `solc`, `agave`, `anchor`, `surfpool`, `aptos`, `stellar`,
+`fabric`, `near-cli`, `medusa`, `vyper`, `circom`, `prysm` and `nimbus-eth2`.
+block reports anything else as an unsupported platform rather than
+substituting something else. See
 [registry/README.md](./registry/README.md) for the recipe schema.
 
-The registry will move to its own repository, `block-registry`, as the
-canonical source of recipes. block will still embed a tested snapshot of it
-at build time: `block list` and `block lock` read that snapshot and never
-fetch the registry at run time, so a block version always pairs with a
-registry it was tested against.
+The recipes are maintained in their own repository,
+[block-registry](https://github.com/nao1215/block-registry), which is the
+canonical source. block embeds a tested snapshot of it at build time:
+`block list` and `block lock` read that snapshot and never fetch the registry
+at run time, so a block version always pairs with a registry it was tested
+against.
 
 ## Security
 
