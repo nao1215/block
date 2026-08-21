@@ -45,11 +45,29 @@ fi
 
 echo "e2e: building block and fakegh..."
 # shellcheck disable=SC2086 # BLOCK_COVER_FLAGS must word-split into separate args.
-(cd "$REPO_ROOT" && go build $BLOCK_COVER_FLAGS -ldflags '-X github.com/nao1215/block/internal/cmdinfo.Version=v0.0.0-e2e' -o "$TMP/bin/block" .)
-(cd "$REPO_ROOT" && go build -o "$TMP/bin/fakegh" ./e2e/fakegh)
+# .exe on Windows, empty everywhere else. block decides whether it is running
+# as itself or as a shim from its own file name, so the binary has to be
+# called "block.exe" there and not "block".
+GOEXE="$(go env GOEXE)"
+(cd "$REPO_ROOT" && go build $BLOCK_COVER_FLAGS -ldflags '-X github.com/nao1215/block/internal/cmdinfo.Version=v0.0.0-e2e' -o "$TMP/bin/block$GOEXE" .)
+(cd "$REPO_ROOT" && go build -o "$TMP/bin/fakegh$GOEXE" ./e2e/fakegh)
+
+# The fake tools inside the served archives are "#!/bin/sh" scripts, which
+# Windows cannot run: an archive member named forge.exe has to be something
+# the operating system will execute. On Windows — and whenever FAKETOOL=1 asks
+# for it, so the compiled path can be exercised on Unix too — build the
+# compiled stand-in and let fakegh serve that instead. It prints the same
+# lines and returns the same exit codes.
+FAKEGH_TOOL_FLAG=""
+if [ "$(go env GOOS)" = "windows" ] || [ -n "${FAKETOOL:-}" ]; then
+	(cd "$REPO_ROOT" && go build -o "$TMP/bin/faketool$GOEXE" ./e2e/faketool)
+	FAKEGH_TOOL_FLAG="-tool $TMP/bin/faketool$GOEXE"
+	echo "e2e: serving a compiled fake tool instead of shell scripts"
+fi
 
 echo "e2e: starting fake GitHub..."
-"$TMP/bin/fakegh" -addr 127.0.0.1:0 -url-file "$TMP/fakegh.url" &
+# shellcheck disable=SC2086 # FAKEGH_TOOL_FLAG must word-split into two args.
+"$TMP/bin/fakegh$GOEXE" -addr 127.0.0.1:0 -url-file "$TMP/fakegh.url" $FAKEGH_TOOL_FLAG &
 FAKEGH_PID=$!
 for _ in $(seq 1 50); do
 	[ -s "$TMP/fakegh.url" ] && break
@@ -78,6 +96,8 @@ linux-amd64) BLOCK_RUST_TRIPLE="x86_64-unknown-linux-gnu" ;;
 linux-arm64) BLOCK_RUST_TRIPLE="aarch64-unknown-linux-gnu" ;;
 darwin-amd64) BLOCK_RUST_TRIPLE="x86_64-apple-darwin" ;;
 darwin-arm64) BLOCK_RUST_TRIPLE="aarch64-apple-darwin" ;;
+windows-amd64) BLOCK_RUST_TRIPLE="x86_64-pc-windows-msvc" ;;
+windows-arm64) BLOCK_RUST_TRIPLE="aarch64-pc-windows-msvc" ;;
 *) echo "e2e: unsupported platform $(go env GOOS)/$(go env GOARCH)" >&2 && exit 1 ;;
 esac
 if [ "$(go env GOOS)" = "linux" ]; then
@@ -85,7 +105,10 @@ if [ "$(go env GOOS)" = "linux" ]; then
 else
 	BLOCK_OTHER_PLATFORM="linux/amd64"
 fi
-export BLOCK_PLATFORM BLOCK_ASSET_PLATFORM BLOCK_DASH_PLATFORM BLOCK_RUST_TRIPLE BLOCK_OTHER_PLATFORM
+# The executable suffix a scenario has to expect on this platform, so specs
+# that name an installed file stay exact rather than loosening into a regex.
+BLOCK_EXE="$GOEXE"
+export BLOCK_PLATFORM BLOCK_ASSET_PLATFORM BLOCK_DASH_PLATFORM BLOCK_RUST_TRIPLE BLOCK_OTHER_PLATFORM BLOCK_EXE
 
 # FAKEGH_URL is the root; scenarios derive BLOCK_GITHUB_API_URL from it so
 # they can pick the /t1 snapshot or the failure-mode prefixes.

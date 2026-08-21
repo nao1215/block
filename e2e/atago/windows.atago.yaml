@@ -1,0 +1,256 @@
+# The Windows-only paths through block, which the rest of the suite cannot
+# reach from Linux or macOS: a .zip artifact, the .exe suffix on every
+# installed executable and every shim, shims placed as hard links or copies
+# rather than symlinks, %LOCALAPPDATA% as the default store, and PATH lookup
+# without regard to case.
+#
+# Every scenario here is gated on `only: os: windows`, so the file is inert
+# on the other two platforms rather than being a second suite someone has to
+# remember to run. Run with: make e2e
+version: "1"
+
+suite:
+  name: block on windows
+
+scenarios:
+  # The whole path, on the platform where every step of it differs: a .zip
+  # instead of a .tar.gz, an executable that has to be called .exe to run at
+  # all, and a shim that is a copy of block rather than a link to it.
+  - name: lock, sync and exec work through a zip artifact
+    only:
+      os: windows
+    env: &t1
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              zipper  locked 3.0.0
+              wrote block.lock
+      # The lockfile names the Windows asset, not a tarball someone assumed.
+      - assert:
+          file:
+            path: block.lock
+            contains: "zipper_3.0.0_${env:BLOCK_ASSET_PLATFORM}.zip"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "zipper  3.0.0  installed"
+      # Unpacked with the suffix Windows needs to execute it.
+      - assert:
+          file:
+            path: home/tools/zipper/3.0.0-*/zipper.exe
+            exists: true
+      - run:
+          command: block exec zipper
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              zipper 3.0.0 (fake)
+
+  # A shim on Windows is a hard link or a copy of block.exe, not a symlink,
+  # because a symlink needs Developer Mode or elevation. What matters is that
+  # the file runs and resolves the project it is standing in.
+  - name: a shim runs the locked tool without block exec
+    only:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          command: block lock
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "shims: zipper"
+      - assert:
+          file:
+            path: home/shims/zipper.exe
+            exists: true
+      # Run it by its own path: the shim is block under another name, and it
+      # finds this project's block.lock from the working directory.
+      - run:
+          command: "${workdir}/home/shims/zipper.exe"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              zipper 3.0.0 (fake)
+
+  # The child's exit status has to survive the extra process Windows puts in
+  # the way, both through exec and through a shim.
+  - name: the tool's exit status survives on both routes
+    only:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          command: block lock
+      - run:
+          command: block sync
+      - run:
+          command: block exec zipper --exit 3
+      - assert:
+          exit_code: 3
+          stderr:
+            equals: ""
+      - run:
+          command: "${workdir}/home/shims/zipper.exe --exit 5"
+      - assert:
+          exit_code: 5
+          stderr:
+            equals: ""
+
+  # Windows resolves a command on PATH without regard to case, so block has to
+  # answer to the same name however it is typed rather than reporting the
+  # command as unknown.
+  - name: a command name is matched without regard to case
+    only:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          command: block lock
+      - run:
+          command: block sync
+      - run:
+          command: block exec ZIPPER
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              zipper 3.0.0 (fake)
+
+  # Putting the shim directory on PATH must not take a tool away from the rest
+  # of the system: outside a block project a shim steps aside, and says so
+  # when there is nothing to step aside to.
+  - name: a shim outside a project reports rather than guessing
+    only:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          command: block lock
+      - run:
+          command: block sync
+      # An empty directory with no block.toml above it inside the workdir.
+      - fixture:
+          file: elsewhere/marker.txt
+          content: "not a block project\n"
+      - run:
+          cwd: elsewhere
+          command: "${workdir}/home/shims/zipper.exe"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'zipper: no block project here and no zipper elsewhere on PATH'
+
+  # And the refusals have to read the same on Windows: a lockfile that does
+  # not match the manifest stops sync before anything is installed.
+  - name: a stale lockfile stops sync here too
+    only:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          command: block lock
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'foo is declared in block.toml but missing from block.lock'

@@ -15,9 +15,19 @@ jobs:
     name: Offline E2E (atago, ${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+
+    # Git Bash on the Windows runner: the harness is one POSIX script, and the
+    # scenarios are YAML atago interprets itself, so the suite needs a shell
+    # rather than a rewrite. What is genuinely different on Windows — a .zip
+    # artifact, the .exe suffix, shims placed as hard links or copies, PATH
+    # matched without regard to case — is covered by the scenarios in
+    # e2e/atago/windows.atago.yaml, which are gated to run only there.
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

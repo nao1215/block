@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/nao1215/block/internal/lockfile"
@@ -70,28 +69,39 @@ func OpenToolchain(dir string, p platform.Platform, st *store.Store) (*Toolchain
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", tool.Name, err)
 			}
-			t.commands[recipe.CommandName(b)] = path
+			t.commands[lookupKey(recipe.CommandName(b))] = path
 		}
 		t.dirs = append(t.dirs, store.BinDirs(install, tool.Bin)...)
 	}
 	return t, nil
 }
 
-// ResolveCommand returns the executable this project's toolchain provides for
-// a command name, or false when the toolchain does not provide it.
-func (t *Toolchain) ResolveCommand(name string) (string, bool) {
-	path, ok := t.commands[strings.TrimSuffix(name, store.ExeSuffix)]
-	return path, ok
+// lookupKey is how a command name is matched against the toolchain. Windows
+// resolves a command on PATH without regard to case, so `block exec FORGE`
+// there must find the same executable `forge` does — otherwise block would
+// miss its own toolchain and fall through to whatever PATH offers, which is
+// the one thing exec must never do. Elsewhere the match is exact, because
+// elsewhere the two really are different commands.
+//
+// A toolchain cannot contain both spellings: [recipe.CommandKey] refuses that
+// on every platform, so folding case here can never make one command mean two
+// executables.
+func lookupKey(name string) string {
+	if store.ExeSuffix == "" {
+		return name
+	}
+	return strings.ToLower(name)
 }
 
-// Commands lists the command names the toolchain provides, sorted.
-func (t *Toolchain) Commands() []string {
-	out := make([]string, 0, len(t.commands))
-	for name := range t.commands {
-		out = append(out, name)
+// ResolveCommand returns the executable this project's toolchain provides for
+// a command name, or false when the toolchain does not provide it. The name
+// may carry the platform's executable suffix, however it is spelled.
+func (t *Toolchain) ResolveCommand(name string) (string, bool) {
+	if store.ExeSuffix != "" && strings.EqualFold(filepath.Ext(name), store.ExeSuffix) {
+		name = name[:len(name)-len(store.ExeSuffix)]
 	}
-	sort.Strings(out)
-	return out
+	path, ok := t.commands[lookupKey(name)]
+	return path, ok
 }
 
 // PathDirs are the directories to put in front of PATH so that every tool of

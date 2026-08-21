@@ -461,15 +461,39 @@ exit 0
 `, name, ver)
 }
 
+// tool is the compiled stand-in executable, when the caller supplied one.
+// Windows cannot run the shell script this file otherwise serves, so the
+// runner builds e2e/faketool for the host and hands the bytes over; the
+// program behaves identically, reading its name and version from where block
+// installed it. Empty means "serve the script", which is what every Unix run
+// does.
+var tool []byte //nolint:gochecknoglobals // fixture state, set once before serving
+
+// SetTool makes every served executable a copy of the compiled stand-in.
+func SetTool(binary []byte) { tool = binary }
+
+// executable is the body of one fake tool inside an archive.
+func executable(bin, ver string) entry {
+	if len(tool) > 0 {
+		// A Go string holds arbitrary bytes, so the archive writers need no
+		// second field for a binary member.
+		return entry{name: bin, content: string(tool), mode: 0o755}
+	}
+	return entry{name: bin, content: script(bin, ver), mode: 0o755}
+}
+
 func buildArchive(name string, rel release) []byte {
 	ver := strings.TrimPrefix(rel.tag, "v")
 	if !strings.HasSuffix(name, ".tar.gz") && !strings.HasSuffix(name, ".zip") {
-		// A raw executable: the script itself, platform-flavoured.
+		// A raw executable: the stand-in itself, platform-flavoured.
+		if len(tool) > 0 {
+			return tool
+		}
 		return []byte(script(rel.bins[0], ver) + "# " + name + "\n")
 	}
 	var members []entry
 	for _, b := range rel.bins {
-		members = append(members, entry{name: b, content: script(b, ver), mode: 0o755})
+		members = append(members, executable(b, ver))
 	}
 	// The asset name goes into the README so every platform's archive hashes
 	// differently, as real per-platform builds do.
