@@ -11,6 +11,10 @@ on:
 
 permissions:
   contents: read
+  # On a pull_request event the action lists the PR's commits through the API
+  # before scanning them, which contents:read alone does not allow — the job
+  # fails with a 403 on every pull request without this.
+  pull-requests: read
 
 jobs:
   scan:
