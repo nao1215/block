@@ -6,6 +6,12 @@
 // and — for the platform it runs on — downloads it, verifies the checksum,
 // unpacks it, and runs the executables the recipe promises.
 //
+// It only ever fully exercises the platform it is running on, because running
+// a binary is the point and a Linux runner cannot run a macOS build. The
+// Registry (live) workflow therefore runs this on one runner per platform
+// block supports, so every platform in the registry is covered by a real
+// download, a real unpack and a real execution rather than by a HEAD request.
+//
 // It talks to the real internet and downloads hundreds of megabytes, so it is
 // behind a build tag and never runs with the unit tests:
 //
@@ -27,6 +33,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,7 +114,12 @@ func TestLiveRegistry(t *testing.T) {
 				t.Logf("%s: %s (digest published: %v)", p, art.URL, art.SHA256 != "")
 			}
 			if mine.URL == "" {
-				t.Skipf("no artifact for %s: nothing to install here", here)
+				// Not a gap: the recipe says this upstream ships nothing
+				// here, and another leg of the matrix runs on a platform it
+				// does ship for. The artifacts for those platforms were
+				// checked above.
+				t.Skipf("%s ships nothing for %s; it is checked on %s",
+					rec.Name, here, strings.Join(platform.Strings(rec.Source.SupportedPlatforms()), ", "))
 			}
 
 			// And the artifact for this machine must download, verify,
@@ -133,8 +145,16 @@ func TestLiveRegistry(t *testing.T) {
 			if err := st.Verify(dir, rec.Source.Bin); err != nil {
 				t.Fatalf("verifying the install: %v", err)
 			}
+			// And every executable it promises has to start. This is the
+			// part a HEAD request cannot make: the file is here, unpacked,
+			// and it is the program the recipe said it would be.
 			for _, b := range rec.Source.Bin {
-				probe(t, filepath.Join(dir, filepath.FromSlash(b)))
+				bin, err := store.BinPath(dir, b)
+				if err != nil {
+					t.Errorf("bin %q: %v", b, err)
+					continue
+				}
+				probe(t, bin)
 			}
 		})
 	}
