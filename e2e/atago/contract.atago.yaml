@@ -192,3 +192,89 @@ scenarios:
           exit_code: 0
           stdout:
             contains: "hermes 1.13.0 (fake)"
+
+  # A lockfile is committed, reviewed and diffed. The same manifest resolved
+  # against the same upstream has to produce the same bytes — otherwise every
+  # re-lock is a diff nobody can read, and two developers "agreeing" is a
+  # coincidence of map iteration order.
+  - name: the same input produces the same lockfile, byte for byte
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      # Two projects, two stores, and the tools written in the opposite order:
+      # nothing about the lockfile may depend on any of that.
+      - fixture:
+          file: a/block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - fixture:
+          file: b/block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: cd a && block lock
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: cd b && block lock
+          env:
+            BLOCK_HOME: "${workdir}/second-store"
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: diff -u a/block.lock b/block.lock
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: ""
+      # And locking again over an identical lockfile writes nothing at all —
+      # not the same bytes again, but no write: a no-op has to look like one
+      # to whatever is watching the file.
+      - run:
+          shell: true
+          command: cd a && block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "block.lock is up to date"
+          changes:
+            created: []
+            modified: []
+            deleted: []

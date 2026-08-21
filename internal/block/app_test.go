@@ -825,7 +825,7 @@ func TestCommandConflictWithinOneTool(t *testing.T) {
 		{
 			name: "the same command in two directories",
 			bin:  `bin = ["a/foo", "b/foo"]`,
-			want: `bin "a/foo" and "b/foo" would both provide the command "foo"`,
+			want: `bin "a/foo" and "b/foo" are both the command "foo"`,
 		},
 		{
 			// Windows resolves a command on PATH without regard to case, so
@@ -834,7 +834,7 @@ func TestCommandConflictWithinOneTool(t *testing.T) {
 			// that only works on some of them.
 			name: "the same command in two spellings",
 			bin:  `bin = ["foo", "Foo"]`,
-			want: `bin "foo" and "Foo" would both provide the command "Foo"`,
+			want: `bin "foo" and "Foo" are both the command "Foo"`,
 		},
 	}
 	for _, tt := range tests {

@@ -171,26 +171,11 @@ func validateTool(t *Tool) error {
 	if len(t.Bin) == 0 {
 		return fmt.Errorf("tool %q: bin is empty", t.Name)
 	}
-	seenBin := map[string]bool{}
-	commands := map[string]string{}
-	for _, b := range t.Bin {
-		if err := recipe.ValidateBin(b); err != nil {
-			return fmt.Errorf("tool %q: %w", t.Name, err)
-		}
-		if seenBin[b] {
-			return fmt.Errorf("tool %q: bin %q is listed twice", t.Name, b)
-		}
-		seenBin[b] = true
-		// Two paths that end in the same command name mean the command is
-		// ambiguous inside one tool: a shim resolves it through this list
-		// while PATH resolves it by directory order, and the two can pick
-		// different executables. The comparison ignores case, because on
-		// Windows "foo" and "FOO" are one command — see [recipe.CommandKey].
-		if first, ok := commands[recipe.CommandKey(b)]; ok {
-			return fmt.Errorf("tool %q: bin %q and %q are both the command %q",
-				t.Name, first, b, recipe.CommandName(b))
-		}
-		commands[recipe.CommandKey(b)] = b
+	// The same check a recipe gets, because the two lists have to agree: a
+	// lockfile is what block installs from, and one it refused after a recipe
+	// accepted it would be a toolchain that locks and will not sync.
+	if err := recipe.ValidateBins(t.Bin); err != nil {
+		return fmt.Errorf("tool %q: %w", t.Name, err)
 	}
 	if t.StripComponents < 0 {
 		return fmt.Errorf("tool %q: strip_components must not be negative", t.Name)

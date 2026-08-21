@@ -1068,7 +1068,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'bin "bin/foo" and "sbin/foo" would both provide the command "foo"'
+            contains: 'bin "bin/foo" and "sbin/foo" are both the command "foo"'
           changes:
             created: []
             modified: []
@@ -1096,7 +1096,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'bin "foo" and "FOO" would both provide the command "FOO"'
+            contains: 'bin "foo" and "FOO" are both the command "FOO"'
           changes:
             created: []
             modified: []
