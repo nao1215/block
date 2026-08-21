@@ -6,6 +6,13 @@ name: Registry (live)
 # a human watching releases — routine upstream versions need no change here,
 # and a failure means a recipe stopped matching reality.
 #
+# It runs on one runner per platform block supports, because "the artifact
+# exists" is not the same claim as "the artifact unpacks and the binary in it
+# runs here". Each leg downloads, verifies, extracts and executes the tools for
+# its own platform, and checks that the artifacts for the others resolve; taken
+# together the matrix covers every platform in the registry with a real run
+# rather than a HEAD request.
+#
 # It downloads real artifacts and calls the GitHub API, so it is scheduled
 # rather than run on every push, and never mixed into the unit or E2E suites.
 
@@ -24,10 +31,54 @@ permissions:
   contents: read
 
 jobs:
-  live:
-    name: Validate recipes against upstream
+  # The example manifests pin real version lines, so they age the same way a
+  # recipe does. One runner is enough: resolution is platform-independent, and
+  # nothing is downloaded.
+  examples:
+    name: Example manifests still resolve
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Check that the example manifests still resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make examples-live
+
+  live:
+    name: Recipes on ${{ matrix.platform }}
+    strategy:
+      # Every platform is checked even when one of them is broken: a recipe
+      # that dropped macOS is a different finding from one that dropped Linux,
+      # and a maintainer wants both in the same run.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux/amd64
+          - os: ubuntu-24.04-arm
+            platform: linux/arm64
+          - os: macos-latest
+            platform: darwin/arm64
+          - os: macos-15-intel
+            platform: darwin/amd64
+          - os: windows-latest
+            platform: windows/amd64
+          - os: windows-11-arm
+            platform: windows/arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,13 +89,18 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      # The example manifests pin real version lines, so they age the same way
-      # a recipe does. Checking them in the same weekly run means an example
-      # that stopped installing is found by CI rather than by a reader.
-      - name: Check that the example manifests still resolve
+      # A recipe is only checked on the platform it claims to ship for, so the
+      # runner has to be the platform the leg says it is. A silently wrong
+      # image would turn the whole leg into skips that read as passes.
+      - name: Confirm the runner is ${{ matrix.platform }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make examples-live
+          WANT: ${{ matrix.platform }}
+        run: |
+          got="$(go env GOOS)/$(go env GOARCH)"
+          if [ "$got" != "$WANT" ]; then
+            echo "this runner is $got, but the matrix leg claims $WANT" >&2
+            exit 1
+          fi
 
       - name: Validate the registry against upstream
         env:

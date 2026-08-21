@@ -28,3 +28,10 @@ jobs:
 
       - name: Build
         run: go build ./...
+
+      # The live upstream checks are behind a build tag, so `go build ./...`
+      # and `go test ./...` never compile them: they went stale once already,
+      # unnoticed, because the only thing that builds them runs weekly. This
+      # step is seconds long and touches no network.
+      - name: Type-check the build-tagged live checks
+        run: go vet -tags=live ./...
