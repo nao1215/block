@@ -14,6 +14,7 @@ import (
 	"github.com/nao1215/block/internal/fakegh"
 	"github.com/nao1215/block/internal/github"
 	"github.com/nao1215/block/internal/store"
+	"github.com/nao1215/block/registry"
 )
 
 // run executes the CLI in dir against an in-process fake GitHub.
@@ -49,9 +50,25 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 		t.Errorf("help = %d, %q", code, out)
 	}
 	code, out, _ = run(t, dir, "list")
-	want := "NAME      SOURCE           BINARIES\nfoundry   github_release   forge, cast, anvil, chisel\ngeth      http             geth\nhermes    github_release   hermes\nsolc      github_release   solc\n"
-	if code != 0 || out != want {
-		t.Errorf("list = %d, %q", code, out)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if code != 0 || !strings.HasPrefix(lines[0], "NAME") || !strings.Contains(lines[0], "ECOSYSTEM") || !strings.Contains(lines[0], "BINARIES") {
+		t.Fatalf("list = %d, %q", code, out)
+	}
+	reg, err := registry.Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines)-1 != len(reg.Names()) {
+		t.Errorf("list printed %d rows for %d recipes", len(lines)-1, len(reg.Names()))
+	}
+	for _, row := range []string{
+		"bitcoin-core   bitcoin     http             bitcoind, bitcoin-cli",
+		"foundry        ethereum    github_release   forge, cast, anvil, chisel",
+		"hermes         ibc         github_release   hermes",
+	} {
+		if !strings.Contains(out, row) {
+			t.Errorf("list is missing %q:\n%s", row, out)
+		}
 	}
 	for _, gone := range []string{"init", "update", "outdated", "registry", "search"} {
 		code, _, errOut := run(t, dir, gone)

@@ -7,6 +7,7 @@ package archive
 import (
 	"archive/tar"
 	"archive/zip"
+	"compress/bzip2"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -33,7 +34,15 @@ const (
 func Extract(src, dst, name string, strip int) error {
 	switch {
 	case strings.HasSuffix(name, ".tar.gz"), strings.HasSuffix(name, ".tgz"):
-		return extractTarGz(src, dst, strip)
+		return extractTar(src, dst, strip, func(r io.Reader) (io.Reader, error) {
+			gz, err := gzip.NewReader(r)
+			if err != nil {
+				return nil, fmt.Errorf("invalid gzip archive: %w", err)
+			}
+			return gz, nil
+		})
+	case strings.HasSuffix(name, ".tar.bz2"), strings.HasSuffix(name, ".tbz2"):
+		return extractTar(src, dst, strip, func(r io.Reader) (io.Reader, error) { return bzip2.NewReader(r), nil })
 	case strings.HasSuffix(name, ".zip"):
 		return extractZip(src, dst, strip)
 	default:
@@ -54,18 +63,17 @@ func stripName(name string, n int) (string, bool) {
 	return rest, rest != ""
 }
 
-func extractTarGz(src, dst string, strip int) error {
+func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reader, error)) error {
 	f, err := os.Open(src) //nolint:gosec // cache path
 	if err != nil {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // read-only
-	gz, err := gzip.NewReader(f)
+	r, err := decompress(f)
 	if err != nil {
-		return fmt.Errorf("invalid gzip archive: %w", err)
+		return err
 	}
-	defer gz.Close() //nolint:errcheck // read-only
-	tr := tar.NewReader(gz)
+	tr := tar.NewReader(r)
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {

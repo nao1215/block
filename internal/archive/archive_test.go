@@ -245,3 +245,40 @@ func TestExtractStripComponents(t *testing.T) {
 		t.Errorf("zip strip failed: %v", err)
 	}
 }
+
+// TestExtractTarBz2 uses a committed bzip2 archive because Go's standard
+// library can only read that format, not write it. Agave (the Solana CLI
+// suite) ships exactly this shape: tools under a versioned directory.
+func TestExtractTarBz2(t *testing.T) {
+	t.Parallel()
+	dst := t.TempDir()
+	if err := Extract(filepath.Join("testdata", "pkg.tar.bz2"), dst, "pkg.tar.bz2", 1); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(filepath.Join(dst, "bin", "tool"))
+	if err != nil {
+		t.Fatalf("bin/tool: %v", err)
+	}
+	if runtime.GOOS != "windows" && st.Mode().Perm() != 0o755 {
+		t.Errorf("bin/tool mode = %v", st.Mode().Perm())
+	}
+	if _, err := os.Stat(filepath.Join(dst, "README")); err != nil {
+		t.Errorf("README: %v", err)
+	}
+	// The same file under its .tbz2 spelling, without stripping.
+	dst2 := t.TempDir()
+	if err := Extract(filepath.Join("testdata", "pkg.tar.bz2"), dst2, "pkg.tbz2", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dst2, "pkg-1.0", "bin", "tool")); err != nil {
+		t.Errorf("unstripped layout: %v", err)
+	}
+	// A corrupt bzip2 stream must fail, not panic.
+	broken := filepath.Join(t.TempDir(), "x.tar.bz2")
+	if err := os.WriteFile(broken, []byte("BZh9 not really bzip2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Extract(broken, t.TempDir(), "x.tar.bz2", 0); err == nil {
+		t.Error("a corrupt bzip2 archive was accepted")
+	}
+}

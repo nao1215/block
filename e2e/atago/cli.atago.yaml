@@ -51,12 +51,12 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: |
-              NAME      SOURCE           BINARIES
-              foundry   github_release   forge, cast, anvil, chisel
-              geth      http             geth
-              hermes    github_release   hermes
-              solc      github_release   solc
+            contains:
+              - "NAME           ECOSYSTEM   SOURCE           BINARIES"
+              - "bitcoin-core   bitcoin     http             bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet"
+              - "foundry        ethereum    github_release   forge, cast, anvil, chisel"
+              - "geth           ethereum    http             geth"
+              - "hermes         ibc         github_release   hermes"
           stderr:
             equals: ""
           changes:

@@ -3,6 +3,7 @@
 #
 # Assets are named with Rust target triples, so Go's os/arch are mapped.
 name = "hermes"
+ecosystem = "ibc"
 
 [source]
 type = "github_release"

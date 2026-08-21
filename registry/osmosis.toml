@@ -1,0 +1,10 @@
+# Osmosis: the osmosisd node of the Osmosis chain.
+# https://github.com/osmosis-labs/osmosis
+name = "osmosis"
+ecosystem = "cosmos"
+
+[source]
+type = "github_release"
+repo = "osmosis-labs/osmosis"
+asset = "osmosisd-{version}-{os}-{arch}.tar.gz"
+bin = ["osmosisd"]

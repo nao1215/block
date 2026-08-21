@@ -39,11 +39,12 @@ stay anonymous.
   addresses so offline test servers can stand in for GitHub).
 - Every download is hashed while streaming and compared with the SHA-256 in
   `block.lock` before anything is extracted.
-- Archives are extracted into a temporary directory that is renamed into place
-  only after every entry succeeded and every declared executable exists.
-  Absolute paths, `..` components, symlinks and hard links are refused.
-- `block sync --locked` never resolves versions, never rewrites `block.lock`,
-  and fails on any disagreement between `block.toml` and `block.lock`.
+- Artifacts are unpacked into a temporary directory that is renamed into
+  place only after every entry succeeded and every declared executable
+  exists. Absolute paths, `..` components, symlinks and hard links are
+  refused, including after `strip_components`.
+- `block sync` never resolves versions, never rewrites `block.lock`, and
+  fails on any disagreement between `block.toml` and `block.lock`.
 - Registry recipes are data (TOML), never shell commands.
 
 ## Verifying releases

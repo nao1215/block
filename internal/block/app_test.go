@@ -235,6 +235,29 @@ func TestLockNamesOnlyThoseTools(t *testing.T) {
 	if err := h.Lock(ctx, []string{"geth"}, false); err == nil || err.Error() != `tool "geth" is not declared in block.toml` {
 		t.Errorf("Lock(unknown) error = %v", err)
 	}
+	// A kept pin still gets an artifact for a newly declared platform: the
+	// pinned version is resolved exactly, not moved.
+	h.manifest(t, "platforms = [\"linux/amd64\", \"darwin/arm64\"]\n[tools]\nfoundry = \"1.7\"\nhermes = \"1.13\"\n")
+	h.reset()
+	if err := h.Lock(ctx, []string{"hermes"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.stdout.String(), "foundry  1.7.4\n") {
+		t.Errorf("stdout = %q (foundry must keep its pin)", h.stdout)
+	}
+	l, err := lockfile.Load(h.LockPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundry, _ := l.Tool("foundry")
+	if len(foundry.Artifacts) != 2 || foundry.Version != "1.7.4" {
+		t.Errorf("foundry = %+v", foundry)
+	}
+	if a, ok := foundry.Artifact(platform.Platform{OS: "darwin", Arch: "arm64"}); !ok || !strings.Contains(a.URL, "v1.7.4/foundry_v1.7.4_darwin_arm64") {
+		t.Errorf("darwin artifact = %+v, %v", a, ok)
+	}
+	h.manifest(t, "[tools]\nfoundry = \"1.7\"\nhermes = \"1.13\"\n")
+
 	// A named lock still resolves a tool that was never pinned or whose
 	// constraint changed, because the old pin is not reusable.
 	h.manifest(t, "[tools]\nfoundry = \"1.6\"\nhermes = \"1.13\"\n")
@@ -304,7 +327,7 @@ func TestLockErrors(t *testing.T) {
 	tests := []struct {
 		name, manifest, want string
 	}{
-		{"unknown tool", "[tools]\nreth = \"1\"\n", `unknown tool "reth": it is not in the registry (known tools: foundry, geth, hermes, solc); define [tools.reth.source] in block.toml`},
+		{"unknown tool", "[tools]\nnot-a-tool = \"1\"\n", `unknown tool "not-a-tool": it is not in the registry (run "block list" to see the supported tools); define [tools.not-a-tool.source] in block.toml`},
 		{"no match", "[tools]\nfoundry = \"9\"\n", `foundry: no version of foundry-rs/foundry matches "9"`},
 		{"prerelease only", "[tools]\nfoundry = \"1.9\"\n", `foundry: no published release of foundry-rs/foundry matches "1.9"`},
 		{"unsupported platform", "[tools.maconly]\nversion = \"0.1\"\n[tools.maconly.source]\ntype = \"github_release\"\nrepo = \"example/maconly\"\nasset = \"maconly_{version}_{os}_{arch}.tar.gz\"\nplatforms = [\"darwin/arm64\"]\nbin = [\"maconly\"]\n", "maconly: unsupported platform linux/amd64 (available: darwin/arm64)"},

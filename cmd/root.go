@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 	"text/tabwriter"
 
@@ -206,7 +207,8 @@ func newListCmd(stdout io.Writer) *cobra.Command {
 		Use:   "list",
 		Short: "List the tools the built-in registry knows",
 		Long: `list prints every tool in the registry snapshot embedded in this binary:
-its name, how it is obtained, and the executables it provides.
+its name, the ecosystem it belongs to, how it is obtained, and the
+executables it provides.
 
 list is read-only and offline. It does not resolve, download, install, or
 read block.toml; project-local tools are not listed. To learn what a project
@@ -218,14 +220,24 @@ uses, read its block.toml and block.lock.`,
 				return err
 			}
 			tw := tabwriter.NewWriter(stdout, 0, 0, 3, ' ', 0) //nolint:mnd // column padding
-			fmt.Fprintln(tw, "NAME\tSOURCE\tBINARIES")
+			fmt.Fprintln(tw, "NAME\tECOSYSTEM\tSOURCE\tBINARIES")
 			for _, name := range reg.Names() {
 				rec, _ := reg.Lookup(name)
-				fmt.Fprintf(tw, "%s\t%s\t%s\n", name, rec.Source.Type, strings.Join(rec.Source.Bin, ", "))
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, rec.Ecosystem, rec.Source.Type, strings.Join(commandNames(rec.Source.Bin), ", "))
 			}
 			return tw.Flush()
 		},
 	}
+}
+
+// commandNames reduces archive-relative executable paths to the command
+// names a user types.
+func commandNames(bins []string) []string {
+	out := make([]string, len(bins))
+	for i, b := range bins {
+		out[i] = path.Base(b)
+	}
+	return out
 }
 
 func newVersionCmd(stdout io.Writer) *cobra.Command {

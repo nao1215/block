@@ -1,0 +1,14 @@
+# CometBFT: the BFT consensus engine behind Cosmos SDK chains.
+# https://github.com/cometbft/cometbft
+#
+# Only the v1.x line publishes release binaries; older lines (v0.38, v0.39,
+# v0.40) tag releases without assets, so a constraint pointing at them fails
+# with "has no asset" rather than silently installing something else.
+name = "cometbft"
+ecosystem = "cosmos"
+
+[source]
+type = "github_release"
+repo = "cometbft/cometbft"
+asset = "cometbft_{version}_{os}_{arch}.tar.gz"
+bin = ["cometbft"]

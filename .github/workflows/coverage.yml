@@ -1,0 +1,45 @@
+name: Coverage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# octocov needs to read/write the Actions-artifact datastore (report/diff in
+# .octocov.yml) and comment coverage on pull requests.
+permissions:
+  contents: read
+  actions: write
+  pull-requests: write
+
+jobs:
+  coverage:
+    name: Coverage (unit + e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+          check-latest: true
+
+      - name: Install atago
+        uses: nao1215/setup-atago@e4b6719aea547a68e6c15252222babab7f492a88 # v0.1.1
+        with:
+          version: v0.21.0
+
+      - name: Run combined unit + E2E coverage
+        run: make coverage
+
+      - uses: k1LoW/octocov-action@a167dc0dee441b7ffc45e1b862ab55ec0d87f278 # v1.5.2
+        with:
+          config: .octocov.yml
+          work-dir: .
+          args: --report=cover.out

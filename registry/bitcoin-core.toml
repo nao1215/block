@@ -1,0 +1,23 @@
+# Bitcoin Core: the reference Bitcoin node and its wallet/CLI tools.
+# https://github.com/bitcoin/bitcoin
+#
+# Versions come from the repository's tags (v29.0, v29.4, ...); the binaries
+# are published on bitcoincore.org, not as release assets. The archive wraps
+# everything in bitcoin-<version>/, whose bin/ directory holds the tools.
+# Upstream spells arm64 differently per OS (aarch64-linux-gnu but
+# arm64-apple-darwin), so the platform strings are mapped whole.
+name = "bitcoin-core"
+ecosystem = "bitcoin"
+
+[source]
+type = "http"
+repo = "bitcoin/bitcoin"
+url = "https://bitcoincore.org/bin/bitcoin-core-{version}/bitcoin-{version}-{target}.tar.gz"
+strip_components = 1
+bin = ["bin/bitcoind", "bin/bitcoin-cli", "bin/bitcoin-tx", "bin/bitcoin-util", "bin/bitcoin-wallet"]
+
+[source.target]
+"linux/amd64" = "x86_64-linux-gnu"
+"linux/arm64" = "aarch64-linux-gnu"
+"darwin/amd64" = "x86_64-apple-darwin"
+"darwin/arm64" = "arm64-apple-darwin"

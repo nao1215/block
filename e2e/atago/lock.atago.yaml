@@ -148,6 +148,41 @@ scenarios:
               - 'version = "1.7.5"'
               - 'version = "1.13.1"'
 
+  - name: a kept pin gains an artifact for a newly declared platform
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block lock
+      - fixture:
+          file: block.toml
+          content: |
+            platforms = ["linux/amd64", "darwin/arm64"]
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      # Only hermes is re-resolved, but foundry still needs its darwin
+      # artifact: block resolves that exact version, it does not move the pin.
+      - run:
+          command: block lock hermes
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "foundry  1.7.4"
+              - "wrote block.lock"
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - "foundry_v1.7.4_darwin_arm64.tar.gz"
+              - "hermes-v1.13.0-aarch64-apple-darwin.tar.gz"
+
   - name: lock with a tool name re-resolves only that tool
     env:
       BLOCK_HOME: "${workdir}/home"
@@ -559,7 +594,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: unknown tool "solana": it is not in the registry (known tools: foundry, geth, hermes, solc); define [tools.solana.source] in block.toml to use it anyway
+            equals: 'block: unknown tool "solana": it is not in the registry (run "block list" to see the supported tools); define [tools.solana.source] in block.toml to use it anyway
 
 '
 

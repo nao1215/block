@@ -183,3 +183,127 @@ scenarios:
           dir:
             path: home/tools/nobin
             count: 0
+
+  - name: an archive that wraps its tools in a versioned directory is unwrapped
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.bundle]
+            version = "2"
+            [tools.bundle.source]
+            type = "github_release"
+            repo = "example/bundle"
+            asset = "bundle-release-{os}-{arch}.tar.gz"
+            strip_components = 1
+            bin = ["bin/bundle-cli", "bin/bundle-node"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "bundle  2.0.0  installed"
+      # strip_components dropped the wrapping directory: the tools sit under
+      # bin/, not bundle-release/bin/.
+      - assert:
+          dir:
+            path: home/tools/bundle
+            recursive: true
+            glob: "bundle-cli"
+      - assert:
+          dir:
+            path: home/tools/bundle
+            recursive: true
+            not_contains: ["bundle-release"]
+      - run:
+          command: block exec bundle-cli run
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "bundle-cli 2.0.0 (fake)"
+      - run:
+          command: block exec bundle-node
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "bundle-node 2.0.0 (fake)"
+
+  - name: an upstream whose platform strings are not os and arch uses a target map
+    env: *t1
+    steps:
+      # Bitcoin Core spells arm64 "aarch64-linux-gnu" on Linux but
+      # "arm64-apple-darwin" on macOS, so whole platform strings are mapped.
+      - fixture:
+          file: block.toml
+          content: |
+            platforms = ["linux/amd64", "darwin/arm64"]
+
+            [tools.quirky]
+            version = "29"
+
+            [tools.quirky.source]
+            type = "http"
+            repo = "example/quirky"
+            url = "${env:FAKEGH_URL}/blobs/quirky-{version}/quirky-{version}-{target}.tar.gz"
+            strip_components = 1
+            bin = ["bin/quirkyd"]
+
+            [tools.quirky.source.target]
+            "linux/amd64" = "x86_64-linux-gnu"
+            "linux/arm64" = "aarch64-linux-gnu"
+            "darwin/amd64" = "x86_64-apple-darwin"
+            "darwin/arm64" = "arm64-apple-darwin"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "quirky  locked 29.4"
+      # Each platform got the artifact its own spelling names.
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - "/blobs/quirky-29.4/quirky-29.4-x86_64-linux-gnu.tar.gz"
+              - "/blobs/quirky-29.4/quirky-29.4-arm64-apple-darwin.tar.gz"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "quirky  29.4  installed\n"
+      - run:
+          command: block exec quirkyd -version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "quirkyd 29.4 (fake)"
+
+  - name: a platform the target map does not cover is refused at lock time
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.quirky]
+            version = "29"
+
+            [tools.quirky.source]
+            type = "http"
+            repo = "example/quirky"
+            url = "${env:FAKEGH_URL}/blobs/quirky-{version}/quirky-{version}-{target}.tar.gz"
+            strip_components = 1
+            bin = ["bin/quirkyd"]
+
+            [tools.quirky.source.target]
+            "darwin/arm64" = "arm64-apple-darwin"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: quirky: unsupported platform linux/amd64 (available: darwin/arm64)\n"
+          changes:
+            created: []

@@ -1,0 +1,13 @@
+# Gaia: the Cosmos Hub node.
+# https://github.com/cosmos/gaia
+#
+# Releases ship one raw executable per platform. Upstream builds amd64 only.
+name = "gaia"
+ecosystem = "cosmos"
+
+[source]
+type = "github_release"
+repo = "cosmos/gaia"
+asset = "gaiad-v{version}-{os}-{arch}"
+platforms = ["linux/amd64", "darwin/amd64"]
+bin = ["gaiad"]

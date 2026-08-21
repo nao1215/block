@@ -16,10 +16,16 @@ func TestParse(t *testing.T) {
 		{in: "1.8.0-rc1", want: Version{Major: 1, Minor: 8, Pre: "rc1"}},
 		{in: "1.8.0-rc.1+build.5", want: Version{Major: 1, Minor: 8, Pre: "rc.1"}},
 		{in: "1.8.0+build", want: Version{Major: 1, Minor: 8}},
+		// Bitcoin Core style: two components and a bare pre-release suffix.
+		{in: "29.0", want: Version{Major: 29}},
+		{in: "29.1rc1", want: Version{Major: 29, Minor: 1, Pre: "rc1"}},
+		{in: "1.7.4rc2", want: Version{Major: 1, Minor: 7, Patch: 4, Pre: "rc2"}},
 		{in: "", wantErr: true},
 		{in: "v1.7.4", wantErr: true},
-		{in: "1.7", wantErr: true},
+		{in: "1", wantErr: true},
 		{in: "1.7.4.1", wantErr: true},
+		{in: "1.7rc1-rc1", wantErr: true},
+		{in: "1.7.", wantErr: true},
 		{in: "1.07.4", wantErr: true},
 		{in: "1.x.4", wantErr: true},
 		{in: "1..4", wantErr: true},
@@ -32,6 +38,7 @@ func TestParse(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Parse(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
 			}
+			got.text = ""
 			if !tt.wantErr && got != tt.want {
 				t.Errorf("Parse(%q) = %+v, want %+v", tt.in, got, tt.want)
 			}
@@ -41,10 +48,18 @@ func TestParse(t *testing.T) {
 
 func TestStringRoundTrip(t *testing.T) {
 	t.Parallel()
-	for _, s := range []string{"1.7.4", "0.1.0", "2.0.0-beta.2"} {
+	// The upstream spelling is preserved, so URLs render the way the upstream
+	// names its files ("29.0", not "29.0.0").
+	for _, s := range []string{"1.7.4", "0.1.0", "2.0.0-beta.2", "29.0", "29.1rc1"} {
 		if got := MustParse(s).String(); got != s {
 			t.Errorf("String() = %q, want %q", got, s)
 		}
+	}
+	if got := (Version{Major: 29}).String(); got != "29.0.0" {
+		t.Errorf("constructed String() = %q", got)
+	}
+	if !Equal(MustParse("29.0"), MustParse("29.0.0")) || Equal(MustParse("29.0"), MustParse("29.1")) {
+		t.Error("Equal is wrong")
 	}
 }
 
@@ -147,6 +162,10 @@ func TestConstraintMatches(t *testing.T) {
 		{"1.7", "1.7.5-rc1", false},
 		{"1", "1.8.0-rc1", false},
 		{"1.8.0", "1.8.0-rc1", false},
+		{"29", "29.0", true},
+		{"29.0", "29.0", true},
+		{"29.0.0", "29.0", true},
+		{"29", "29.1rc1", false},
 	}
 	for _, tt := range tests {
 		if got := MustParseConstraint(tt.c).Matches(MustParse(tt.v)); got != tt.want {

@@ -5,6 +5,11 @@
 // prefix. "1" means any 1.x.y, "1.7" means any 1.7.y and "1.7.4" is exact.
 // Pre-release versions never satisfy a constraint, so a project that asks for
 // "1.7" never silently receives 1.7.0-rc1.
+//
+// Upstreams are not uniformly semver: Bitcoin Core tags "v29.0" and "v29.1rc1".
+// Parse accepts two components (patch 0) and a bare alphabetic pre-release
+// suffix, and String keeps the original spelling so that URLs and lockfiles
+// show the version the way the upstream writes it.
 package version
 
 import (
@@ -18,17 +23,20 @@ import (
 // components is the number of release components in MAJOR.MINOR.PATCH.
 const components = 3
 
-// Version is a parsed semantic version without build metadata.
+// Version is a parsed version without build metadata.
 type Version struct {
 	Major int
 	Minor int
 	Patch int
-	// Pre holds the pre-release identifiers after '-', or "" for a release.
+	// Pre holds the pre-release identifiers, or "" for a release.
 	Pre string
+	// text is the spelling the version was parsed from ("29.0", "1.7.4").
+	text string
 }
 
-// Parse parses "MAJOR.MINOR.PATCH[-PRE]". A leading "v" is not accepted here;
-// stripping the tag prefix is the recipe's job, not the version parser's.
+// Parse parses "MAJOR.MINOR[.PATCH][-PRE]". A bare alphabetic suffix such as
+// "rc1" in "29.1rc1" is a pre-release too. A leading "v" is not accepted
+// here; stripping the tag prefix is the recipe's job, not the parser's.
 func Parse(s string) (Version, error) {
 	var v Version
 	if s == "" {
@@ -41,9 +49,16 @@ func Parse(s string) (Version, error) {
 	if plus := strings.IndexByte(core, '+'); plus >= 0 {
 		core = core[:plus]
 	}
+	// "29.1rc1": split the bare suffix off the last numeric component.
+	if i := strings.IndexFunc(core, func(r rune) bool { return r != '.' && (r < '0' || r > '9') }); i >= 0 {
+		if pre != "" {
+			return v, fmt.Errorf("invalid version %q: two pre-release suffixes", s)
+		}
+		core, pre = core[:i], core[i:]
+	}
 	parts := strings.Split(core, ".")
-	if len(parts) != components {
-		return v, fmt.Errorf("invalid version %q: want MAJOR.MINOR.PATCH", s)
+	if len(parts) < components-1 || len(parts) > components {
+		return v, fmt.Errorf("invalid version %q: want MAJOR.MINOR[.PATCH]", s)
 	}
 	nums := make([]int, components)
 	for i, p := range parts {
@@ -53,7 +68,10 @@ func Parse(s string) (Version, error) {
 		}
 		nums[i] = n
 	}
-	v.Major, v.Minor, v.Patch, v.Pre = nums[0], nums[1], nums[2], pre
+	if pre != "" && pre[0] == '.' {
+		return v, fmt.Errorf("invalid version %q: empty pre-release", s)
+	}
+	v.Major, v.Minor, v.Patch, v.Pre, v.text = nums[0], nums[1], nums[2], pre, s
 	return v, nil
 }
 
@@ -85,14 +103,22 @@ func parseNumber(s string) (int, error) {
 	return n, nil
 }
 
-// String renders the version as "MAJOR.MINOR.PATCH[-PRE]".
+// String renders the version as it was written upstream, or canonically as
+// "MAJOR.MINOR.PATCH[-PRE]" for a constructed value.
 func (v Version) String() string {
+	if v.text != "" {
+		return v.text
+	}
 	s := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
 	if v.Pre != "" {
 		s += "-" + v.Pre
 	}
 	return s
 }
+
+// Equal reports whether two versions denote the same release regardless of
+// spelling.
+func Equal(a, b Version) bool { return Compare(a, b) == 0 }
 
 // IsPrerelease reports whether the version carries pre-release identifiers.
 func (v Version) IsPrerelease() bool { return v.Pre != "" }

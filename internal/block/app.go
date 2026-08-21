@@ -77,8 +77,8 @@ func (a *App) sourceFor(t manifest.Tool) (recipe.Source, error) {
 	}
 	rec, ok := a.Registry.Lookup(t.Name)
 	if !ok {
-		return recipe.Source{}, fmt.Errorf("unknown tool %q: it is not in the registry (known tools: %s); define [tools.%s.source] in %s to use it anyway",
-			t.Name, strings.Join(a.Registry.Names(), ", "), t.Name, manifest.FileName)
+		return recipe.Source{}, fmt.Errorf("unknown tool %q: it is not in the registry (run \"block list\" to see the supported tools); define [tools.%s.source] in %s to use it anyway",
+			t.Name, t.Name, manifest.FileName)
 	}
 	return rec.Source, nil
 }
@@ -200,6 +200,9 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 		}
 	}
 	var resolution resolver.Resolution
+	// resolved says whether resolution describes entry.Version; a kept pin
+	// leaves it unset until a missing platform forces an exact lookup.
+	resolved := false
 	if !resolve && prev != nil && prev.Constraint == t.Constraint.String() && prev.Source == entry.Source {
 		entry.Version = prev.Version
 		reuse()
@@ -208,7 +211,7 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 		if err != nil {
 			return nil, res, err
 		}
-		resolution = r
+		resolution, resolved = r, true
 		entry.Version = r.Version.String()
 		reuse()
 	}
@@ -217,12 +220,12 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 		if _, ok := entry.Artifact(p); ok {
 			continue
 		}
-		if resolution.Release == nil && resolution.Version.String() == "" {
+		if !resolved {
 			r, err := a.resolveExact(ctx, src, entry)
 			if err != nil {
 				return nil, res, err
 			}
-			resolution = r
+			resolution, resolved = r, true
 		}
 		art, err := resolver.ArtifactFor(resolution, src, p)
 		if err != nil {

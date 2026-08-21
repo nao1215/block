@@ -1,0 +1,19 @@
+# Lighthouse: an Ethereum consensus client by Sigma Prime.
+# https://github.com/sigp/lighthouse
+name = "lighthouse"
+ecosystem = "ethereum"
+
+[source]
+type = "github_release"
+repo = "sigp/lighthouse"
+asset = "lighthouse-v{version}-{arch}-{os}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/arm64"]
+bin = ["lighthouse"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

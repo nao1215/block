@@ -1,0 +1,19 @@
+# Reth: an Ethereum execution client by Paradigm.
+# https://github.com/paradigmxyz/reth
+name = "reth"
+ecosystem = "ethereum"
+
+[source]
+type = "github_release"
+repo = "paradigmxyz/reth"
+asset = "reth-v{version}-{arch}-{os}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/arm64"]
+bin = ["reth"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

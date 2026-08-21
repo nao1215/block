@@ -1,0 +1,23 @@
+# Agave: the Solana validator client and CLI suite by Anza.
+# https://github.com/anza-xyz/agave
+#
+# The release asset carries no version in its name (the release does), is
+# bzip2-compressed, and wraps its tools in solana-release/bin/.
+name = "agave"
+ecosystem = "solana"
+
+[source]
+type = "github_release"
+repo = "anza-xyz/agave"
+asset = "solana-release-{arch}-{os}.tar.bz2"
+strip_components = 1
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+bin = ["bin/solana", "bin/solana-keygen", "bin/solana-test-validator", "bin/agave-ledger-tool"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

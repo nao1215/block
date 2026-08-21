@@ -158,6 +158,19 @@ func Fixtures() []Repo {
 			{tag: "v1.0.0", at: 1, bins: []string{"something-else"},
 				assets: platformAssets("nobin_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
 		}},
+		{owner: "example", name: "bundle", digest: true, releases: []release{
+			// Tools under a versioned directory, like Agave's release
+			// archives (whose real compression, bzip2, is covered by the
+			// archive package's unit tests: Go has no bzip2 writer).
+			{tag: "v2.0.0", at: 1, bins: []string{"bin/bundle-cli", "bin/bundle-node"}, prefix: "bundle-release",
+				assets: platformAssets("bundle-release-{os}-{arch}.tar.gz", allPlatforms, nil, nil)},
+		}},
+		{owner: "example", name: "quirky", blobs: true, releases: []release{
+			// A vendor host whose platform strings are not a product of
+			// os and arch, like Bitcoin Core's.
+			{tag: "v29.4", at: 1, bins: []string{"bin/quirkyd"}, prefix: "quirky-29.4"},
+			{tag: "v29.5", at: 2, bins: []string{"bin/quirkyd"}, prefix: "quirky-29.5"},
+		}},
 		{owner: "example", name: "rawbin", releases: []release{
 			// A single raw executable per platform, no archive.
 			{tag: "v1.0.0", at: 1, bins: []string{"rawbin"},
@@ -345,10 +358,16 @@ func commitOf(tag string) string {
 	return hex.EncodeToString(sum[:])[:40]
 }
 
-// serveBlob answers /blobs/<name>-<os>-<arch>-<version>-<commit8>.tar.gz for
-// repositories flagged blobs, wrapping the members in a directory of the
-// same name as real vendor tarballs do.
+// serveBlob plays a vendor download host for repositories flagged blobs.
+// Two shapes are served:
+//
+//	/blobs/<tool>-<os>-<arch>-<version>-<commit8>.tar.gz   (go-ethereum style)
+//	/blobs/<tool>-<version>/<tool>-<version>-<target>.tar.gz  (Bitcoin Core style)
 func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, name string) {
+	if dir, file, ok := strings.Cut(name, "/"); ok {
+		s.serveVersionedBlob(w, r, dir, file)
+		return
+	}
 	base, ok := strings.CutSuffix(name, ".tar.gz")
 	if !ok {
 		http.NotFound(w, r)
@@ -370,12 +389,50 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, name string) 
 			}
 			wrapped := rel
 			wrapped.prefix = base
-			w.Header().Set("Content-Type", "application/octet-stream")
-			_, _ = w.Write(buildArchive(name, wrapped)) //nolint:gosec // generated archive bytes, not user input
+			s.writeArchive(w, name, wrapped)
 			return
 		}
 	}
 	http.NotFound(w, r)
+}
+
+// serveVersionedBlob answers a per-version directory listing one file per
+// upstream platform string, whatever that string looks like.
+func (s *Server) serveVersionedBlob(w http.ResponseWriter, r *http.Request, dir, file string) {
+	tool, ver, ok := strings.Cut(dir, "-")
+	if !ok || !strings.HasPrefix(file, tool+"-"+ver+"-") || !strings.HasSuffix(file, ".tar.gz") {
+		http.NotFound(w, r)
+		return
+	}
+	target := strings.TrimSuffix(strings.TrimPrefix(file, tool+"-"+ver+"-"), ".tar.gz")
+	if !knownTargets[target] {
+		http.NotFound(w, r)
+		return
+	}
+	for _, rp := range s.repos {
+		if !rp.blobs || rp.name != tool {
+			continue
+		}
+		for _, rel := range rp.releases {
+			if rel.tag == "v"+ver {
+				s.writeArchive(w, file, rel)
+				return
+			}
+		}
+	}
+	http.NotFound(w, r)
+}
+
+// knownTargets are the upstream platform strings the quirky fixture ships,
+// spelled the way Bitcoin Core spells them.
+var knownTargets = map[string]bool{ //nolint:gochecknoglobals // immutable table
+	"x86_64-linux-gnu": true, "aarch64-linux-gnu": true,
+	"x86_64-apple-darwin": true, "arm64-apple-darwin": true,
+}
+
+func (s *Server) writeArchive(w http.ResponseWriter, name string, rel release) {
+	w.Header().Set("Content-Type", "application/octet-stream")
+	_, _ = w.Write(buildArchive(name, rel)) //nolint:gosec // generated archive bytes, not user input
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

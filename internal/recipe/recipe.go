@@ -58,6 +58,11 @@ type Source struct {
 	OS map[string]string `toml:"os,omitempty"`
 	// Arch renames Go's GOARCH into the upstream's spelling (amd64 -> x86_64).
 	Arch map[string]string `toml:"arch,omitempty"`
+	// Target maps a whole "os/arch" pair to the upstream's platform string,
+	// for upstreams whose naming is not a product of the two (Bitcoin Core
+	// writes aarch64-linux-gnu but arm64-apple-darwin). It expands {target}
+	// and, when Platforms is empty, its keys are the supported platforms.
+	Target map[string]string `toml:"target,omitempty"`
 	// Platforms lists the "os/arch" pairs the upstream ships. Empty means every
 	// platform block supports.
 	Platforms []string `toml:"platforms,omitempty"`
@@ -68,8 +73,11 @@ type Source struct {
 
 // Recipe is a named Source.
 type Recipe struct {
-	Name   string `toml:"name"`
-	Source Source `toml:"source"`
+	Name string `toml:"name"`
+	// Ecosystem is display metadata for `block list` (bitcoin, ethereum,
+	// solana, cosmos, ibc). block attaches no behaviour to it.
+	Ecosystem string `toml:"ecosystem,omitempty"`
+	Source    Source `toml:"source"`
 }
 
 // Validate checks that the source is complete and internally consistent.
@@ -120,6 +128,14 @@ func (s Source) Validate() error {
 			return err
 		}
 	}
+	for p := range s.Target {
+		if _, err := platform.Parse(p); err != nil {
+			return err
+		}
+	}
+	if strings.Contains(s.ArtifactTemplate(), "{target}") && len(s.Target) == 0 {
+		return fmt.Errorf("template %q uses {target} but no [source.target] table is defined", s.ArtifactTemplate())
+	}
 	return nil
 }
 
@@ -168,7 +184,7 @@ func (s Source) IsArchive() bool {
 // IsArchiveName reports whether a file name has an archive extension block
 // can extract.
 func IsArchiveName(name string) bool {
-	for _, ext := range []string{".tar.gz", ".tgz", ".zip"} {
+	for _, ext := range []string{".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".zip"} {
 		if strings.HasSuffix(name, ext) {
 			return true
 		}
@@ -246,13 +262,21 @@ func (s Source) ParseTag(tag string) (version.Version, bool) {
 	return v, true
 }
 
-// Platforms returns the platforms the source ships for, sorted.
+// SupportedPlatforms returns the platforms the source ships for, sorted:
+// the declared list, else the target table's keys, else every platform.
 func (s Source) SupportedPlatforms() []platform.Platform {
-	if len(s.Platforms) == 0 {
-		return platform.Supported()
+	names := s.Platforms
+	if len(names) == 0 {
+		if len(s.Target) == 0 {
+			return platform.Supported()
+		}
+		names = make([]string, 0, len(s.Target))
+		for p := range s.Target {
+			names = append(names, p)
+		}
 	}
-	out := make([]platform.Platform, 0, len(s.Platforms))
-	for _, p := range s.Platforms {
+	out := make([]platform.Platform, 0, len(names))
+	for _, p := range names {
 		if pp, err := platform.Parse(p); err == nil {
 			out = append(out, pp)
 		}
@@ -294,7 +318,11 @@ func (s Source) Render(v version.Version, p platform.Platform, commit string) (s
 	if len(short) > commitLen {
 		short = short[:commitLen]
 	}
-	r := strings.NewReplacer("{version}", v.String(), "{os}", os, "{arch}", arch, "{commit}", short)
+	target, ok := s.Target[p.String()]
+	if !ok && strings.Contains(s.ArtifactTemplate(), "{target}") {
+		return "", &UnsupportedPlatformError{Platform: p, Supported: s.SupportedPlatforms()}
+	}
+	r := strings.NewReplacer("{version}", v.String(), "{os}", os, "{arch}", arch, "{commit}", short, "{target}", target)
 	return r.Replace(s.ArtifactTemplate()), nil
 }
 
@@ -307,7 +335,7 @@ func (s Source) AssetName(v version.Version, p platform.Platform) (string, error
 func (s Source) Equal(o Source) bool {
 	return s.Type == o.Type && s.Repo == o.Repo && s.EffectiveTagPrefix() == o.EffectiveTagPrefix() &&
 		s.Asset == o.Asset && s.URL == o.URL && s.StripComponents == o.StripComponents &&
-		mapsEqual(s.OS, o.OS) && mapsEqual(s.Arch, o.Arch) &&
+		mapsEqual(s.OS, o.OS) && mapsEqual(s.Arch, o.Arch) && mapsEqual(s.Target, o.Target) &&
 		sliceSetEqual(s.Platforms, o.Platforms) && sliceEqual(s.Bin, o.Bin)
 }
 
@@ -373,6 +401,7 @@ func (s Source) Hash() string {
 	}
 	writeMap(s.OS)
 	writeMap(s.Arch)
+	writeMap(s.Target)
 	b.WriteString(strings.Join(platform.Strings(s.SupportedPlatforms()), ",") + "\n")
 	b.WriteString(strings.Join(s.Bin, ",") + "\n")
 	sum := sha256.Sum256([]byte(b.String()))

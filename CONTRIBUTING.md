@@ -1,7 +1,7 @@
 ## Contributing to block
 Thank you for helping lock blockchain toolchains down. Every bug report,
-registry recipe, test and review makes `git clone && block sync --locked` work
-for one more team.
+registry recipe, test and review makes `git clone && block sync` work for one
+more team.
 
 ## Contributing as a Developer
 ### 1. Start with clear communication
@@ -10,9 +10,10 @@ for one more team.
 - New feature: open an issue first so we can agree on direction. block is
   deliberately small — see [Non-goals](./README.md#non-goals) before proposing
   a package manager feature.
-- New registry recipe: open a PR adding `registry/<tool>.toml`. The CI and the
-  registry tests check that the file name, recipe name and asset template are
-  consistent.
+- New registry recipe: open a PR adding `registry/<tool>.toml` and its row in
+  the table in `registry/registry_test.go`, which pins the artifact each
+  supported platform resolves to. See [registry/README.md](./registry/README.md)
+  for the schema and the order of preference between install methods.
 
 ### 2. Keep the quality bar high
 - Add or update unit tests for pure logic (version resolution, manifest and

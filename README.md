@@ -36,18 +36,34 @@ And one question answered offline — *what tools does block support?*:
 
 ```console
 $ block list
-NAME      SOURCE           BINARIES
-foundry   github_release   forge, cast, anvil, chisel
-geth      http             geth
-hermes    github_release   hermes
-solc      github_release   solc
+NAME           ECOSYSTEM   SOURCE           BINARIES
+agave          solana      github_release   solana, solana-keygen, solana-test-validator, agave-ledger-tool
+anchor         solana      github_release   anchor
+bitcoin-core   bitcoin     http             bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet
+cometbft       cosmos      github_release   cometbft
+foundry        ethereum    github_release   forge, cast, anvil, chisel
+gaia           cosmos      github_release   gaiad
+geth           ethereum    http             geth
+hermes         ibc         github_release   hermes
+lighthouse     ethereum    github_release   lighthouse
+osmosis        cosmos      github_release   osmosisd
+reth           ethereum    github_release   reth
+solc           ethereum    github_release   solc
+surfpool       solana      github_release   surfpool
 ```
 
-block is not a package manager. It downloads release archives from upstream,
-verifies them, and puts them on `PATH` for the command you run. Nothing more.
+block resolves the tools a project needs, fetches and verifies them, pins
+them, and puts them on `PATH` for the command you run. How a tool is
+obtained — a GitHub release asset, an archive on the upstream's own download
+server — is the registry's business, not yours. block is not a package
+manager: it manages blockchain CLIs, not language runtimes or your OS.
 
 ## Why block
 
+- **Blockchain CLIs, whatever their distribution.** Bitcoin Core, Foundry,
+  geth, reth, Lighthouse, Agave, Anchor, Gaia, CometBFT, Hermes — release
+  assets, raw executables and vendor download servers alike, resolved and
+  verified the same way.
 - **Project-local, not machine-global.** Each repository declares its own
   toolchain; two projects on one machine can use different Foundry versions
   without fighting.
@@ -203,7 +219,7 @@ block: foundry 1.7.4 is not installed; run "block sync"
 ### `block list`
 
 Prints the tools in the registry snapshot embedded in this binary: name,
-source type and the executables each provides. It is read-only and offline —
+ecosystem, source type and the executables each provides. It is read-only and offline —
 no resolution, no network, no `block.toml` — so its output is deterministic
 for a given block version, works when GitHub is down, and needs no token.
 Project-local tools are not listed; a project's own toolchain is its
@@ -244,6 +260,7 @@ bin = ["foo"]                                # executables inside the archive
 # tag_prefix = "v"                           # text before the version in tags
 # platforms = ["linux/amd64", "darwin/arm64"]
 # strip_components = 1                       # drop a wrapping directory
+# [tools.foo.source.target] "darwin/arm64" = "arm64-apple-darwin"  # {target}
 # [tools.foo.source.os]   linux = "unknown-linux-gnu"   # rename {os}
 # [tools.foo.source.arch] amd64 = "x86_64"              # rename {arch}
 ```
@@ -331,8 +348,8 @@ $BLOCK_HOME/                               default: ~/.local/share/block
 ```
 
 Two projects that pin the same artifact share one download and one install.
-Caching this directory in CI, keyed by `block.lock`, makes `sync --locked` an
-offline operation. `XDG_DATA_HOME` is honored when `BLOCK_HOME` is unset.
+Caching this directory in CI, keyed by `block.lock`, makes `sync` an offline
+operation. `XDG_DATA_HOME` is honored when `BLOCK_HOME` is unset.
 
 ## How versions are resolved
 
@@ -381,21 +398,40 @@ there. A recipe names one of the source types below — the most
 self-contained, fastest and safest one the upstream allows — and block
 executes it deterministically, never falling back to another at run time:
 
-| type | what it does | example |
+A recipe picks the most self-contained method available, in this order:
+
+1. **official prebuilt GitHub Release artifact** — `github_release`
+2. **official prebuilt artifact on the upstream's download server** — `http`
+3. official package registry (`go install`, `cargo install`, npm, pipx) —
+   *not implemented*
+4. limited build from official source — *not implemented*
+
+| type | what it does | used by |
 | --- | --- | --- |
-| `github_release` | versions from git tags; download a release asset (archive or a single raw executable); use GitHub's sha256 when recorded | foundry, hermes, solc |
-| `http` | versions from git tags; download from the upstream's own HTTPS server; `{commit}` expands to the tagged commit for vendors that name builds by it | geth |
+| `github_release` | versions from git tags; download a release asset — a `.tar.gz` / `.tar.bz2` / `.zip` archive or a single raw executable — using GitHub's own sha256 when recorded | foundry, solc, reth, lighthouse, agave, anchor, surfpool, gaia, cometbft, osmosis, hermes |
+| `http` | versions from git tags; download a prebuilt artifact from the upstream's own HTTPS server; `{commit}` and `{target}` cover vendors that name builds by commit or by their own platform strings | bitcoin-core, geth |
 
-Next in line, each added only when a tool needs it: official GitHub content
-or archives, language package registries (`go_install`, `cargo`, `npm`,
-`pipx`), and limited known source builds (`go_build`, `cargo_build`). Every
-one of them will be a source type whose meaning and safety boundary block
-understands. There is no `install = "curl … | bash"` escape hatch and there
-never will be.
+Types 3 and 4 will be added only when a blockchain CLI genuinely cannot be
+obtained otherwise, one backend at a time, and each will be a source type
+whose meaning and safety boundary block understands. There is no
+`install = "curl … | bash"` escape hatch and there never will be. block also
+does not manage the Go, Rust, Node or Python toolchains themselves — that is
+where a general-purpose version manager belongs, not block.
 
-Currently registered: `foundry` (`forge`, `cast`, `anvil`, `chisel`), `geth`
-(Linux only — upstream stopped shipping macOS builds), `hermes` and `solc`.
-See [registry/README.md](./registry/README.md) for the recipe schema.
+Every tool below is installed today with those two types alone:
+
+| ecosystem | tools |
+| --- | --- |
+| bitcoin | `bitcoin-core` (`bitcoind`, `bitcoin-cli`, `bitcoin-tx`, `bitcoin-util`, `bitcoin-wallet`) |
+| ethereum | `foundry` (`forge`, `cast`, `anvil`, `chisel`), `solc`, `geth`, `reth`, `lighthouse` |
+| solana | `agave` (`solana`, `solana-keygen`, `solana-test-validator`, `agave-ledger-tool`), `anchor`, `surfpool` |
+| cosmos | `gaia`, `cometbft`, `osmosis` |
+| ibc | `hermes` |
+
+Platform coverage follows the upstream: `geth` ships Linux only, `reth` and
+`lighthouse` have no macOS x86-64 build, `gaia` builds amd64 only. block
+reports that as an unsupported platform rather than substituting something
+else. See [registry/README.md](./registry/README.md) for the recipe schema.
 
 The registry will move to its own repository, `block-registry`, as the
 canonical source of recipes. block will still embed a tested snapshot of it

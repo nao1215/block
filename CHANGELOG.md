@@ -19,14 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `block.lock` lockfile recording the exact version, executables, a
   fingerprint of the recipe, and the download URL plus SHA-256 of every
   artifact per platform.
-- Built-in registry recipes for Foundry (`forge`, `cast`, `anvil`, `chisel`),
-  Hermes, go-ethereum (`geth`) and solc.
+- Built-in registry recipes across five ecosystems, all served by the two
+  implemented source types: Bitcoin Core; Foundry, solc, geth, reth and
+  Lighthouse; Agave, Anchor and Surfpool; Gaia, CometBFT and Osmosis; Hermes.
+- `block list` shows each tool's ecosystem alongside its source type and
+  the commands it provides.
 - Source types: `github_release` (versions from git tags, artifacts from
-  release assets — archives or a single raw executable — using GitHub's
-  per-asset sha256 when recorded) and `http` (prebuilt artifacts on the
-  upstream's own server, with `{commit}` for vendors that name builds by the
-  tagged commit). `strip_components` unwraps versioned archive directories.
-  Drafts, pre-releases and non-semver tags are skipped.
+  release assets — `.tar.gz`, `.tar.bz2` or `.zip` archives, or a single raw
+  executable — using GitHub's per-asset sha256 when recorded) and `http`
+  (prebuilt artifacts on the upstream's own server). `{commit}` covers
+  vendors that name builds by the tagged commit, `{target}` those whose
+  platform strings are not a product of OS and architecture, and
+  `strip_components` unwraps versioned archive directories. Versions may be
+  two-component (`29.0`) with a bare pre-release suffix (`29.1rc1`), as
+  Bitcoin Core tags them. Drafts, pre-releases and unparsable tags are
+  skipped.
 - Content-addressed download cache and per-version installs under
   `$BLOCK_HOME`, shared across projects.
 - Security: HTTPS-only transport, streaming SHA-256 verification, defensive

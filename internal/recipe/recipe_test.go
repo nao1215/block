@@ -117,7 +117,7 @@ func TestTagRoundTrip(t *testing.T) {
 	if got, ok := src.ParseTag("v1.7.4"); !ok || got != v {
 		t.Errorf("ParseTag(v1.7.4) = %v, %v", got, ok)
 	}
-	for _, bad := range []string{"1.7.4", "nightly-abc", "stable", "v1.7", "vv1.7.4"} {
+	for _, bad := range []string{"1.7.4", "nightly-abc", "stable", "v1", "vv1.7.4"} {
 		if _, ok := src.ParseTag(bad); ok {
 			t.Errorf("ParseTag(%q) accepted", bad)
 		}
@@ -246,6 +246,50 @@ func TestHash(t *testing.T) {
 	}
 	if hermes().Hash() == foundry().Hash() {
 		t.Error("different recipes hash equal")
+	}
+}
+
+func TestTargetMap(t *testing.T) {
+	t.Parallel()
+	// Bitcoin Core spells arm64 differently per OS, so whole platform
+	// strings are mapped instead of {os}/{arch}.
+	src := Source{
+		Type: TypeHTTP, Repo: "bitcoin/bitcoin",
+		URL: "https://example.org/bitcoin-{version}-{target}.tar.gz",
+		Target: map[string]string{
+			"linux/arm64":  "aarch64-linux-gnu",
+			"darwin/arm64": "arm64-apple-darwin",
+		},
+		Bin: []string{"bin/bitcoind"}, StripComponents: 1,
+	}
+	if err := src.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	// With no platforms list, the target keys are the supported platforms.
+	if got := platform.Strings(src.SupportedPlatforms()); strings.Join(got, ",") != "darwin/arm64,linux/arm64" {
+		t.Errorf("SupportedPlatforms() = %v", got)
+	}
+	got, err := src.Render(version.MustParse("29.4"), platform.Platform{OS: "darwin", Arch: "arm64"}, "")
+	if err != nil || got != "https://example.org/bitcoin-29.4-arm64-apple-darwin.tar.gz" {
+		t.Errorf("Render() = %q, %v", got, err)
+	}
+	if _, err := src.Render(version.MustParse("29.4"), platform.Platform{OS: "linux", Arch: "amd64"}, ""); err == nil {
+		t.Error("rendered an unmapped platform")
+	}
+	missing := src
+	missing.Target = nil
+	if err := missing.Validate(); err == nil || !strings.Contains(err.Error(), "no [source.target] table") {
+		t.Errorf("Validate() error = %v", err)
+	}
+	other := src
+	other.Target = map[string]string{"linux/arm64": "aarch64-linux-gnu", "darwin/arm64": "other"}
+	if src.Equal(other) || src.Hash() == other.Hash() {
+		t.Error("target must be part of identity")
+	}
+	bad := src
+	bad.Target = map[string]string{"windows/amd64": "x"}
+	if err := bad.Validate(); err == nil {
+		t.Error("an unsupported platform key was accepted")
 	}
 }
 

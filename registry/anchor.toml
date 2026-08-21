@@ -1,0 +1,21 @@
+# Anchor: the Solana smart-contract framework CLI.
+# https://github.com/coral-xyz/anchor
+#
+# Releases ship one raw executable per platform, not archives.
+name = "anchor"
+ecosystem = "solana"
+
+[source]
+type = "github_release"
+repo = "coral-xyz/anchor"
+asset = "anchor-{version}-{arch}-{os}"
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+bin = ["anchor"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"
