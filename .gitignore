@@ -36,3 +36,6 @@ go.work.sum
 /dist/
 /.coverage/
 cover.html
+
+# Local design notes (not committed)
+/DESIGN.local.md
