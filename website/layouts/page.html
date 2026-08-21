@@ -1,0 +1,9 @@
+{{ define "main" }}
+  <article class="prose">
+    <h1>{{ .Title }}</h1>
+    {{ with .TableOfContents }}
+      {{ if gt (len .) 100 }}<nav class="toc">{{ . }}</nav>{{ end }}
+    {{ end }}
+    {{ .Content }}
+  </article>
+{{ end }}

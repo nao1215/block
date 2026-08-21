@@ -1,0 +1,110 @@
+/* One small stylesheet, no framework: these sites are documentation, and the
+   text is the point. Colors follow the reader's system theme. */
+:root {
+  --bg: #ffffff;
+  --fg: #1c1e21;
+  --muted: #5c6370;
+  --accent: #1f6feb;
+  --border: #d8dee4;
+  --code-bg: #f5f6f8;
+  --max: 46rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --accent: #6cb6ff;
+    --border: #30363d;
+    --code-bg: #161b22;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+    Helvetica, Arial, sans-serif;
+}
+
+a { color: var(--accent); }
+
+header.site {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  align-items: baseline;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+header.site .brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+header.site nav { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+header.site nav a { text-decoration: none; }
+header.site nav a:hover { text-decoration: underline; }
+
+main { padding: 0 1.25rem 4rem; }
+
+.hero {
+  max-width: var(--max);
+  margin: 3rem auto 1rem;
+}
+
+.hero h1 { font-size: 2.25rem; margin: 0 0 0.25rem; }
+.hero .tagline { color: var(--muted); font-size: 1.15rem; margin: 0; }
+
+.prose { max-width: var(--max); margin: 2rem auto; }
+.prose.wide { max-width: 72rem; }
+.prose h1 { font-size: 2rem; }
+.prose h2 { margin-top: 2.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+.prose h3 { margin-top: 2rem; }
+.prose code {
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}
+.prose pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+}
+.prose pre code { background: none; padding: 0; font-size: 0.875rem; }
+
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+  font-size: 0.94rem;
+}
+.prose th, .prose td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+.prose th { background: var(--code-bg); }
+
+.toc { font-size: 0.92rem; border-left: 3px solid var(--border); padding-left: 1rem; }
+.toc ul { margin: 0.3rem 0; padding-left: 1.1rem; }
+
+footer.site {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 1.25rem;
+  text-align: center;
+}

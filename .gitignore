@@ -34,6 +34,11 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Hugo build output for the documentation website
+/website/public/
+/website/resources/
+/website/.hugo_build.lock
+
 # block build and coverage output
 /block
 /dist/

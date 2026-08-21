@@ -1,4 +1,4 @@
-.PHONY: build test e2e registry-live coverage clean vet fmt lint changelog help
+.PHONY: build test e2e registry-live coverage clean vet fmt lint website website-serve changelog help
 
 APP         = block
 VERSION     = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -34,6 +34,12 @@ registry-live: ## Check every registry recipe against the real upstreams (downlo
 
 coverage: ## Combine unit + E2E coverage into cover.out / cover.html (uses a `go build -cover` block; scratch under .coverage/)
 	bash ./scripts/coverage.sh
+
+website: ## Build the documentation website into website/public (requires hugo)
+	cd website && hugo --gc --minify --cleanDestinationDir
+
+website-serve: ## Serve the documentation website locally with live reload
+	cd website && hugo server
 
 vet: ## Start go vet
 	$(GO_VET) $(GO_PACKAGES)

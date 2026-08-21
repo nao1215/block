@@ -589,6 +589,12 @@ user-visible behaviour — output, exit codes, files written, error messages —
 is pinned there against the real binary and an offline fake GitHub. See
 [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+## Related
+
+- [Documentation website](https://nao1215.github.io/block/)
+- [block-registry](https://github.com/nao1215/block-registry) — the canonical source of the recipes block embeds
+- [setup-block](https://github.com/nao1215/setup-block) — GitHub Action that installs block and caches its toolchain
+
 ## License
 
 [MIT](./LICENSE)

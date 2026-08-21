@@ -1,0 +1,53 @@
+# Configuration for the block documentation website (GitHub Pages).
+# The README stays the reference for people reading the repository; these
+# pages are for people who arrive from a search and want to know what block
+# is before installing it.
+baseURL = "https://nao1215.github.io/block/"
+locale = "en-us"
+title = "block"
+disableKinds = ["taxonomy", "term", "rss"]
+enableRobotsTXT = true
+timeZone = "UTC"
+
+[params]
+tagline = "Lock your blockchain toolchain"
+description = "block pins the blockchain CLI tools a project depends on — Foundry, geth, Lighthouse, Agave, Hermes and more — and reproduces the same toolchain locally and in CI."
+repo = "https://github.com/nao1215/block"
+
+[markup.highlight]
+noClasses = false
+style = "github"
+
+[markup.tableOfContents]
+startLevel = 2
+endLevel = 3
+
+[[menus.main]]
+name = "Getting started"
+pageRef = "/getting-started"
+weight = 10
+
+[[menus.main]]
+name = "Commands"
+pageRef = "/commands"
+weight = 20
+
+[[menus.main]]
+name = "CI"
+pageRef = "/ci"
+weight = 30
+
+[[menus.main]]
+name = "Security"
+pageRef = "/security"
+weight = 40
+
+[[menus.main]]
+name = "Registry"
+url = "https://nao1215.github.io/block-registry/"
+weight = 50
+
+[[menus.main]]
+name = "GitHub"
+url = "https://github.com/nao1215/block"
+weight = 60

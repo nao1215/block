@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>
+      {{ if .IsHome }}{{ site.Title }} — {{ site.Params.tagline }}{{ else }}{{ .Title }} · {{ site.Title }}{{ end }}
+    </title>
+    <meta name="description" content="{{ with .Description }}{{ . }}{{ else }}{{ site.Params.description }}{{ end }}" />
+    {{ with resources.Get "css/main.css" | minify | fingerprint }}
+      <link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" />
+    {{ end }}
+    <link rel="canonical" href="{{ .Permalink }}" />
+  </head>
+  <body>
+    <header class="site">
+      <a class="brand" href="{{ "/" | relURL }}">{{ site.Title }}</a>
+      <nav>
+        {{ range site.Menus.main }}
+          <a href="{{ .URL }}"{{ if strings.HasPrefix .URL "http" }} rel="noopener"{{ end }}>{{ .Name }}</a>
+        {{ end }}
+      </nav>
+    </header>
+    <main>{{ block "main" . }}{{ end }}</main>
+    <footer class="site">
+      <p>
+        {{ site.Title }} is part of
+        <a href="https://github.com/nao1215/block">block</a>. MIT licensed.
+      </p>
+    </footer>
+  </body>
+</html>
