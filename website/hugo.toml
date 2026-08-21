@@ -33,6 +33,11 @@ pageRef = "/commands"
 weight = 20
 
 [[menus.main]]
+name = "Compare"
+pageRef = "/comparison"
+weight = 25
+
+[[menus.main]]
 name = "CI"
 pageRef = "/ci"
 weight = 30

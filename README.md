@@ -73,6 +73,48 @@ manager: it manages blockchain CLIs, not language runtimes or your OS.
 - **Single static binary, no runtime dependencies.** No mise, aqua, Nix,
   Docker or package manager is invoked.
 
+## Compared to Docker
+
+A container image is the other way to pin a blockchain toolchain, and for
+some jobs it is the right one. block is not trying to replace it: it does a
+smaller thing, and where they overlap the numbers are worth knowing.
+
+Measured on one Linux machine with warm caches, using the official Foundry
+image:
+
+| | block | `ghcr.io/foundry-rs/foundry:stable` |
+| --- | --- | --- |
+| Download for one tool | 94 MB archive | 622 MB image |
+| On disk after install | 223 MB | — |
+| `forge --version`, five times | 0.031 s total | 1.351 s total (`docker run`) |
+| Preparing an already-installed toolchain (13 tools) | 0.005 s | — |
+
+Where block wins:
+
+- **No per-invocation cost.** About 6 ms versus about 270 ms per `forge`.
+  That is invisible once and tiring in a `forge test` loop.
+- **Native execution on macOS**, where most contract developers work.
+  Docker runs a Linux VM there, and compile-heavy work over a bind mount is
+  where that hurts most. block runs the same official binaries the image
+  ships, directly.
+- **Composing tools.** A repository that needs `forge`, `hermes`, `gaiad`
+  and `solana` either gets a hand-maintained kitchen-sink image or four
+  containers with volumes and ports wired together. block puts four binaries
+  on `PATH`.
+- **Local chain state.** `anvil`, a devnet, a validator's data directory —
+  ordinary local processes and ordinary files, with nothing to map.
+
+Where Docker wins, and block does not compete:
+
+- OS-level isolation, and running untrusted code.
+- Anything that is not a CLI: system libraries, databases, services started
+  together.
+- Reproducing a whole operating system rather than a set of tools.
+
+They also compose. `block sync` inside a `Dockerfile` gives an image whose
+tools are pinned by checksum instead of by whatever a base image tag pointed
+at that day.
+
 ## Install
 
 Download a release archive from the
@@ -291,6 +333,32 @@ block does not guess which.
 no `block.lock`. Its output is deterministic for a given block version, works
 when GitHub is down, and needs no token. Project-local tools are not listed;
 a project's own toolchain is its `block.toml` and `block.lock`.
+
+### Interactive use
+
+There is no shell activation, no shims and nothing written to your shell's
+startup files — block only sets `PATH` for the process it starts. Two
+projects can therefore pin different versions and neither leaks into the
+other:
+
+```console
+$ cd defi && block exec forge --version
+forge Version: 1.5.1-v1.5.1
+$ cd bridge && block exec forge --version
+forge Version: 1.7.1
+```
+
+Both versions live side by side in the store, so switching projects costs
+nothing and there is no "current version" to get out of sync.
+
+The price is typing `block exec`. For a session of hand-run commands, start a
+shell inside the toolchain instead — `exec` runs any command, including your
+shell:
+
+```console
+$ block exec $SHELL
+$ forge test          # the pinned forge, for the rest of this shell
+```
 
 All commands find `block.toml` in the current directory or any parent, so
 they work from a sub-package of a monorepo.

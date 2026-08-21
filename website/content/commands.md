@@ -68,6 +68,21 @@ the toolchain is the one `block.toml` asks for and that the install is intact.
 `SIGINT` and `SIGTERM` reach the child, so a node or a local test network
 shuts down the way it would outside block.
 
+### Interactive use
+
+There is no shell activation, no shims, and nothing written to your shell's
+startup files: block sets `PATH` only for the process it starts. Two projects
+can pin different versions without either leaking into the other, and there is
+no "current version" to switch.
+
+The price is typing `block exec`. For a session of hand-run commands, start a
+shell inside the toolchain — `exec` runs any command, including your shell:
+
+```console
+$ block exec $SHELL
+$ forge test          # the pinned forge, for the rest of this shell
+```
+
 ## `block list`
 
 Answers *what can block install?*, and with an argument, *which tools exist
