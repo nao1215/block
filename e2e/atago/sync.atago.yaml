@@ -781,6 +781,70 @@ scenarios:
 
   # An absolute one, and one spelled the Windows way, are the same refusal:
   # a lockfile is committed on one platform and read on every other.
+  # $BLOCK_HOME is block's own directory, and everything in it is addressed by
+  # a tool name and a version that came out of block.lock. A lockfile arrives
+  # through pull requests and hand edits, so a name that is not a name is
+  # refused before anything under the store is created, moved or removed —
+  # including the shim directory a reader has put on PATH.
+  - name: a hand-edited tool name cannot reach outside its own install
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      # A shim is a symlink to the block binary on Unix and a hard link or a
+      # copy on Windows, so it is looked for by listing the directory rather
+      # than by following it.
+      - assert:
+          dir:
+            path: home/shims
+            glob: "forge${env:BLOCK_EXE}"
+      # Now a lockfile whose tool name is a path.
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "../shims"
+            constraint = "1.7"
+            version = "1.7.4"
+            bin = ["forge"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK1004: block.lock: invalid tool name "../shims"'
+      # Nothing under the store was touched: the shims are still there, and so
+      # is the install they point into.
+      - assert:
+          dir:
+            path: home/shims
+            glob: "forge${env:BLOCK_EXE}"
+      - assert:
+          dir:
+            path: home/tools/foundry
+            count: 1
+
   - name: an absolute or drive-qualified bin entry is refused too
     env: *t1
     steps:
