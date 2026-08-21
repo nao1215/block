@@ -161,6 +161,32 @@ func TestResolveHTTP(t *testing.T) {
 	}
 }
 
+// Some upstreams stamp the build commit into the release asset's own name
+// (vyper, Nethermind, Nimbus), so a github_release resolves the tagged commit
+// too — while still taking the URL and digest from the release itself.
+func TestResolveReleaseAssetNamedAfterTheCommit(t *testing.T) {
+	t.Parallel()
+	vyper := recipe.Source{
+		Type: recipe.TypeGitHubRelease, Repo: "vyperlang/vyper",
+		Asset: "vyper.{version}+commit.{commit}.{os}", Bin: []string{"vyper"},
+	}
+	asset := "vyper.0.4.3+commit.01234567.linux"
+	f := &fake{tags: []string{"v0.4.3"}, releases: map[string]*github.Release{"v0.4.3": rel("v0.4.3", false, asset)}}
+	res, err := Resolve(context.Background(), f, vyper, version.MustParseConstraint("0.4"))
+	if err != nil || res.Commit == "" || res.Release == nil {
+		t.Fatalf("Resolve(commit asset) = %+v, %v", res, err)
+	}
+	art, err := ArtifactFor(res, vyper, platform.Platform{OS: "linux", Arch: "amd64"})
+	if err != nil || art.URL != "https://dl/v0.4.3/"+asset {
+		t.Errorf("ArtifactFor(commit asset) = %+v, %v", art, err)
+	}
+	// A release that resolves but whose commit cannot be read is an error,
+	// not an artifact named after an empty commit.
+	if _, err := Resolve(context.Background(), &failingCommits{fake: *f}, vyper, version.MustParseConstraint("0.4")); err == nil {
+		t.Error("Resolve() must fail when the commit cannot be resolved")
+	}
+}
+
 type failingCommits struct{ fake }
 
 func (f *failingCommits) Commit(context.Context, string, string) (string, error) {

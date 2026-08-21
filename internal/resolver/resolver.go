@@ -4,7 +4,10 @@
 //	tags (git/matching-refs)  ->  parse with recipe  ->  apply constraint
 //	  github_release: newest first, fetch the release by tag, skip draft /
 //	                  pre-release, pick the asset the recipe names
-//	  http:           newest tag wins; resolve the commit if the url needs it
+//	  http:           newest tag wins
+//
+// Either type additionally resolves the tagged commit when its template
+// carries {commit}.
 package resolver
 
 import (
@@ -30,8 +33,8 @@ type Releases interface {
 	Commit(ctx context.Context, repo, ref string) (string, error)
 }
 
-// Resolution is a chosen version plus what the source type needs to name
-// its artifacts: the release for github_release, the commit for http.
+// Resolution is a chosen version plus what naming its artifacts needs: the
+// release for github_release, and the tagged commit for a {commit} template.
 type Resolution struct {
 	Version version.Version
 	Release *github.Release
@@ -88,7 +91,11 @@ func Resolve(ctx context.Context, rel Releases, src recipe.Source, c version.Con
 		if r.Draft || r.Prerelease {
 			continue
 		}
-		return Resolution{Version: vs[i], Release: r}, nil
+		res := Resolution{Version: vs[i], Release: r}
+		if err := resolveCommit(ctx, rel, src, &res); err != nil {
+			return Resolution{}, err
+		}
+		return res, nil
 	}
 	return Resolution{}, fmt.Errorf("no published release of %s matches %q (checked the newest %d tags)", src.Repo, c, lookups)
 }
@@ -97,23 +104,33 @@ func Resolve(ctx context.Context, rel Releases, src recipe.Source, c version.Con
 // an existing pin.
 func Exact(ctx context.Context, rel Releases, src recipe.Source, v version.Version) (Resolution, error) {
 	res := Resolution{Version: v}
-	switch src.Type {
-	case recipe.TypeHTTP:
-		if src.NeedsCommit() {
-			sha, err := rel.Commit(ctx, src.Repo, src.Tag(v))
-			if err != nil {
-				return Resolution{}, fmt.Errorf("commit of %s %s: %w", src.Repo, src.Tag(v), err)
-			}
-			res.Commit = sha
-		}
-	default:
+	if src.Type != recipe.TypeHTTP {
 		r, err := rel.ReleaseByTag(ctx, src.Repo, src.Tag(v))
 		if err != nil {
 			return Resolution{}, fmt.Errorf("release %s of %s: %w", src.Tag(v), src.Repo, err)
 		}
 		res.Release = r
 	}
+	if err := resolveCommit(ctx, rel, src, &res); err != nil {
+		return Resolution{}, err
+	}
 	return res, nil
+}
+
+// resolveCommit fills in the commit a {commit} template needs. Both source
+// types can want it: an http download server names its archives after the
+// build commit, and so do some release assets (vyper, Nethermind, Nimbus).
+func resolveCommit(ctx context.Context, rel Releases, src recipe.Source, res *Resolution) error {
+	if !src.NeedsCommit() {
+		return nil
+	}
+	tag := src.Tag(res.Version)
+	sha, err := rel.Commit(ctx, src.Repo, tag)
+	if err != nil {
+		return fmt.Errorf("commit of %s %s: %w", src.Repo, tag, err)
+	}
+	res.Commit = sha
+	return nil
 }
 
 // ArtifactFor returns the download for p. For github_release the asset must
