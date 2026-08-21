@@ -16,8 +16,11 @@
 package shim
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +34,12 @@ const DirName = "shims"
 // markerName records which block binary the shims point at, so that an
 // upgrade can be noticed without inspecting every file.
 const markerName = ".block-shims"
+
+// markerFormat is the first token of a marker block understands. A marker
+// without it was written by a version that recorded the path alone, which is
+// not enough to notice a binary replaced at the same path, so it is treated
+// as stale rather than trusted.
+const markerFormat = "block-shims 2"
 
 const (
 	dirMode  = 0o755
@@ -79,11 +88,20 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 	if resolved, err := filepath.EvalSymlinks(self); err == nil {
 		self = resolved
 	}
+	// On Windows a shim is a hard link or a copy, so it holds the binary's
+	// contents rather than following its path: an upgrade that replaces
+	// block.exe at the same path — which is what `go install` does — leaves
+	// every shim executing the old build. The marker therefore records what
+	// the binary *is*, not only where it is.
+	digest, err := fileDigest(self)
+	if err != nil {
+		return nil, fmt.Errorf("identifying the block binary at %s: %w", self, err)
+	}
 	dir := Dir(st)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return nil, err
 	}
-	stale, err := markerDiffers(dir, self)
+	stale, err := markerDiffers(dir, self, digest)
 	if err != nil {
 		return nil, err
 	}
@@ -103,17 +121,38 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 		}
 		created = append(created, command)
 	}
+	// The marker is written last, and only once every shim is in place, so a
+	// run that dies part-way leaves a directory whose marker is missing or
+	// still describes the previous binary — both of which the next run reads
+	// as stale and rebuilds from.
 	if stale || len(created) > 0 {
-		if err := os.WriteFile(filepath.Join(dir, markerName), []byte(self+"\n"), fileMode); err != nil {
+		if err := writeMarker(dir, self, digest); err != nil {
 			return created, err
 		}
 	}
 	return created, nil
 }
 
-// markerDiffers reports whether the shims point at a different binary than
-// the one running now.
-func markerDiffers(dir, self string) (bool, error) {
+// fileDigest is the SHA-256 of the file at path. It is what tells one block
+// binary from another when both live at the same path.
+func fileDigest(path string) (string, error) {
+	f, err := os.Open(path) //nolint:gosec // the running binary
+	if err != nil {
+		return "", err
+	}
+	defer f.Close() //nolint:errcheck // read-only
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// markerDiffers reports whether the shims were built from a different block
+// binary than the one running now — a different path, different contents, or
+// a marker too old to say.
+func markerDiffers(dir, self, digest string) (bool, error) {
 	data, err := os.ReadFile(filepath.Join(dir, markerName)) //nolint:gosec // block's own store
 	switch {
 	case os.IsNotExist(err):
@@ -127,7 +166,44 @@ func markerDiffers(dir, self string) (bool, error) {
 	case err != nil:
 		return false, err
 	}
-	return strings.TrimSpace(string(data)) != self, nil
+	wantPath, wantDigest, ok := parseMarker(string(data))
+	if !ok {
+		// Written by a version that recorded the path alone. It cannot say
+		// whether the binary at that path is still the same one, so rebuild.
+		return true, nil
+	}
+	return wantPath != self || wantDigest != digest, nil
+}
+
+// parseMarker reads the marker block writes today. It reports !ok for
+// anything else, including the single-line path a previous version wrote.
+func parseMarker(data string) (path, digest string, ok bool) {
+	lines := strings.Split(strings.TrimSpace(data), "\n")
+	if len(lines) != 3 || strings.TrimSpace(lines[0]) != markerFormat {
+		return "", "", false
+	}
+	path, okPath := strings.CutPrefix(strings.TrimSpace(lines[1]), "path=")
+	digest, okDigest := strings.CutPrefix(strings.TrimSpace(lines[2]), "digest=")
+	if !okPath || !okDigest || path == "" || digest == "" {
+		return "", "", false
+	}
+	return path, digest, true
+}
+
+// writeMarker replaces the marker atomically, so a marker is never read
+// half-written and mistaken for one describing a different binary.
+func writeMarker(dir, self, digest string) error {
+	body := fmt.Sprintf("%s\npath=%s\ndigest=%s\n", markerFormat, self, digest)
+	final := filepath.Join(dir, markerName)
+	tmp := final + ".tmp"
+	if err := os.WriteFile(tmp, []byte(body), fileMode); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, final); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // removeAll empties the shim directory, keeping the directory itself so that

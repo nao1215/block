@@ -130,8 +130,15 @@ func TestEnsureRewritesAfterAnUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(marker)) != want {
-		t.Errorf("marker = %q, want %q", marker, want)
+	gotPath, gotDigest, ok := parseMarker(string(marker))
+	if !ok {
+		t.Fatalf("marker = %q, which block cannot read back", marker)
+	}
+	if gotPath != want {
+		t.Errorf("marker path = %q, want %q", gotPath, want)
+	}
+	if !strings.HasPrefix(gotDigest, "sha256:") {
+		t.Errorf("marker digest = %q, want a sha256", gotDigest)
 	}
 	// A shim directory left without a marker is rebuilt rather than trusted.
 	if err := os.Remove(filepath.Join(Dir(st), markerName)); err != nil {
@@ -204,5 +211,127 @@ func TestEnsureIgnoresHowTheBinaryIsSpelled(t *testing.T) {
 	}
 	if len(created) != 0 {
 		t.Errorf("created = %v, want the shims left alone", created)
+	}
+}
+
+// `go install` replaces block at the path it already lives at, by writing a
+// new file and renaming it over the old one. On Windows a shim is a hard link
+// or a copy, so it holds the old contents; the marker used to record the path
+// alone, agreed with itself, and left every shim running the previous build.
+func TestEnsureRewritesWhenTheBinaryIsReplacedInPlace(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "block"+store.ExeSuffix)
+	writeBinary := func(body string) {
+		t.Helper()
+		// Written beside and renamed over, the way an installer replaces a
+		// running program: the path is unchanged and the contents are not.
+		tmp := binary + ".new"
+		if err := os.WriteFile(tmp, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(tmp, binary); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st := &store.Store{Root: t.TempDir()}
+	commands := []string{"cast", "forge"}
+
+	writeBinary("#!/bin/sh\necho old\n")
+	created, err := Ensure(st, binary, commands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(created, ",") != "cast,forge" {
+		t.Fatalf("first Ensure created %v, want both shims", created)
+	}
+
+	// Same path, different program.
+	writeBinary("#!/bin/sh\necho new\n")
+	created, err = Ensure(st, binary, commands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(created, ",") != "cast,forge" {
+		t.Errorf("created = %v, want every shim rewritten after an in-place upgrade", created)
+	}
+	for _, command := range commands {
+		got, err := os.ReadFile(filepath.Join(Dir(st), FileName(command)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(got), "echo new") {
+			t.Errorf("the %s shim still runs the old binary: %q", command, got)
+		}
+	}
+
+	// And a third run with nothing changed writes nothing: noticing an
+	// upgrade must not mean rebuilding on every sync.
+	created, err = Ensure(st, binary, commands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 0 {
+		t.Errorf("created = %v, want nothing rebuilt when the binary is unchanged", created)
+	}
+}
+
+// A marker written by a version that recorded only the path cannot say
+// whether the binary at that path is still the same one, so it is not
+// trusted.
+func TestEnsureRebuildsFromAnUnreadableMarker(t *testing.T) {
+	t.Parallel()
+	binary := self(t)
+	tests := []struct {
+		name   string
+		marker string
+	}{
+		{"the previous format, a bare path", "PATH\n"},
+		{"truncated mid-write", "block-shims 2\npath=PATH\n"},
+		{"a format from the future", "block-shims 9\npath=PATH\ndigest=sha256:00\n"},
+		{"an empty digest", "block-shims 2\npath=PATH\ndigest=\n"},
+		{"empty", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			st := &store.Store{Root: t.TempDir()}
+			if _, err := Ensure(st, binary, []string{"forge"}); err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := filepath.EvalSymlinks(binary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := strings.ReplaceAll(tt.marker, "PATH", resolved)
+			if err := os.WriteFile(filepath.Join(Dir(st), markerName), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			created, err := Ensure(st, binary, []string{"forge"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(created, ",") != "forge" {
+				t.Errorf("created = %v, want the shims rebuilt from a marker block cannot read", created)
+			}
+		})
+	}
+}
+
+// The marker is written by rename, so a reader never sees half of one.
+func TestEnsureLeavesNoTemporaryMarker(t *testing.T) {
+	t.Parallel()
+	st := &store.Store{Root: t.TempDir()}
+	if _, err := Ensure(st, self(t), []string{"forge"}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(Dir(st))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("a temporary file was left behind: %s", e.Name())
+		}
 	}
 }
