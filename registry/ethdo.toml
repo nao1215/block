@@ -3,6 +3,12 @@
 #
 # Upstream publishes a tarball per Unix platform; the Windows build is a .zip,
 # which one asset template cannot express alongside them.
+#
+# The macOS tarball is called ethdo-<version>-darwin-amd64.tar.gz and holds a
+# 64-bit arm64 Mach-O binary. That is upstream's name, so the platform strings
+# are mapped whole rather than composed from os and arch: the Apple Silicon
+# build is what an Apple Silicon machine gets, and there is no Intel macOS
+# build to offer an Intel Mac.
 name = "ethdo"
 ecosystems = ["ethereum"]
 description = "Command-line client for Ethereum consensus-layer accounts and validators"
@@ -10,6 +16,10 @@ description = "Command-line client for Ethereum consensus-layer accounts and val
 [source]
 type = "github_release"
 repo = "wealdtech/ethdo"
-asset = "ethdo-{version}-{os}-{arch}.tar.gz"
-platforms = ["linux/amd64", "linux/arm64", "darwin/amd64"]
+asset = "ethdo-{version}-{target}.tar.gz"
 bin = ["ethdo"]
+
+[source.target]
+"linux/amd64" = "linux-amd64"
+"linux/arm64" = "linux-arm64"
+"darwin/arm64" = "darwin-amd64"

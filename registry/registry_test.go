@@ -165,9 +165,11 @@ var recipes = map[string]want{
 	"circom": {
 		ecosystems: []string{"zk"}, description: "Compiler for the circom zero-knowledge circuit language",
 		sourceKind: recipe.TypeGitHubRelease, sample: "2.2.3",
+		// The macOS asset is named for Intel and is an arm64 binary, so the
+		// recipe maps darwin/arm64 onto it and claims no darwin/amd64.
 		artifacts: map[string]string{
 			"linux/amd64":   "circom-linux-amd64",
-			"darwin/amd64":  "circom-macos-amd64",
+			"darwin/arm64":  "circom-macos-amd64",
 			"windows/amd64": "circom-windows-amd64.exe",
 		},
 		bins: []string{"circom"},
@@ -240,10 +242,11 @@ var recipes = map[string]want{
 	"ethdo": {
 		ecosystems: []string{"ethereum"}, description: "Command-line client for Ethereum consensus-layer accounts and validators",
 		sourceKind: recipe.TypeGitHubRelease, sample: "1.39.1",
+		// Same as circom: the darwin-amd64 tarball holds an arm64 binary.
 		artifacts: map[string]string{
 			"linux/amd64":  "ethdo-1.39.1-linux-amd64.tar.gz",
 			"linux/arm64":  "ethdo-1.39.1-linux-arm64.tar.gz",
-			"darwin/amd64": "ethdo-1.39.1-darwin-amd64.tar.gz",
+			"darwin/arm64": "ethdo-1.39.1-darwin-amd64.tar.gz",
 		},
 		bins: []string{"ethdo"},
 	},

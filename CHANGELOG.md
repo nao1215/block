@@ -86,6 +86,10 @@ is rather than what changed.
   registry records it per tool — see the Platforms column in
   [doc/tools.md](./doc/tools.md). block reports a platform an upstream does
   not ship for rather than substituting something else.
+- The registry records what an upstream actually publishes rather than what it
+  names: `circom` and `ethdo` publish one macOS build each, called `amd64` and
+  containing an arm64 binary, so they are offered to Apple Silicon and refused
+  on Intel instead of installing something that will not start.
 - Content-addressed download cache and per-version installs under
   `$BLOCK_HOME`, shared across projects.
 - `BLK` diagnostic codes on every refusal, a `block explain <code>` lookup and
