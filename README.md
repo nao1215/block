@@ -1,23 +1,53 @@
-# block — lock your blockchain toolchain
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
+<!-- ALL-CONTRIBUTORS-BADGE:END -->
 
+![Coverage](doc/coverage.svg)
+[![Build](https://github.com/nao1215/block/actions/workflows/build.yml/badge.svg)](https://github.com/nao1215/block/actions/workflows/build.yml)
 [![MultiPlatformUnitTest](https://github.com/nao1215/block/actions/workflows/unit_test.yml/badge.svg)](https://github.com/nao1215/block/actions/workflows/unit_test.yml)
 [![E2E](https://github.com/nao1215/block/actions/workflows/e2e.yml/badge.svg)](https://github.com/nao1215/block/actions/workflows/e2e.yml)
-[![golangci-lint](https://github.com/nao1215/block/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/nao1215/block/actions/workflows/golangci-lint.yml)
-![Coverage](doc/coverage.svg)
+[![reviewdog](https://github.com/nao1215/block/actions/workflows/reviewdog.yml/badge.svg)](https://github.com/nao1215/block/actions/workflows/reviewdog.yml)
+[![tested with atago](https://img.shields.io/badge/tested%20with-atago-7c3aed?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTMuNiA0LjIgMTEuOSAxMmwtOC4zIDcuOC0xLjktMi4yTDcuOSAxMiAxLjcgNi40eiIvPjxyZWN0IGZpbGw9IiNmZmYiIHg9IjEyLjYiIHk9IjE3LjIiIHdpZHRoPSI5LjciIGhlaWdodD0iMi44IiByeD0iMS40Ii8%2BPC9zdmc%2B&logoColor=white)](https://github.com/nao1215/atago)
+[![Go Reference](https://pkg.go.dev/badge/github.com/nao1215/block.svg)](https://pkg.go.dev/github.com/nao1215/block)
+![GitHub](https://img.shields.io/github/license/nao1215/block)
+[![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/nao1215/block/total)](https://github.com/nao1215/block/releases)
 
-`block` pins the blockchain CLI tools a repository depends on — Foundry, an IBC
-relayer, whatever your chains need — and reproduces exactly the same toolchain
-on every developer machine and in CI.
+<p align="center">
+  <img src="./doc/img/block-logo.png" alt="block logo" width="420" />
+</p>
+
+block pins the blockchain CLI tools a repository depends on — Foundry, geth, Lighthouse, Agave, Gaia, an IBC relayer, whatever your chains need — and reproduces exactly the same toolchain on every developer machine and in CI. Tools are declared in `block.toml`, pinned by URL and SHA-256 in `block.lock`, and installed from that lockfile alone. It is a single static binary: no mise, aqua, Nix, Docker or package manager is involved.
+
+Documentation: https://nao1215.github.io/block/
+
+## Try it in 30 seconds
+
+If you have Go, paste this into an empty directory:
+
+```shell
+printf '[tools]\nfoundry = "1.7"\n' > block.toml
+go run github.com/nao1215/block@latest lock
+go run github.com/nao1215/block@latest exec forge --version
+```
+
+```text
+foundry  locked 1.7.1
+wrote block.lock
+forge Version: 1.7.1-v1.7.1
+```
+
+Two files now say what your toolchain is. Commit both; everyone else — and CI —
+runs `block sync` and gets the same binaries, byte for byte.
 
 ```console
 $ git clone <project> && cd <project>
 $ block sync
-foundry  1.7.4   installed
+foundry  1.7.1   installed
 hermes   1.13.3  installed
 $ block exec forge test
 ```
 
-Three commands, one direction:
+## Three commands, one direction
 
 ```text
 block.toml  ──block lock──▶  block.lock  ──block sync──▶  installed toolchain  ──block exec──▶  command
@@ -55,33 +85,41 @@ solc              solc                                          The Solidity sma
 vyper             vyper                                         The Vyper smart-contract compiler, a Pythonic language for the EVM
 ```
 
-block resolves the tools a project needs, fetches and verifies them, pins
-them, and puts them on `PATH` for the command you run. How a tool is
-obtained — a GitHub release asset, an archive on the upstream's own download
-server — is the registry's business, not yours. block is not a package
-manager: it manages blockchain CLIs, not language runtimes or your OS.
+How a tool is obtained — a GitHub release asset, an archive on the upstream's
+own download server — is the registry's business, not yours. block is not a
+package manager: it manages blockchain CLIs, not language runtimes or your OS.
+
+The [cookbook](./doc/cookbook.md) is the practical reference — 23 recipes from
+"pin a toolchain in five lines" to "read a refusal" — and
+[doc/tools.md](./doc/tools.md) lists every CLI block can install.
+
+## Supported OS (unit testing with GitHub Actions)
+
+- Linux
+- macOS
+- Windows
 
 ## Why block
 
-- **Blockchain CLIs, whatever their distribution.** Bitcoin Core, Foundry,
+- Blockchain CLIs, whatever their distribution. Bitcoin Core, Foundry,
   geth, reth, Lighthouse, Agave, Anchor, Gaia, CometBFT, Hermes — release
   assets, raw executables and vendor download servers alike, resolved and
   verified the same way.
-- **Project-local, not machine-global.** Each repository declares its own
+- Project-local, not machine-global. Each repository declares its own
   toolchain; two projects on one machine can use different Foundry versions
   without fighting.
-- **Lockfile-driven reproducibility.** `block.lock` records the artifact URL
+- Lockfile-driven reproducibility. `block.lock` records the artifact URL
   and checksum for every platform you care about. `sync` installs exactly
   that, or fails.
-- **CI is a first-class user.** `block sync` is the same command with the same
+- CI is a first-class user. `block sync` is the same command with the same
   meaning locally and in CI: it never resolves, never rewrites the lockfile,
   and fails loudly on any drift. No special flag.
-- **Upstream releases are detected, not catalogued.** The registry holds a
+- Upstream releases are detected, not catalogued. The registry holds a
   *recipe* per tool (repository, asset naming, executables), not a list of
   versions. A new upstream release needs no registry change.
-- **Multi-chain repositories are one toolchain.** EVM and IBC tools sit in one
+- Multi-chain repositories are one toolchain. EVM and IBC tools sit in one
   manifest and one lockfile.
-- **Single static binary, no runtime dependencies.** No mise, aqua, Nix,
+- Single static binary, no runtime dependencies. No mise, aqua, Nix,
   Docker or package manager is invoked.
 
 ## Compared to Docker
@@ -102,17 +140,17 @@ image:
 
 Where block wins:
 
-- **No per-invocation cost.** About 6 ms versus about 270 ms per `forge`.
+- No per-invocation cost. About 6 ms versus about 270 ms per `forge`.
   That is invisible once and tiring in a `forge test` loop.
-- **Native execution on macOS**, where most contract developers work.
+- Native execution on macOS, where most contract developers work.
   Docker runs a Linux VM there, and compile-heavy work over a bind mount is
   where that hurts most. block runs the same official binaries the image
   ships, directly.
-- **Composing tools.** A repository that needs `forge`, `hermes`, `gaiad`
+- Composing tools. A repository that needs `forge`, `hermes`, `gaiad`
   and `solana` either gets a hand-maintained kitchen-sink image or four
   containers with volumes and ports wired together. block puts four binaries
   on `PATH`.
-- **Local chain state.** `anvil`, a devnet, a validator's data directory —
+- Local chain state. `anvil`, a devnet, a validator's data directory —
   ordinary local processes and ordinary files, with nothing to map.
 
 Where Docker wins, and block does not compete:
@@ -128,18 +166,51 @@ at that day.
 
 ## Install
 
-Download a release archive from the
-[releases page](https://github.com/nao1215/block/releases) or build from source:
+block is a single static binary. Nothing below is a runtime dependency — they
+are only ways to get the binary.
+
+### go install
 
 ```shell
 go install github.com/nao1215/block@latest
 ```
 
-Homebrew:
+Building from source needs Go 1.25 or newer.
+
+### Homebrew (macOS, Linux)
 
 ```shell
-brew install nao1215/tap/block
+brew install --cask nao1215/tap/block
 ```
+
+### Scoop (Windows)
+
+```shell
+scoop bucket add nao1215 https://github.com/nao1215/block
+scoop install nao1215/block
+```
+
+### Prebuilt packages and archives
+
+The [releases page](https://github.com/nao1215/block/releases) carries `.deb`,
+`.rpm` and `.apk` packages plus archives for Linux, macOS and Windows on x86-64
+and arm64.
+
+```shell
+curl -sSfL https://github.com/nao1215/block/releases/download/v0.1.0/block_0.1.0_linux_amd64.tar.gz | tar xz
+sudo install -m 0755 block /usr/local/bin/block
+```
+
+### GitHub Actions
+
+```yaml
+- uses: nao1215/setup-block@v0
+  with:
+    sync: "true"
+```
+
+[setup-block](https://github.com/nao1215/setup-block) installs the CLI, verifies
+its checksum, exports `$BLOCK_HOME` and caches the store on your `block.lock`.
 
 ## Quick start
 
@@ -153,18 +224,18 @@ hermes = "1.13"
 
 ```console
 $ block lock
-downloading https://github.com/foundry-rs/foundry/releases/download/v1.7.4/foundry_v1.7.4_linux_amd64.tar.gz
+downloading https://github.com/foundry-rs/foundry/releases/download/v1.7.1/foundry_v1.7.1_linux_amd64.tar.gz
 downloading https://github.com/informalsystems/hermes/releases/download/v1.13.3/hermes-v1.13.3-x86_64-unknown-linux-gnu.tar.gz
-foundry  locked 1.7.4
+foundry  locked 1.7.1
 hermes   locked 1.13.3
 wrote block.lock
 
 $ block sync
-foundry  1.7.4   installed
+foundry  1.7.1   installed
 hermes   1.13.3  installed
 
 $ block exec forge --version
-forge Version: 1.7.4-stable
+forge Version: 1.7.1-v1.7.1
 ```
 
 Commit both `block.toml` and `block.lock`.
@@ -191,11 +262,14 @@ re-locking on a laptop does not drop the artifact CI needs.)
 | Command | Resolves versions | Writes `block.lock` | Downloads | Installs | Runs your command |
 | --- | :-: | :-: | :-: | :-: | :-: |
 | `block lock [tool...]` | yes | yes | only artifacts whose upstream publishes no digest | no | no |
-| `block lock --check` | yes | **no** | **no** | no | no |
-| `block sync` | **no** | **no** | locked URLs, when not cached | yes | no |
-| `block exec <cmd>` | **no** | **no** | **no** | **no** | yes |
-| `block list [ecosystem]` | **no** | **no** | **no** | **no** | no |
-| `forge`, `cast`, … (a shim) | **no** | **no** | **no** | **no** | yes |
+| `block lock --check` | yes | never | never | no | no |
+| `block sync` | never | never | locked URLs, when not cached | yes | no |
+| `block exec <cmd>` | never | never | never | never | yes |
+| `block list [ecosystem]` | never | never | never | never | no |
+| `forge`, `cast`, … (a shim) | never | never | never | never | yes |
+
+"never" is a guarantee, not a default: no flag turns any of those cells into a
+yes.
 
 ### `block lock`
 
@@ -209,8 +283,8 @@ $ block lock              # every tool
 $ block lock hermes       # re-resolve hermes, keep the other pins
 ```
 
-Output is one line per tool: `locked 1.7.4` for a new pin, `1.7.4 -> 1.7.5`
-for a moved one, `1.7.4` for an unchanged one.
+Output is one line per tool: `locked 1.7.1` for a new pin, `1.7.1 -> 1.7.2`
+for a moved one, `1.7.1` for an unchanged one.
 
 When the upstream publishes a checksum (GitHub records a sha256 for every
 release asset uploaded since 2025), `lock` writes it down without
@@ -224,7 +298,7 @@ Performs the same resolution as `lock` but writes nothing:
 
 ```console
 $ block lock --check
-foundry  1.7.4 -> 1.7.5
+foundry  1.7.1 -> 1.7.2
 hermes   1.13.3 (up-to-date)
 $ echo $?
 2
@@ -283,10 +357,10 @@ block: block.lock is stale; run "block lock"
   hermes is declared in block.toml but missing from block.lock
 
 $ block exec forge test
-block: foundry 1.7.4 is not installed; run "block sync"
+block: foundry 1.7.1 is not installed; run "block sync"
 
 $ block exec forge test
-block: foundry 1.7.4 is damaged: executable "cast" is missing; run "block sync"
+block: foundry 1.7.1 is damaged: executable "cast" is missing; run "block sync"
 ```
 
 Signals reach the tool, not just block: `SIGINT` and `SIGTERM` are forwarded
@@ -381,7 +455,7 @@ A shim does exactly what `block exec` does, and no more:
 
 ```console
 $ forge test
-block: foundry 1.7.4 is not installed; run "block sync"
+block: foundry 1.7.1 is not installed; run "block sync"
 
 $ forge test
 block: block.lock is stale; run "block lock"
@@ -417,8 +491,8 @@ foundry = "1.7"      # newest 1.7.x
 hermes = "1"         # newest 1.x.y
 ```
 
-A version is a **dotted prefix**: `"1"` means the newest `1.x.y`, `"1.7"` the
-newest `1.7.y`, `"1.7.4"` exactly that release. There are no operators or
+A version is a dotted prefix: `"1"` means the newest `1.x.y`, `"1.7"` the
+newest `1.7.y`, `"1.7.1"` exactly that release. There are no operators or
 ranges, and pre-releases (`1.8.0-rc1`) are never selected.
 
 Tool names are looked up in the built-in [registry](./registry). A tool that
@@ -463,17 +537,17 @@ version = 1
 [[tools]]
 name = "foundry"
 constraint = "1.7"
-version = "1.7.4"
+version = "1.7.1"
 bin = ["forge", "cast", "anvil", "chisel"]
 
 [[tools.artifacts]]
 platform = "darwin/arm64"
-url = "https://github.com/foundry-rs/foundry/releases/download/v1.7.4/foundry_v1.7.4_darwin_arm64.tar.gz"
+url = "https://github.com/foundry-rs/foundry/releases/download/v1.7.1/foundry_v1.7.1_darwin_arm64.tar.gz"
 sha256 = "…"
 
 [[tools.artifacts]]
 platform = "linux/amd64"
-url = "https://github.com/foundry-rs/foundry/releases/download/v1.7.4/foundry_v1.7.4_linux_amd64.tar.gz"
+url = "https://github.com/foundry-rs/foundry/releases/download/v1.7.1/foundry_v1.7.1_linux_amd64.tar.gz"
 sha256 = "…"
 ```
 
@@ -501,7 +575,20 @@ URL is unchanged, so an unchanged artifact is never fetched twice.
 ## CI
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v6
+- uses: nao1215/setup-block@v0
+  with:
+    sync: "true"
+- run: block exec forge test
+```
+
+[setup-block](https://github.com/nao1215/setup-block) installs the CLI, verifies
+its checksum, exports `$BLOCK_HOME`, caches the store on your `block.lock` and
+runs `sync`. Without the action — on GitLab CI, CircleCI, or anywhere else —
+the same thing is three lines:
+
+```yaml
+- uses: actions/checkout@v6
 - name: Install block
   env:
     BLOCK_VERSION: 0.1.0
@@ -518,7 +605,12 @@ URL is unchanged, so an unchanged artifact is never fetched twice.
 
 There is no CI flag: `block sync` is always a locked operation. `GITHUB_TOKEN`
 is only relevant to `block lock`, which calls the GitHub API; `sync` and
-`exec` do not.
+`exec` do not, so a job that only builds and tests cannot be broken by a rate
+limit.
+
+The [CI page](https://nao1215.github.io/block/ci/) has the rest: matrices
+across platforms, cache keys, guarding the lockfile in a pull request, a
+scheduled job that opens the bump PR, and GitLab/CircleCI/Docker equivalents.
 
 ## Store and cache
 
@@ -625,14 +717,14 @@ types alone (`block list <ecosystem>` shows the same, from the binary):
 | icp / fabric | `dfx`, `fabric` |
 | zksync / zk / ipfs | `anvil-zksync`, `circom`, `kubo` |
 
-Platform coverage follows the upstream: `geth` and `erigon` ship Linux only,
-`reth` and `lighthouse` have no macOS x86-64 build, `gaia` builds amd64 only,
-`medusa` builds three platforms and no more. Windows builds exist for
-`cometbft`, `solc`, `agave`, `anchor`, `surfpool`, `aptos`, `stellar`,
-`fabric`, `near-cli`, `medusa`, `vyper`, `circom`, `prysm` and `nimbus-eth2`.
-block reports anything else as an unsupported platform rather than
-substituting something else. See
-[registry/README.md](./registry/README.md) for the recipe schema.
+Which platforms each of them has is the upstream's decision, and the registry
+records it: `geth` and `erigon` ship Linux only, `lighthouse` has no macOS
+x86-64 build, `gaia` builds amd64 only. block reports anything else as an
+unsupported platform rather than substituting something else.
+[doc/tools.md](./doc/tools.md) is the full catalogue with commands and platform
+coverage per tool — generated from the recipes, so it cannot drift from what
+the binary will actually do. See [registry/README.md](./registry/README.md) for
+the recipe schema.
 
 The recipes are written and reviewed in their own repository,
 [block-registry](https://github.com/nao1215/block-registry). `registry/` here
@@ -701,7 +793,7 @@ sha256sum --check --ignore-missing checksums.txt
 
 ## Non-goals
 
-block deliberately does **not**:
+block deliberately does not:
 
 - act as a general package manager (no npm, cargo, pip, apt, brew sources);
 - judge protocol compatibility between tools (client/consensus pairs, hard
@@ -721,6 +813,8 @@ make test       # unit tests with -race
 make e2e        # offline end-to-end suite (needs atago)
 make lint       # golangci-lint v2
 make coverage   # unit + e2e coverage combined into cover.out
+make doc        # regenerate doc/tools.md from the registry recipes
+make website    # build the documentation site into website/public (needs hugo)
 ```
 
 The E2E suite ([e2e/atago](./e2e/atago)) is the CLI contract: every
@@ -731,9 +825,42 @@ is pinned there against the real binary and an offline fake GitHub. See
 ## Related
 
 - [Documentation website](https://nao1215.github.io/block/)
+- [Cookbook](./doc/cookbook.md) — recipes indexed by task
+- [Tools](./doc/tools.md) — every CLI block can install, by blockchain system
 - [block-registry](https://github.com/nao1215/block-registry) — the canonical source of the recipes block embeds
 - [setup-block](https://github.com/nao1215/setup-block) — GitHub Action that installs block and caches its toolchain
 
-## License
+## The name
 
-[MIT](./LICENSE)
+A block is the unit a chain is made of, and to block is to hold something
+still. The tool does the second to the tools that build the first.
+
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](./CONTRIBUTING.md).
+Contributions are not only about code: a GitHub Star also motivates
+development.
+
+## LICENSE
+
+The block project is licensed under the terms of [MIT LICENSE](./LICENSE).
+
+## Contributors ✨
+
+Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://debimate.jp/"><img src="https://avatars.githubusercontent.com/u/22737008?v=4?s=75" width="75px;" alt="CHIKAMATSU Naohiro"/><br /><sub><b>CHIKAMATSU Naohiro</b></sub></a><br /><a href="https://github.com/nao1215/block/commits?author=nao1215" title="Code">💻</a> <a href="https://github.com/nao1215/block/commits?author=nao1215" title="Documentation">📖</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
