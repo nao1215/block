@@ -89,6 +89,15 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      # One recipe — besu — installs a Java application: what upstream ships
+      # is a JAR with launcher scripts, and the launcher refuses to start
+      # without a recent JVM. block installs the client, not the runtime, so
+      # the runtime is the runner's job for the probe to mean anything.
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "25"
+
       # A recipe is only checked on the platform it claims to ship for, so the
       # runner has to be the platform the leg says it is. A silently wrong
       # image would turn the whole leg into skips that read as passes.

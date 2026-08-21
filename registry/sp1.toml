@@ -1,0 +1,16 @@
+# SP1: Succinct's RISC-V zkVM, driven from the command line as cargo prove.
+# https://github.com/succinctlabs/sp1
+#
+# The release also carries a GPU prover server and an SDK tarball; the CLI is
+# the cargo_prove archive, which holds the single cargo-prove executable at
+# its root. There is no Windows build.
+name = "sp1"
+ecosystems = ["zk", "ethereum"]
+description = "SP1 zkVM toolchain: build, prove and verify RISC-V programs as cargo prove"
+
+[source]
+type = "github_release"
+repo = "succinctlabs/sp1"
+asset = "cargo_prove_v{version}_{os}_{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["cargo-prove"]

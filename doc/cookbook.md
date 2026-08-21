@@ -937,7 +937,7 @@ block version
 
 ```text
 block v0.1.0
-registry 5f753c063013 (45 recipes from https://github.com/nao1215/block-registry)
+registry 40fe35d71da6 (47 recipes from https://github.com/nao1215/block-registry)
 ```
 
 The recipes are vendored from

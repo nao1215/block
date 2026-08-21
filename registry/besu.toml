@@ -1,0 +1,24 @@
+# Besu: the Java Ethereum execution client, and its evmtool EVM debugger.
+# https://github.com/besu-eth/besu
+#
+# One distribution serves every platform, because what is shipped is a JAR
+# with launcher scripts rather than a native binary. A Java runtime has to be
+# on the machine already — 26.8.0 asks for 25 or newer, and says so when it is
+# not there; block installs the client, not a JVM. Windows is left out because
+# the launchers there are besu.bat and evmtool.bat, which is not a name block
+# can resolve from one lockfile written on any platform.
+#
+# Tags carry no "v" (26.8.0), and release candidates are tagged 26.6.1-RC1,
+# which block reads as a pre-release and never selects.
+name = "besu"
+ecosystems = ["ethereum"]
+description = "Ethereum execution client written in Java, with the evmtool EVM debugger"
+
+[source]
+type = "github_release"
+repo = "besu-eth/besu"
+tag_prefix = ""
+asset = "besu-{version}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["bin/besu", "bin/evmtool"]
