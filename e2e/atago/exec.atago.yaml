@@ -1,5 +1,6 @@
-# `block exec` runs a command with the locked toolchain first on PATH and
-# mirrors its exit status. Run with: make e2e
+# `block exec` runs a command with the installed toolchain first on PATH and
+# mirrors its exit status. It never downloads, installs or resolves.
+# Run with: make e2e
 version: "1"
 
 suite:
@@ -17,19 +18,24 @@ scenarios:
             [tools]
             foundry = "1.7"
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - run:
           command: block exec forge test -vvv
       - assert:
           exit_code: 0
           stdout:
             equals: |
-              forge 1.7.1 (fake)
+              forge 1.7.4 (fake)
               args: test -vvv
           stderr:
             equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
 
-  - name: every executable the recipe lists is on PATH
+  - name: every executable of every locked tool is on PATH
     env: *t1
     steps:
       - fixture:
@@ -39,17 +45,18 @@ scenarios:
             foundry = "1.7"
             hermes = "1.13"
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - run:
           command: block exec cast --version
       - assert:
           stdout:
-            contains: "cast 1.7.1 (fake)"
+            contains: "cast 1.7.4 (fake)"
       - run:
           command: block exec anvil
       - assert:
           stdout:
-            contains: "anvil 1.7.1 (fake)"
+            contains: "anvil 1.7.4 (fake)"
       - run:
           command: block exec hermes version
       - assert:
@@ -65,7 +72,8 @@ scenarios:
             [tools]
             foundry = "1.7"
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - run:
           command: block exec forge --exit 3
       - assert:
@@ -82,7 +90,8 @@ scenarios:
             [tools]
             foundry = "1.7"
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - run:
           command: block exec -- forge --version
       - assert:
@@ -90,7 +99,7 @@ scenarios:
           stdout:
             contains: "args: --version"
 
-  - name: non-managed commands run with the toolchain injected into PATH
+  - name: scripts and make-style commands see the toolchain through PATH
     env: *t1
     steps:
       - fixture:
@@ -98,18 +107,27 @@ scenarios:
           content: |
             [tools]
             foundry = "1.7"
-      - run:
-          command: block sync
-      # A Makefile or script that calls forge sees the locked one.
+            hermes = "1.13"
+      - fixture:
+          file: scripts/integration-test.sh
+          content: |
+            #!/bin/sh
+            set -e
+            command -v forge
+            forge test
+            hermes start
       - run:
           shell: true
-          command: block exec sh -c 'command -v forge && forge'
+          command: chmod +x scripts/integration-test.sh && block lock && block sync
+      - run:
+          command: block exec ./scripts/integration-test.sh
       - assert:
           exit_code: 0
           stdout:
             contains:
-              - "/home/tools/foundry/1.7.1-"
-              - "forge 1.7.1 (fake)"
+              - "/home/tools/foundry/1.7.4-"
+              - "forge 1.7.4 (fake)"
+              - "hermes 1.13.0 (fake)"
 
   - name: exec works from a subdirectory of the project
     env: *t1
@@ -123,7 +141,8 @@ scenarios:
           file: contracts/.keep
           content: ""
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - run:
           shell: true
           command: cd contracts && block exec forge build
@@ -145,7 +164,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: block.lock not found (run "block sync" first)
+            equals: 'block: block.lock not found; run "block lock" and "block sync"
 
 '
       - run:
@@ -155,13 +174,35 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: foundry 1.7.1 is not installed (run "block sync")
+            equals: 'block: foundry 1.7.4 is not installed; run "block sync"
 
 '
+          changes:
+            created: []
       - assert:
           dir:
             path: home/tools
             exists: false
+
+  - name: exec needs no network
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync
+      - run:
+          command: block exec forge
+          env:
+            BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.7.4 (fake)"
 
   - name: exec of a command that exists nowhere fails with exit 1
     env: *t1
@@ -172,7 +213,8 @@ scenarios:
             [tools]
             foundry = "1.7"
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - run:
           command: block exec no-such-tool --flag
       - assert:
@@ -196,4 +238,4 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains: "block exec forge test"
+            contains: "block exec make test"

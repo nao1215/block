@@ -205,3 +205,38 @@ func TestEqual(t *testing.T) {
 		t.Error("map value change not detected")
 	}
 }
+
+func TestHash(t *testing.T) {
+	t.Parallel()
+	a, b := foundry(), foundry()
+	if a.Hash() != b.Hash() || !strings.HasPrefix(a.Hash(), "sha256:") {
+		t.Fatalf("Hash() unstable: %s vs %s", a.Hash(), b.Hash())
+	}
+	b.Platforms = []string{"darwin/arm64", "linux/amd64"}
+	if a.Hash() != b.Hash() {
+		t.Error("platform order must not change the hash")
+	}
+	v := "v"
+	b.TagPrefix = &v
+	if a.Hash() != b.Hash() {
+		t.Error("explicit default prefix must not change the hash")
+	}
+	for i, f := range []func(*Source){
+		func(s *Source) { s.Repo = "other/repo" },
+		func(s *Source) { s.Asset = "x_{version}.zip" },
+		func(s *Source) { s.Bin = []string{"cast", "forge"} },
+		func(s *Source) { s.Platforms = []string{"linux/amd64"} },
+		func(s *Source) { s.OS = map[string]string{"linux": "Linux"} },
+		func(s *Source) { s.Arch = map[string]string{"amd64": "x64"} },
+		func(s *Source) { e := ""; s.TagPrefix = &e },
+	} {
+		c := foundry()
+		f(&c)
+		if a.Hash() == c.Hash() {
+			t.Errorf("case %d: differing sources hash equal", i)
+		}
+	}
+	if hermes().Hash() == foundry().Hash() {
+		t.Error("different recipes hash equal")
+	}
+}

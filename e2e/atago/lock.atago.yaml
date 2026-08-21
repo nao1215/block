@@ -1,7 +1,7 @@
-# `block lock` resolves block.toml into block.lock. The fake GitHub exposes
-# two points in time: ${env:FAKEGH_URL}/t1 (foundry <= 1.7.1, hermes 1.13.0,
-# example/foo 1.2.0) and ${env:FAKEGH_URL} (foundry 1.7.4, hermes 1.13.1,
-# foo 1.2.3). Run with: make e2e
+# `block lock` resolves block.toml into block.lock and is the only command that
+# moves a pin. ${env:FAKEGH_URL}/t1 is the older upstream (foundry 1.7.4,
+# hermes 1.13.0, example/foo 1.2.0); ${env:FAKEGH_URL} has foundry 1.7.5,
+# hermes 1.13.1 and foo 1.2.3. Run with: make e2e
 version: "1"
 
 suite:
@@ -23,9 +23,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains:
-              - "foundry  locked 1.7.1  +linux/amd64"
-              - "wrote block.lock"
+            equals: |
+              foundry  locked 1.7.4
+              wrote block.lock
           stderr:
             contains: "downloading "
           changes:
@@ -41,11 +41,18 @@ scenarios:
               - "version = 1"
               - 'name = "foundry"'
               - 'constraint = "1.7"'
-              - 'version = "1.7.1"'
-              - 'repo = "foundry-rs/foundry"'
+              - 'version = "1.7.4"'
               - 'bin = ["forge", "cast", "anvil", "chisel"]'
+              - 'source = "sha256:'
               - 'platform = "linux/amd64"'
-              - "/download/foundry-rs/foundry/v1.7.1/foundry_v1.7.1_linux_amd64.tar.gz"
+              - "/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_linux_amd64.tar.gz"
+      # The lock records facts, not the recipe.
+      - assert:
+          file:
+            path: block.lock
+            not_contains:
+              - "repo ="
+              - "asset ="
       - run:
           shell: true
           command: grep -E 'sha256 = "[0-9a-f]{64}"' block.lock
@@ -70,7 +77,7 @@ scenarios:
   - name: a major-only constraint takes the newest stable release and skips pre-releases
     env: *t1
     steps:
-      # At t1 the tags are v1.6.0, v1.7.0, v1.7.1, v1.8.0-rc1 and a nightly.
+      # At t1 the tags are v1.6.0, v1.7.0, v1.7.1, v1.7.4, v1.8.0-rc1 and a nightly.
       - fixture:
           file: block.toml
           content: |
@@ -81,9 +88,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains: "foundry  locked 1.7.1"
+            contains: "foundry  locked 1.7.4"
 
-  - name: running lock again is a no-op and does not touch block.lock
+  - name: running lock again with nothing new is a no-op
     env: *t1
     steps:
       - fixture:
@@ -98,9 +105,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains:
-              - "foundry  1.7.1 (unchanged)"
-              - "block.lock is up to date"
+            equals: |
+              foundry  1.7.4
+              block.lock is up to date
           stderr:
             equals: ""
           changes:
@@ -108,7 +115,7 @@ scenarios:
             modified: []
             deleted: []
 
-  - name: lock keeps a satisfied pin even when upstream published a newer release
+  - name: lock moves every pin to the newest release its constraint allows
     env:
       BLOCK_HOME: "${workdir}/home"
     steps:
@@ -117,11 +124,11 @@ scenarios:
           content: |
             [tools]
             foundry = "1.7"
+            hermes = "1.13"
       - run:
           command: block lock
           env:
             BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
-      # Time passes: 1.7.4 is out. lock is not update.
       - run:
           command: block lock
           env:
@@ -129,19 +136,83 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains: "foundry  1.7.1 (unchanged)"
-          changes:
-            modified: []
+            equals: |
+              foundry  1.7.4 -> 1.7.5
+              hermes   1.13.0 -> 1.13.1
+              wrote block.lock
       - assert:
           file:
             path: block.lock
-            contains: 'version = "1.7.1"'
-      - assert:
-          file:
-            path: block.lock
-            not_contains: "1.7.4"
+            contains:
+              - 'version = "1.7.5"'
+              - 'version = "1.13.1"'
 
-  - name: a changed constraint re-resolves only that tool
+  - name: lock with a tool name re-resolves only that tool
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - run:
+          command: block lock hermes
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              foundry  1.7.4
+              hermes   1.13.0 -> 1.13.1
+              wrote block.lock
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - 'version = "1.7.4"'
+              - 'version = "1.13.1"'
+      - run:
+          command: block lock geth
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: tool "geth" is not declared in block.toml
+
+'
+
+  - name: lock never crosses the constraint
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7.4"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foundry  locked 1.7.4"
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.4 (up-to-date)\n"
+
+  - name: a changed constraint re-resolves that tool
     env: *t1
     steps:
       - fixture:
@@ -163,9 +234,10 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains:
-              - "foundry  1.6.0 -> 1.7.1"
-              - "hermes   1.13.0 (unchanged)"
+            equals: |
+              foundry  1.6.0 -> 1.7.4
+              hermes   1.13.0
+              wrote block.lock
 
   - name: adding a platform fetches only the missing artifacts
     env: *t1
@@ -188,10 +260,10 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains: "foundry  1.7.1 (unchanged)  +darwin/arm64"
+            contains: "wrote block.lock"
           stderr:
-            contains: "foundry_v1.7.1_darwin_arm64.tar.gz"
-            not_contains: "foundry_v1.7.1_linux_amd64.tar.gz"
+            contains: "foundry_v1.7.4_darwin_arm64.tar.gz"
+            not_contains: "foundry_v1.7.4_linux_amd64.tar.gz"
       - assert:
           file:
             path: block.lock
@@ -269,13 +341,11 @@ scenarios:
           stdout:
             contains:
               - "foo      locked 1.2.0"
-              - "foundry  locked 1.7.1"
+              - "foundry  locked 1.7.4"
       - assert:
           file:
             path: block.lock
-            contains:
-              - 'repo = "example/foo"'
-              - "/download/example/foo/v1.2.0/foo_1.2.0_linux_amd64.tar.gz"
+            contains: "/download/example/foo/v1.2.0/foo_1.2.0_linux_amd64.tar.gz"
 
   - name: a project-local source can opt out of the v tag prefix
     env: *t1
@@ -364,7 +434,7 @@ scenarios:
       BLOCK_HOME: "${workdir}/home"
       BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
     steps:
-      # v1.7.5 exists as a tag only; v1.7.4 is the newest published release.
+      # v1.7.6 exists as a tag only; v1.7.5 is the newest published release.
       - fixture:
           file: block.toml
           content: |
@@ -375,7 +445,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains: "foundry  locked 1.7.4"
+            contains: "foundry  locked 1.7.5"
 
   - name: an unknown tool names the registry and the project-local escape hatch
     env: *t1

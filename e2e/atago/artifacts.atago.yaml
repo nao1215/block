@@ -23,7 +23,8 @@ scenarios:
             asset = "zipper_{version}_{os}_{arch}.zip"
             bin = ["zipper"]
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - assert:
           exit_code: 0
           stdout:
@@ -49,7 +50,8 @@ scenarios:
             asset = "nested_{version}_{os}_{arch}.tar.gz"
             bin = ["bin/nested"]
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - run:
           command: block exec nested
       - assert:
@@ -116,7 +118,8 @@ scenarios:
             asset = "evil_{version}_{os}_{arch}.tar.gz"
             bin = ["evil"]
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - assert:
           exit_code: 1
           stderr:
@@ -149,7 +152,8 @@ scenarios:
             asset = "linky_{version}_{os}_{arch}.tar.gz"
             bin = ["linky"]
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - assert:
           exit_code: 1
           stderr:
@@ -169,7 +173,8 @@ scenarios:
             asset = "nobin_{version}_{os}_{arch}.tar.gz"
             bin = ["nobin"]
       - run:
-          command: block sync
+          shell: true
+          command: block lock && block sync
       - assert:
           exit_code: 1
           stderr:

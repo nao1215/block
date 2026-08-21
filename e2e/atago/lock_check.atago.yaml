@@ -1,0 +1,132 @@
+# `block lock --check` performs the same resolution as lock but writes nothing.
+# Exit codes: 0 = block.lock is current, 2 = it would change, 1 = error.
+# Run with: make e2e
+version: "1"
+
+suite:
+  name: block lock --check
+
+scenarios:
+  - name: check reports newer matching releases without touching block.lock
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - run:
+          command: block lock --check
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: |
+              foo      1.2.0 -> 1.2.3
+              foundry  1.7.4 -> 1.7.5
+              hermes   1.13.0 -> 1.13.1
+          stderr:
+            equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: check exits 0 when every pin is current
+    env: &t1
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.4 (up-to-date)\n"
+          changes:
+            created: []
+            modified: []
+
+  - name: check exits 2 when block.lock does not exist yet
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: "foundry  missing 1.7.4\n"
+          changes:
+            created: []
+
+  - name: check exits 2 when the manifest changed since the lock
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block lock
+      - fixture:
+          file: block.toml
+          content: |
+            platforms = ["linux/amd64", "darwin/arm64"]
+            [tools]
+            foundry = "1.6"
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: |
+              foundry  1.7.4 -> 1.6.0
+              hermes  1.13.0 (no longer in block.toml)
+          changes:
+            modified: []
+
+  - name: check exits 1 on a resolution error
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/ratelimited"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "rate limit exceeded"

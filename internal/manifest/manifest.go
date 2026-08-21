@@ -21,7 +21,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 
@@ -171,23 +170,6 @@ func parseTool(md toml.MetaData, name string, prim toml.Primitive) (Tool, error)
 	return Tool{Name: name, Constraint: c, Source: long.Source}, nil
 }
 
-// Template is the block.toml written by `block init`.
-func Template() []byte {
-	return []byte(strings.TrimLeft(`
-# block.toml declares the blockchain toolchain this project expects.
-# Run "block lock" to resolve exact versions into block.lock, then
-# "block sync" to install them and "block exec <cmd>" to run them.
-#
-# A version is a prefix: "1" means the newest 1.x.y, "1.7" the newest 1.7.y
-# and "1.7.4" exactly that release. Pre-releases are never selected.
-#
-# platforms = ["linux/amd64", "darwin/arm64"]
-
-[tools]
-foundry = "1"
-`, "\n"))
-}
-
 // Find walks from dir upward looking for block.toml and returns the directory
 // that holds it.
 func Find(dir string) (string, error) {
@@ -201,7 +183,7 @@ func Find(dir string) (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("%s not found in the current directory or any parent (run \"block init\" to create one)", FileName)
+			return "", fmt.Errorf("%s not found in the current directory or any parent", FileName)
 		}
 		dir = parent
 	}

@@ -1,0 +1,162 @@
+# The single most important contract of block, end to end:
+#
+#   lock = resolve, sync = install, exec = run.
+#   sync never resolves. exec never installs. lock is the only operation that
+#   can move a pin.
+#
+# The fake GitHub has two points in time: at ${env:FAKEGH_URL}/t1 foundry's
+# newest 1.7 release is 1.7.4; at ${env:FAKEGH_URL} 1.7.5 has been published.
+# Run with: make e2e
+version: "1"
+
+suite:
+  name: block contract
+
+scenarios:
+  - name: a pin survives a new upstream release until block lock moves it
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      # lock at t1: 1.7.4 is the newest 1.7.x.
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              foundry  locked 1.7.4
+              wrote block.lock
+      - run:
+          command: block sync
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.4  installed\n"
+
+      # Time passes: upstream publishes 1.7.5. Everything below runs against
+      # the new upstream.
+
+      # sync keeps the pin and does not touch the lockfile.
+      - run:
+          command: block sync
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.4  cached\n"
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - assert:
+          file:
+            path: block.lock
+            contains: 'version = "1.7.4"'
+      - assert:
+          file:
+            path: block.lock
+            not_contains: "1.7.5"
+
+      # exec uses the pinned 1.7.4.
+      - run:
+          command: block exec forge --version
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.7.4 (fake)"
+
+      # lock --check sees 1.7.5, exits 2, changes nothing.
+      - run:
+          command: block lock --check
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: "foundry  1.7.4 -> 1.7.5\n"
+          stderr:
+            equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+      # lock moves the pin.
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              foundry  1.7.4 -> 1.7.5
+              wrote block.lock
+          changes:
+            modified: [block.lock]
+            deleted: []
+      - assert:
+          file:
+            path: block.lock
+            contains: 'version = "1.7.5"'
+      - run:
+          command: block sync
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.5  installed\n"
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.7.5 (fake)"
+
+  - name: sync and exec work with no upstream at all
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      # An API base that refuses connections: sync only needs the lock's
+      # exact artifact URLs, exec needs nothing.
+      - run:
+          command: block sync
+          env:
+            BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              foundry  1.7.4   installed
+              hermes   1.13.0  installed
+      - run:
+          command: block exec hermes version
+          env:
+            BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "hermes 1.13.0 (fake)"

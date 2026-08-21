@@ -46,8 +46,11 @@ version_out="$("$workdir/block" version)"
 echo "$version_out" | grep -q '^block v' || fail "block version output unexpected: $version_out"
 note "extracted binary runs: $version_out"
 
-# The registry must be embedded: the binary is useless without it.
-"$workdir/block" registry | grep -q '^foundry' || fail "embedded registry does not list foundry"
+# The registry must be embedded: a lock against an unknown tool lists what
+# the binary knows, without touching the network.
+mkdir -p "$workdir/proj" && printf '[tools]\nnot-a-tool = "1"\n' > "$workdir/proj/block.toml"
+reg_out="$(cd "$workdir/proj" && BLOCK_HOME="$workdir/home" "$workdir/block" lock 2>&1 || true)"
+echo "$reg_out" | grep -q 'known tools: foundry' || fail "embedded registry does not list foundry: $reg_out"
 note "embedded registry OK"
 
 note "all artifact smoke checks passed"

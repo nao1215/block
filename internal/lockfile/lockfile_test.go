@@ -7,22 +7,21 @@ import (
 	"testing"
 
 	"github.com/nao1215/block/internal/platform"
-	"github.com/nao1215/block/internal/recipe"
 )
 
-const sha = "593c607acd4d8fe57f560298f64779441a0aa7461893223def00eeedc612d0bb"
+const (
+	sha    = "593c607acd4d8fe57f560298f64779441a0aa7461893223def00eeedc612d0bb"
+	source = "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+)
 
 func sample() *Lock {
 	return &Lock{Version: FormatVersion, Tools: []Tool{
 		{
-			Name: "hermes", Constraint: "1.13", Version: "1.13.0",
-			Source: recipe.Source{Type: recipe.TypeGitHubRelease, Repo: "informalsystems/hermes", Asset: "hermes-v{version}-{arch}-{os}.tar.gz", Bin: []string{"hermes"},
-				OS: map[string]string{"linux": "unknown-linux-gnu"}, Arch: map[string]string{"amd64": "x86_64"}},
+			Name: "hermes", Constraint: "1.13", Version: "1.13.0", Bin: []string{"hermes"}, Source: source,
 			Artifacts: []Artifact{{Platform: "linux/amd64", URL: "https://example.com/h.tar.gz", SHA256: sha}},
 		},
 		{
-			Name: "foundry", Constraint: "1.7", Version: "1.7.1",
-			Source: recipe.Source{Type: recipe.TypeGitHubRelease, Repo: "foundry-rs/foundry", Asset: "foundry_v{version}_{os}_{arch}.tar.gz", Bin: []string{"forge", "cast"}},
+			Name: "foundry", Constraint: "1.7", Version: "1.7.1", Bin: []string{"forge", "cast"}, Source: source,
 			Artifacts: []Artifact{
 				{Platform: "linux/amd64", URL: "https://example.com/l.tar.gz", SHA256: sha},
 				{Platform: "darwin/arm64", URL: "https://example.com/d.tar.gz", SHA256: sha},
@@ -46,6 +45,12 @@ func TestMarshalRoundTripIsDeterministicAndSorted(t *testing.T) {
 	if strings.Index(string(data), `platform = "darwin/arm64"`) > strings.Index(string(data), `platform = "linux/amd64"`) {
 		t.Error("artifacts are not sorted by platform")
 	}
+	// The lock holds facts, not the recipe.
+	for _, forbidden := range []string{"repo", "asset", "[tools.source]"} {
+		if strings.Contains(string(data), forbidden) {
+			t.Errorf("lockfile leaks recipe field %q:\n%s", forbidden, data)
+		}
+	}
 	again, err := Marshal(sample())
 	if err != nil || string(again) != string(data) {
 		t.Fatal("Marshal is not deterministic")
@@ -57,10 +62,6 @@ func TestMarshalRoundTripIsDeterministicAndSorted(t *testing.T) {
 	back, err := Marshal(l)
 	if err != nil || string(back) != string(data) {
 		t.Errorf("round trip differs:\n%s\n---\n%s", data, back)
-	}
-	h, ok := l.Tool("hermes")
-	if !ok || h.Source.OS["linux"] != "unknown-linux-gnu" {
-		t.Errorf("hermes source lost maps: %+v", h)
 	}
 	if _, ok := l.Tool("nope"); ok {
 		t.Error("Tool(nope) found")
@@ -105,7 +106,8 @@ func TestParseErrors(t *testing.T) {
 		{"dup tool", valid(func(s string) string { return strings.Replace(s, `name = "hermes"`, `name = "foundry"`, 1) }), `tool "foundry" is locked twice`},
 		{"bad constraint", valid(func(s string) string { return strings.Replace(s, `constraint = "1.7"`, `constraint = "~1.7"`, 1) }), `tool "foundry": invalid version constraint`},
 		{"bad version", valid(func(s string) string { return strings.Replace(s, `version = "1.7.1"`, `version = "v1.7.1"`, 1) }), `tool "foundry": invalid version "v1.7.1"`},
-		{"bad source", valid(func(s string) string { return strings.Replace(s, `repo = "foundry-rs/foundry"`, `repo = "foundry"`, 1) }), `tool "foundry": invalid repo "foundry"`},
+		{"no bin", valid(func(s string) string { return strings.Replace(s, `bin = ["hermes"]`, `bin = []`, 1) }), `tool "hermes": bin is empty`},
+		{"no source", valid(func(s string) string { return strings.Replace(s, `source = "`+source+`"`, `source = ""`, 1) }), `tool "foundry": source is empty`},
 		{"bad platform", valid(func(s string) string {
 			return strings.Replace(s, `platform = "darwin/arm64"`, `platform = "windows/arm64"`, 1)
 		}), `tool "foundry": unsupported platform`},

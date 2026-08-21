@@ -11,18 +11,26 @@ on every developer machine and in CI.
 
 ```console
 $ git clone <project> && cd <project>
-$ block sync --locked
+$ block sync
 foundry  1.7.4   installed
 hermes   1.13.3  installed
 $ block exec forge test
 ```
 
-Two files do all the work:
+Three commands, one direction:
 
-| File | Written by | Holds |
-| --- | --- | --- |
-| `block.toml` | you | the tools you want and roughly which versions |
-| `block.lock` | `block lock` | the exact release, download URL and SHA-256 per platform |
+```text
+block.toml  ──block lock──▶  block.lock  ──block sync──▶  installed toolchain  ──block exec──▶  command
+```
+
+```text
+block lock   resolves the toolchain.
+block sync   installs the locked toolchain.
+block exec   runs with the installed toolchain.
+```
+
+> `sync` never resolves. `exec` never installs. `lock` is the only operation
+> that can move a pin.
 
 block is not a package manager. It downloads release archives from upstream,
 verifies them, and puts them on `PATH` for the command you run. Nothing more.
@@ -33,10 +41,11 @@ verifies them, and puts them on `PATH` for the command you run. Nothing more.
   toolchain; two projects on one machine can use different Foundry versions
   without fighting.
 - **Lockfile-driven reproducibility.** `block.lock` records the artifact URL
-  and checksum for every platform you care about. CI installs exactly that,
-  or fails.
-- **CI is a first-class user.** `block sync --locked` never resolves versions,
-  never rewrites the lockfile and fails loudly on any drift.
+  and checksum for every platform you care about. `sync` installs exactly
+  that, or fails.
+- **CI is a first-class user.** `block sync` is the same command with the same
+  meaning locally and in CI: it never resolves, never rewrites the lockfile,
+  and fails loudly on any drift. No special flag.
 - **Upstream releases are detected, not catalogued.** The registry holds a
   *recipe* per tool (repository, asset naming, executables), not a list of
   versions. A new upstream release needs no registry change.
@@ -62,12 +71,7 @@ brew install nao1215/tap/block
 
 ## Quick start
 
-```console
-$ block init
-created block.toml
-```
-
-`block.toml`:
+Write `block.toml`:
 
 ```toml
 [tools]
@@ -79,8 +83,8 @@ hermes = "1.13"
 $ block lock
 downloading https://github.com/foundry-rs/foundry/releases/download/v1.7.4/foundry_v1.7.4_linux_amd64.tar.gz
 downloading https://github.com/informalsystems/hermes/releases/download/v1.13.3/hermes-v1.13.3-x86_64-unknown-linux-gnu.tar.gz
-foundry  locked 1.7.4   +linux/amd64
-hermes   locked 1.13.3  +linux/amd64
+foundry  locked 1.7.4
+hermes   locked 1.13.3
 wrote block.lock
 
 $ block sync
@@ -95,26 +99,87 @@ Commit both `block.toml` and `block.lock`.
 
 ## Commands
 
-| Command | What it does | Touches the network | Writes `block.lock` |
-| --- | --- | --- | --- |
-| `block init` | write a starter `block.toml` | no | no |
-| `block lock` | resolve `block.toml` into `block.lock`; keeps pins that still satisfy the manifest | yes | yes |
-| `block sync` | install everything in `block.lock` for this machine; locks first if needed | if needed | only if stale or missing |
-| `block sync --locked` | install exactly what `block.lock` says, or fail | downloads only | never |
-| `block update [tool...]` | move pins to the newest release allowed by `block.toml` | yes | yes |
-| `block outdated` | show pins that have a newer matching upstream release | yes | no |
-| `block exec <cmd> [args...]` | run a command with the locked tools first on `PATH` | no | no |
-| `block registry` | list the tools the built-in registry knows | no | no |
-| `block version` | print the version | no | no |
+| Command | Resolves versions | Writes `block.lock` | Downloads | Installs | Runs your command |
+| --- | :-: | :-: | :-: | :-: | :-: |
+| `block lock [tool...]` | yes | yes | artifacts for new pins | no | no |
+| `block lock --check` | yes | **no** | no | no | no |
+| `block sync` | **no** | **no** | locked URLs, when not cached | yes | no |
+| `block exec <cmd>` | **no** | **no** | **no** | **no** | yes |
 
-`block lock` and `block update` are deliberately different: `lock` only fills
-gaps (new tools, changed constraints, new platforms) and otherwise leaves every
-pin alone; `update` is the only command that moves an existing pin forward.
+### `block lock`
 
-`block exec` puts every executable listed in `block.lock` first on `PATH` and
-runs the command, so `block exec make test` works when your Makefile calls
-`forge`. It exits with the command's status and never downloads anything —
-run `block sync` first.
+Resolves every tool in `block.toml` to the newest upstream release its
+constraint allows and records the download URL and SHA-256 per platform in
+`block.lock`. Running it again later moves pins forward to whatever upstream
+has published since — that is the only way a pin ever moves.
+
+```console
+$ block lock              # every tool
+$ block lock hermes       # re-resolve hermes, keep the other pins
+```
+
+Output is one line per tool: `locked 1.7.4` for a new pin, `1.7.4 -> 1.7.5`
+for a moved one, `1.7.4` for an unchanged one.
+
+### `block lock --check`
+
+Performs the same resolution as `lock` but writes nothing:
+
+```console
+$ block lock --check
+foundry  1.7.4 -> 1.7.5
+hermes   1.13.3 (up-to-date)
+$ echo $?
+2
+```
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | `block.lock` is current |
+| 2 | `block.lock` would change (newer release, new or dropped tool, new platform) |
+| 1 | error (network, manifest, …) |
+
+Use it in a scheduled job to learn about upstream releases without touching
+the repository; run `block lock` and open a pull request when it exits 2.
+
+### `block sync`
+
+Installs every artifact `block.lock` names for this machine into the shared
+store. It needs the lockfile's exact URLs and nothing else — no registry, no
+GitHub API. It fails, without resolving or writing anything, when:
+
+- `block.lock` is missing;
+- `block.toml` and `block.lock` disagree: a tool was added or removed, a
+  constraint changed, or a project-local source changed;
+- `block.lock` has no artifact for this platform;
+- a downloaded artifact's SHA-256 does not match.
+
+```console
+$ block sync
+block: block.lock is stale; run "block lock"
+  hermes is declared in block.toml but missing from block.lock
+```
+
+`sync` never runs `lock` for you. A pin changes only when you ask.
+
+### `block exec`
+
+Runs a command with every executable from `block.lock` first on `PATH` and
+exits with the command's status. Any command works, so build scripts that
+call the tools see the locked versions:
+
+```console
+$ block exec forge test
+$ block exec make test
+$ block exec ./scripts/integration-test.sh
+```
+
+`exec` never downloads, installs or resolves. If a tool is not installed:
+
+```console
+$ block exec forge test
+block: foundry 1.7.4 is not installed; run "block sync"
+```
 
 All commands find `block.toml` in the current directory or any parent, so
 they work from a sub-package of a monorepo.
@@ -171,12 +236,8 @@ version = 1
 name = "foundry"
 constraint = "1.7"
 version = "1.7.4"
-[tools.source]
-type = "github_release"
-repo = "foundry-rs/foundry"
-asset = "foundry_v{version}_{os}_{arch}.tar.gz"
-platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
 bin = ["forge", "cast", "anvil", "chisel"]
+source = "sha256:…"          # fingerprint of the recipe the pin was resolved with
 
 [[tools.artifacts]]
 platform = "darwin/arm64"
@@ -189,9 +250,17 @@ url = "https://github.com/foundry-rs/foundry/releases/download/v1.7.4/foundry_v1
 sha256 = "…"
 ```
 
-The lockfile is self-sufficient: CI needs only the `block` binary and this
-file. The recipe is copied into it so a later registry change cannot silently
-alter what `sync --locked` installs.
+Three files, three responsibilities:
+
+| | Answers | Lives in |
+| --- | --- | --- |
+| registry recipe | *how* to resolve a tool | `registry/*.toml` (embedded) |
+| `block.toml` | *what* you want | your repository |
+| `block.lock` | *what was decided* | your repository |
+
+The lock holds facts only — exact version, executables, URL and digest per
+platform — plus a fingerprint of the recipe, so a changed recipe makes the
+pin stale instead of silently installing something it never resolved.
 
 Checksums are computed by block when it first downloads an artifact
 (trust-on-first-use at `lock` time); every later download, on every machine,
@@ -211,24 +280,13 @@ must match.
   with:
     path: ~/.local/share/block
     key: block-${{ runner.os }}-${{ hashFiles('block.lock') }}
-- run: block sync --locked
+- run: block sync
 - run: block exec forge test
 ```
 
-`block sync --locked` fails, without resolving anything, when:
-
-- `block.lock` is missing;
-- `block.toml` and `block.lock` disagree (a tool was added, removed, or its
-  constraint or project-local source changed);
-- `block.lock` has no artifact for the runner's platform;
-- a downloaded artifact's SHA-256 does not match.
-
-Set `GITHUB_TOKEN` to raise the GitHub API rate limit for `lock`, `update`
-and `outdated`. `sync --locked` does not call the API at all.
-
-Keeping up with upstream is a separate, explicit step — for example a
-scheduled job that runs `block update` and opens a pull request with the new
-`block.lock`.
+There is no CI flag: `block sync` is always a locked operation. `GITHUB_TOKEN`
+is only relevant to `block lock`, which calls the GitHub API; `sync` and
+`exec` do not.
 
 ## Store and cache
 
@@ -305,8 +363,8 @@ download server keyed by commit hash) are not supported yet.
 - Installs are atomic: extraction happens in a temporary directory that is
   renamed into place only after every entry succeeded and every declared
   executable exists.
-- `block exec` never installs. `block sync --locked` never resolves. Nothing
-  falls back to an artifact the lockfile does not name.
+- `sync` never resolves and `exec` never installs. Nothing falls back to an
+  artifact the lockfile does not name.
 
 See [SECURITY.md](./SECURITY.md) for the reporting policy.
 
@@ -333,7 +391,9 @@ block deliberately does **not**:
   forks, chain IDs, RPC capabilities);
 - manage wallets, keys, validators, staking or nodes;
 - generate Docker Compose files or manage Solidity library dependencies;
-- run scripts from the registry.
+- run scripts from the registry;
+- offer shell integration, `block env`, `block add`/`remove`, or any command
+  that resolves or installs implicitly.
 
 If a feature would turn block into mise or aqua, it does not belong here.
 

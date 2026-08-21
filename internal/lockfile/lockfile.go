@@ -1,12 +1,11 @@
-// Package lockfile reads and writes block.lock: the exact artifacts block
-// resolved from a block.toml. A lockfile is self-sufficient for installation
-// (URL, checksum, executables) so that CI needs nothing but the block binary
-// and this file.
+// Package lockfile reads and writes block.lock: the facts block resolved from
+// a block.toml. It records what was decided — exact version, executables,
+// and the URL plus SHA-256 of every artifact per platform — and nothing about
+// how to resolve, so installation needs only the block binary and this file.
 package lockfile
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,9 +38,11 @@ type Tool struct {
 	Name       string `toml:"name"`
 	Constraint string `toml:"constraint"`
 	Version    string `toml:"version"`
-	// Source is the recipe the pin was resolved with; Source.Bin lists the
-	// executables `block exec` exposes.
-	Source recipe.Source `toml:"source"`
+	// Bin lists the executables inside the artifact that `block exec` exposes.
+	Bin []string `toml:"bin"`
+	// Source fingerprints the recipe the pin was resolved with (see
+	// recipe.Source.Hash), so a changed recipe makes the pin stale.
+	Source string `toml:"source"`
 	// Artifacts are sorted by platform.
 	Artifacts []Artifact `toml:"artifacts"`
 }
@@ -150,8 +151,11 @@ func validateTool(t *Tool) error {
 	if _, err := version.Parse(t.Version); err != nil {
 		return fmt.Errorf("tool %q: %w", t.Name, err)
 	}
-	if err := t.Source.Validate(); err != nil {
-		return fmt.Errorf("tool %q: %w", t.Name, err)
+	if len(t.Bin) == 0 {
+		return fmt.Errorf("tool %q: bin is empty", t.Name)
+	}
+	if t.Source == "" {
+		return fmt.Errorf("tool %q: source is empty", t.Name)
 	}
 	seen := map[string]bool{}
 	for _, a := range t.Artifacts {
@@ -231,6 +235,3 @@ func Write(path string, l *Lock) error {
 	}
 	return nil
 }
-
-// ErrNotFound reports a missing lockfile.
-var ErrNotFound = errors.New("block.lock not found")

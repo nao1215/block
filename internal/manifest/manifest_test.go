@@ -107,17 +107,6 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
-func TestTemplateParses(t *testing.T) {
-	t.Parallel()
-	m, err := Parse(Template())
-	if err != nil {
-		t.Fatalf("template does not parse: %v", err)
-	}
-	if _, ok := m.Tool("foundry"); !ok {
-		t.Error("template should declare foundry")
-	}
-}
-
 func TestLoadAndFind(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -144,7 +133,7 @@ func TestLoadAndFind(t *testing.T) {
 	if gotReal != want {
 		t.Errorf("Find() = %s, want %s", got, want)
 	}
-	if _, err := Find(t.TempDir()); err == nil || !strings.Contains(err.Error(), "block init") {
+	if _, err := Find(t.TempDir()); err == nil || !strings.Contains(err.Error(), "not found in the current directory or any parent") {
 		t.Errorf("Find(no manifest) error = %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "bad.toml"), []byte("[tools\n"), 0o600); err != nil {

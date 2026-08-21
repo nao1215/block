@@ -6,6 +6,8 @@
 package recipe
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path"
@@ -250,4 +252,30 @@ type UnsupportedPlatformError struct {
 
 func (e *UnsupportedPlatformError) Error() string {
 	return fmt.Sprintf("unsupported platform %s (available: %s)", e.Platform, strings.Join(platform.Strings(e.Supported), ", "))
+}
+
+// Hash returns a stable fingerprint of everything that influences how the
+// source resolves artifacts. block.lock records it so that a changed recipe
+// (renamed asset, different executables, other repository) is detected as
+// stale instead of silently installing something the lock never resolved.
+func (s Source) Hash() string {
+	var b strings.Builder
+	b.WriteString(s.Type + "\n" + s.Repo + "\n" + s.EffectiveTagPrefix() + "\n" + s.Asset + "\n")
+	writeMap := func(m map[string]string) {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			b.WriteString(k + "=" + m[k] + "\n")
+		}
+		b.WriteString("--\n")
+	}
+	writeMap(s.OS)
+	writeMap(s.Arch)
+	b.WriteString(strings.Join(platform.Strings(s.SupportedPlatforms()), ",") + "\n")
+	b.WriteString(strings.Join(s.Bin, ",") + "\n")
+	sum := sha256.Sum256([]byte(b.String()))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
