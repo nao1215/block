@@ -46,9 +46,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+      # Provenance is attested for every distributable artifact, so
+      # `gh attestation verify` works on whichever file someone downloaded
+      # rather than only on the tarballs. checksums.txt is a subject too: it
+      # is what the cosign signature covers, and it is worth being able to
+      # prove where it was built.
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
             dist/checksums.txt

@@ -45,8 +45,12 @@ release:
     Lock your blockchain toolchain: declare tools in `block.toml`, pin them in
     `block.lock`, and reproduce the same toolchain locally and in CI.
 
-    Every artifact is signed and ships with an SBOM and build provenance — see
-    [Verifying release integrity](https://github.com/nao1215/block#verifying-release-integrity).
+    Every artifact below — archives and .deb/.rpm/.apk packages alike — is
+    listed in `checksums.txt`, ships with an SPDX SBOM, and carries build
+    provenance. `checksums.txt` is the file cosign signs; verifying that one
+    signature and checking a download against the line naming it is what
+    covers the rest. See
+    [Verify what you downloaded](https://nao1215.github.io/block/install/#verify-what-you-downloaded).
   footer: |
     **Full changelog**: https://github.com/nao1215/block/compare/{{ .PreviousTag }}...{{ .Tag }}
 changelog:
@@ -78,10 +82,20 @@ changelog:
       - "^ci(\\(.+\\))?!?:"
       - "Merge pull request"
       - "Merge branch"
+# An SBOM per distributable artifact, not only per archive: a .deb is what a
+# Debian user actually installs, and "ships with an SBOM" has to be true of it
+# too. Two entries because GoReleaser scopes each one to a single artifact
+# class.
 sboms:
-  - artifacts: archive
-# Keyless artifact signing with cosign. Signing the checksums file transitively
-# covers every published artifact.
+  - id: archives
+    artifacts: archive
+  - id: packages
+    artifacts: package
+# Keyless artifact signing with cosign. checksums.txt lists every distributable
+# artifact — archives and .deb/.rpm/.apk packages alike — so one signature over
+# it covers all of them: verify the signature, then verify a download against
+# the line that names it. That is an indirection, and the README says so rather
+# than implying each file carries its own signature.
 signs:
   - cmd: cosign
     signature: "${artifact}.sigstore.json"

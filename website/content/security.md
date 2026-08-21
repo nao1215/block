@@ -58,8 +58,16 @@ data, and there is no `install = "curl … | bash"` escape hatch.
 
 ## Verifying a block release
 
-Release archives are signed with cosign (keyless, via GitHub OIDC) and ship
-with an SBOM and build provenance:
+Every published artifact — the archives and the `.deb`, `.rpm` and `.apk`
+packages — is listed in `checksums.txt`, ships with an SPDX SBOM beside it,
+and carries SLSA build provenance attested through GitHub OIDC.
+
+`checksums.txt` is the file cosign signs, keyless, and it is what the
+signature covers the rest through: verify the signature over the list, then
+check your download against the line that names it. Build provenance is
+attested per artifact, so `gh attestation verify` works directly on whichever
+file you downloaded.
+
 
 ```shell
 cosign verify-blob \
