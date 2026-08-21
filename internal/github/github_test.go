@@ -50,6 +50,34 @@ func TestTagsPaginates(t *testing.T) {
 	}
 }
 
+// GitHub's matching-refs endpoint answers some repositories with the whole
+// ref list whatever ?page says. Paging that blindly repeated every tag once
+// per page, and a caller walking the newest tags then spent all its release
+// lookups on the same one.
+func TestTagsIgnoresAPageThatRepeatsItself(t *testing.T) {
+	t.Parallel()
+	pages := 0
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		pages++
+		w.Header().Set("Content-Type", "application/json")
+		var refs []string
+		for i := range perPage {
+			refs = append(refs, fmt.Sprintf(`{"ref":"refs/tags/v1.0.%d"}`, i))
+		}
+		fmt.Fprintf(w, "[%s]", strings.Join(refs, ","))
+	})
+	tags, err := c.Tags(context.Background(), "o/r", "v")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != perPage {
+		t.Errorf("Tags() = %d tags, want %d with no repeats", len(tags), perPage)
+	}
+	if pages != 2 {
+		t.Errorf("requested %d pages, want 2: one to read them and one to notice the repeat", pages)
+	}
+}
+
 func TestTagsNotFound(t *testing.T) {
 	t.Parallel()
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {

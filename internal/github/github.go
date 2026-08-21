@@ -96,10 +96,17 @@ type ref struct {
 	Ref string `json:"ref"`
 }
 
-// Tags lists the repository's tag names starting with prefix, newest page
-// last as GitHub returns them (lexically ordered refs).
+// Tags lists the repository's tag names starting with prefix, once each, in
+// the order GitHub returns them (lexically ordered refs).
+//
+// The matching-refs endpoint does not always honour ?page: for some
+// repositories it answers every page with the same full list, so paging
+// blindly would repeat each tag as many times as there are pages — and the
+// caller would then spend its release lookups on the same tag over and over.
+// A page that contributes no new tag therefore ends the walk.
 func (c *Client) Tags(ctx context.Context, repo, prefix string) ([]string, error) {
 	var tags []string
+	seen := map[string]bool{}
 	for page := 1; page <= maxTagPages; page++ {
 		endpoint := fmt.Sprintf("%s/repos/%s/git/matching-refs/tags/%s?per_page=%d&page=%d", c.BaseURL, repo, url.PathEscape(prefix), perPage, page)
 		var refs []ref
@@ -109,12 +116,17 @@ func (c *Client) Tags(ctx context.Context, repo, prefix string) ([]string, error
 			}
 			return nil, err
 		}
+		added := 0
 		for _, r := range refs {
-			if name, ok := strings.CutPrefix(r.Ref, "refs/tags/"); ok {
-				tags = append(tags, name)
+			name, ok := strings.CutPrefix(r.Ref, "refs/tags/")
+			if !ok || seen[name] {
+				continue
 			}
+			seen[name] = true
+			tags = append(tags, name)
+			added++
 		}
-		if len(refs) < perPage {
+		if added == 0 || len(refs) < perPage {
 			break
 		}
 	}
