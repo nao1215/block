@@ -32,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -74,25 +75,28 @@ func TestLiveRegistry(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), liveTimeout)
 			defer cancel()
 
-			newest, err := newestStable(ctx, gh, rec.Source)
+			majors, err := majorLines(ctx, gh, rec.Source)
 			if err != nil {
 				t.Fatalf("version discovery: %v", err)
 			}
-			t.Logf("newest stable version: %s", newest)
+			t.Logf("major lines in the repository's tags: %v", majors)
 
-			// Resolved the way `block lock` would for a user who pinned the
-			// tool's current major line, rather than by demanding the newest
-			// tag exactly: upstreams push a tag before publishing its
-			// release, and a recipe is not broken while that gap is open.
-			c := version.MustParseConstraint(strconv.Itoa(newest.Major))
-			res, err := resolver.Resolve(ctx, gh, rec.Source, c)
+			// Resolved the way `block lock` would for a user who pinned a
+			// major line, rather than by demanding the newest tag exactly.
+			// The newest line is tried first and older ones after it, because
+			// "the newest line has nothing installable yet" is a normal state
+			// an upstream passes through — a tag pushed before its release,
+			// or a new major published as a pre-release, which block skips by
+			// design. A recipe is broken when NO line resolves, and that is
+			// what fails here.
+			res, c, err := resolveNewestLine(ctx, gh, rec.Source, majors)
 			if err != nil {
-				t.Fatalf("resolving %q: %v", c, err)
+				t.Fatalf("no major line of %s resolves: %v", rec.Source.Repo, err)
+			}
+			if c.String() != strconv.Itoa(majors[0]) {
+				t.Logf("the %d line has no installable release yet; checking %q instead", majors[0], c)
 			}
 			v := res.Version
-			if v != newest {
-				t.Logf("the newest tag %s has no published release yet; checking %s", newest, v)
-			}
 
 			// Every platform the recipe claims must have an artifact that
 			// really exists upstream.
@@ -160,28 +164,43 @@ func TestLiveRegistry(t *testing.T) {
 	}
 }
 
-// newestStable finds the newest release version the recipe's tags expose,
-// the way block's resolver does, without a manifest constraint.
-func newestStable(ctx context.Context, gh *github.Client, src recipe.Source) (version.Version, error) {
+// majorLines lists the major versions the recipe's tags expose, newest first.
+// Pre-release tags are ignored, the way block ignores them.
+func majorLines(ctx context.Context, gh *github.Client, src recipe.Source) ([]int, error) {
 	tags, err := gh.Tags(ctx, src.Repo, src.EffectiveTagPrefix())
 	if err != nil {
-		return version.Version{}, err
+		return nil, err
 	}
-	var newest version.Version
-	found := false
+	seen := map[int]bool{}
+	var majors []int
 	for _, tag := range tags {
 		v, ok := src.ParseTag(tag)
-		if !ok || v.IsPrerelease() {
+		if !ok || v.IsPrerelease() || seen[v.Major] {
 			continue
 		}
-		if !found || version.Compare(v, newest) > 0 {
-			newest, found = v, true
+		seen[v.Major] = true
+		majors = append(majors, v.Major)
+	}
+	if len(majors) == 0 {
+		return nil, errNoStableRelease
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(majors)))
+	return majors, nil
+}
+
+// resolveNewestLine resolves the newest major line that has something
+// installable, and reports which constraint that was.
+func resolveNewestLine(ctx context.Context, gh *github.Client, src recipe.Source, majors []int) (resolver.Resolution, version.Constraint, error) {
+	var last error
+	for _, major := range majors {
+		c := version.MustParseConstraint(strconv.Itoa(major))
+		res, err := resolver.Resolve(ctx, gh, src, c)
+		if err == nil {
+			return res, c, nil
 		}
+		last = err
 	}
-	if !found {
-		return version.Version{}, errNoStableRelease
-	}
-	return newest, nil
+	return resolver.Resolution{}, version.Constraint{}, last
 }
 
 var errNoStableRelease = errors.New("no stable release found in the repository's tags")
