@@ -157,7 +157,8 @@ in a browser.
 ## `block version`
 
 Prints the version of block, and the `block-registry` revision whose recipes
-are compiled into it — so a resolution can be traced back to a reviewed recipe:
+are compiled into it — so a resolution can be traced back to a reviewed recipe.
+`block --version` is the same answer:
 
 ```console
 $ block version

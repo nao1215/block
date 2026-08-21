@@ -23,6 +23,30 @@ scenarios:
             line: 2
             matches: '^registry [0-9a-f]{12} \(\d+ recipes from https://github\.com/nao1215/block-registry\)$'
 
+  # `block --version` and `block version` are the same answer. A binary that
+  # reports one version to a flag and another to a subcommand is a binary
+  # nobody can quote in a bug report.
+  - name: the version flag and the version command agree
+    steps:
+      - run:
+          command: block --version
+      - assert:
+          exit_code: 0
+          stdout:
+            line: 1
+            equals: "block v0.0.0-e2e"
+      - assert:
+          stdout:
+            line: 2
+            matches: '^registry [0-9a-f]{12} \(\d+ recipes from https://github\.com/nao1215/block-registry\)$'
+      - run:
+          command: block -v
+      - assert:
+          exit_code: 0
+          stdout:
+            line: 1
+            equals: "block v0.0.0-e2e"
+
   - name: help explains the three commands and their invariants
     steps:
       - run:

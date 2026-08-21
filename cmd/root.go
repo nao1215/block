@@ -94,11 +94,16 @@ can move a pin.
   block explain names what one of block's BLK error codes means
 
 ` + Links,
+		// The same answer as `block version`, printed by the same code: a
+		// binary that reports one version to a flag and another to a
+		// subcommand is a binary nobody can quote.
+		Version:       cmdinfo.Resolve(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
+	root.SetVersionTemplate(versionText())
 	root.AddCommand(
 		newLockCmd(stdout, stderr),
 		newSyncCmd(stdout, stderr),
