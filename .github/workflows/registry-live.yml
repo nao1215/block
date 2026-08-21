@@ -93,7 +93,15 @@ jobs:
       # is a JAR with launcher scripts, and the launcher refuses to start
       # without a recent JVM. block installs the client, not the runtime, so
       # the runtime is the runner's job for the probe to mean anything.
+      #
+      # Best effort, because a JDK is not available for every runner in this
+      # matrix (Temurin publishes no Windows arm64 build of 25), and the legs
+      # where it is missing are the legs where no recipe needing it ships
+      # anything — besu is Linux and macOS only. If that ever stops being
+      # true, the probe fails with the launcher's own "Java version must be at
+      # least ..." rather than silently passing.
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        continue-on-error: true
         with:
           distribution: temurin
           java-version: "25"
