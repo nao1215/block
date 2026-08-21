@@ -32,6 +32,19 @@ forge Version: 1.7.1-v1.7.1
 `sync` is a step, not a formality: `exec` never installs anything, so it runs
 what `sync` put on disk or it refuses.
 
+Foundry publishes Linux and macOS builds only, and block says so rather than
+substituting something else. On Windows, the same 30 seconds with a tool that
+does ship there:
+
+```shell
+printf '[tools]\nsolc = "0.8"\n' > block.toml
+go run github.com/nao1215/block@latest lock
+go run github.com/nao1215/block@latest sync
+go run github.com/nao1215/block@latest exec solc --version
+```
+
+What each CLI ships for is in [Tools](/tools/).
+
 Two files now say what your toolchain is. Commit both, and everyone else runs
 `block sync`.
 

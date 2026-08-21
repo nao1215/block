@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A documentation smoke test (`make docs-smoke`, scheduled weekly on every
+  platform) that reads the quickstarts out of README.md and the website's
+  front page and runs them for real, so a promise that stops working fails in
+  CI rather than in front of a reader.
 - Two recipes in the registry snapshot: `sp1` (Succinct's RISC-V zkVM, run as
   `cargo prove`) and `besu` (the Java Ethereum execution client and its
   `evmtool`), bringing it to 47 tools across 17 blockchain systems.
