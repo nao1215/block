@@ -1,6 +1,7 @@
 ---
 title: Compared to Docker
 description: "Where a container image is the better answer for a blockchain toolchain, where block is, and the numbers behind it."
+toc: true
 ---
 
 A container image is the other way to pin a blockchain toolchain, and for some

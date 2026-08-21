@@ -1,6 +1,7 @@
 ---
 title: Getting started
 description: "Declare a toolchain in block.toml, lock it, install it, and run your tools with it."
+toc: true
 ---
 
 This page takes a repository from nothing to a pinned toolchain. It assumes

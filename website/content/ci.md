@@ -1,6 +1,7 @@
 ---
 title: CI
 description: "Reproducing a pinned blockchain toolchain on a runner — GitHub Actions, GitLab CI, CircleCI and Docker — and keeping it up to date without surprises."
+toc: true
 ---
 
 ```yaml

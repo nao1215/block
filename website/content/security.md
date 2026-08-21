@@ -1,6 +1,7 @@
 ---
 title: Security
 description: "What block guarantees when it downloads and runs third-party binaries on your machine and in CI."
+toc: true
 ---
 
 block fetches prebuilt binaries from the internet and puts them on your

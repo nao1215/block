@@ -1,6 +1,7 @@
 ---
 title: Commands
 description: "What each block command does, and the boundaries none of them cross."
+toc: true
 ---
 
 | Command | Resolves versions | Writes `block.lock` | Downloads | Installs | Runs your command |

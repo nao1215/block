@@ -1,6 +1,7 @@
 ---
 title: Install
 description: Install block with go install, Homebrew, Scoop, a prebuilt .deb/.rpm/.apk package or a release archive, put the shims on PATH, and verify the release signatures.
+toc: true
 ---
 
 block is a single static binary with no runtime dependencies. It does not need
