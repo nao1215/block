@@ -7,38 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-22
+
+The first release. Everything below is new, so this entry describes what block
+is rather than what changed.
+
 ### Added
-- A documentation smoke test (`make docs-smoke`, scheduled weekly on every
-  platform) that reads the quickstarts out of README.md and the website's
-  front page and runs them for real, so a promise that stops working fails in
-  CI rather than in front of a reader.
-- Two recipes in the registry snapshot: `sp1` (Succinct's RISC-V zkVM, run as
-  `cargo prove`) and `besu` (the Java Ethereum execution client and its
-  `evmtool`), bringing it to 47 tools across 17 blockchain systems.
-- `BLK` diagnostic codes on every refusal, a `block explain <code>` lookup,
-  and a generated reference page (`doc/errors.md`, published at
-  https://nao1215.github.io/block/errors/). The thousands digit says where the
-  fix lives; every coded error exits 1.
-- Archives are refused when a member names a Windows drive, a UNC share or any
-  backslash-separated path, when it is a device node, FIFO or socket, and when
-  two members would write one file — on every platform, not only where the
-  name would have meant something.
-- A release publishing one asset name twice is refused at lock time rather
-  than resolved by taking whichever the API answered with first.
-- `block --version` prints the same two lines as `block version`.
-- `block --help` carries the documentation, error-code, bug-report and
-  GitHub Sponsors addresses.
-- Three lifecycle commands: `block lock [tool...]` (resolve; `--check` reports without
-  writing and exits 2 when the lock would change), `block sync` (install,
-  never resolves or writes the lock) and `block exec <command>` (run, never
-  installs). Plus `block list [ecosystem]` (the embedded registry snapshot —
-  offline and read-only) and `block version`.
+- Three lifecycle commands: `block lock [tool...]` (resolve; `--check` reports
+  without writing and exits 2 when the lock would change), `block sync`
+  (install, never resolves or writes the lock) and `block exec <command>` (run,
+  never installs). Beside them, three that only read: `block list [ecosystem]`
+  (the embedded registry snapshot — offline, no `block.toml`, no token),
+  `block explain <code>` (what a `BLK` diagnostic code means) and
+  `block version` (also `block --version`, which prints the same two lines from
+  the same code).
 - `block.toml` manifest with dotted-prefix version constraints (`"1"`, `"1.7"`,
   `"1.7.4"`), an optional `platforms` list and project-local
   `[tools.<name>.source]` definitions.
 - `block.lock` lockfile recording the exact version, executables, a
   fingerprint of a project-local recipe, and the download URL plus SHA-256 of
-  every artifact per platform.
+  every artifact per platform. The same manifest resolved against the same
+  upstream produces the same bytes, whatever order the tools are written in.
 - `block lock --check` compares the whole prospective lockfile, not just
   versions: a changed constraint, executables, unpack depth, project-local
   source or artifact URL is reported by name even when the resolved version
@@ -52,14 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and that the install is intact before running anything, and forwards
   `SIGINT` and `SIGTERM` to the child, reporting the child's exit status
   (`128+signal` when a signal ended it).
-- A built-in registry of recipes covering the blockchain systems a project is
-  likely to need — Bitcoin, Ethereum, Solana, Cosmos and IBC, Celestia,
-  Cardano, Aptos, NEAR, Starknet, Stellar, Avalanche, the Internet Computer,
-  IPFS, Hyperledger Fabric, ZKsync and zero-knowledge circuits — all served by
-  the two implemented source types. `block list` prints what the binary
-  actually carries, and [doc/tools.md](./doc/tools.md), generated from the
-  recipes, is the same catalogue as a page; neither this file nor the README
-  keeps a second copy that could fall behind.
+- A built-in registry of 47 recipes across 17 blockchain systems — Bitcoin,
+  Ethereum, Solana, Cosmos and IBC, Celestia, Cardano, Aptos, NEAR, Starknet,
+  Stellar, Avalanche, the Internet Computer, IPFS, Hyperledger Fabric, ZKsync
+  and zero-knowledge circuits — all served by the two implemented source types.
+  `block list` prints what the binary actually carries, and
+  [doc/tools.md](./doc/tools.md), generated from the recipes, is the same
+  catalogue as a page; neither this file nor the README keeps a second copy
+  that could fall behind. The recipes are a vendored snapshot of
+  [block-registry](https://github.com/nao1215/block-registry), and
+  `block version` says which revision a binary carries.
 - `block list` says what each tool is and which blockchain systems it serves;
   `block list <ecosystem>` narrows to one system and shows the commands each
   tool provides. A tool may serve several systems and is listed under each;
@@ -83,9 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is the block binary under another name and resolves the project per
   invocation, so there is nothing per-project to generate, no shell hook, and
   nothing written to startup files. A shim resolves, downloads and installs
-  exactly as much as `block exec` does: nothing. Outside a project, or for a
-  command a project does not lock, it runs the next command of that name on
-  `PATH`.
+  exactly as much as `block exec` does: nothing, and the two are asserted to
+  answer identically — same version, same exit status, same refusal. Outside a
+  project, or for a command a project does not lock, it runs the next command
+  of that name on `PATH`.
 - Windows is a supported platform: `windows/amd64` and `windows/arm64` join
   the platform model, block itself ships Windows builds, and the shims are
   placed with hard links or copies rather than symlinks so no Developer Mode
@@ -96,18 +88,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not ship for rather than substituting something else.
 - Content-addressed download cache and per-version installs under
   `$BLOCK_HOME`, shared across projects.
+- `BLK` diagnostic codes on every refusal, a `block explain <code>` lookup and
+  a generated reference page (`doc/errors.md`, published at
+  https://nao1215.github.io/block/errors/). The thousands digit says where the
+  fix lives — the project's own files, resolution, the download, the install,
+  running a command, a refusal on security grounds. Every coded error exits 1;
+  exit 2 stays what it was, `block lock --check` reporting that the lockfile
+  would change.
 - Security: HTTPS-only transport across redirects, streaming SHA-256
-  verification, re-hashed cache hits, defensive archive extraction (no
-  traversal, no links), executable paths validated identically in recipes and
-  lockfiles, atomic installs marked complete only when every declared
-  executable is present and runnable, a version alphabet closed tightly enough
-  that a hand-edited `block.lock` cannot name a path outside `$BLOCK_HOME`, a
-  check that a pinned version satisfies the constraint it was resolved from,
-  and a refusal to let one command name mean two executables — across tools or
-  within one, compared without regard to case on every platform.
+  verification, re-hashed cache hits, and defensive archive extraction — no
+  traversal, no symbolic or hard links, no device nodes, no member naming a
+  Windows drive or a UNC share, and no two members writing one file, all
+  refused on every platform rather than only where the name would have meant
+  something. Executable paths are validated identically in recipes and
+  lockfiles, installs are atomic and marked complete only when every declared
+  executable is present and runnable, the version alphabet is closed tightly
+  enough that a hand-edited `block.lock` cannot name a path outside
+  `$BLOCK_HOME`, a pinned version must satisfy the constraint it was resolved
+  from, a release publishing one asset name twice is refused rather than
+  resolved by picking one, and one command name may not mean two executables —
+  across tools or within one, compared without regard to case everywhere. A
+  recipe is data: there is no key that means "run this", in the registry or in
+  a project's own source table.
 - Offline atago end-to-end suite driving the real binary against a fake
-  GitHub, plus unit tests for every pure package.
+  GitHub, plus unit tests for every pure package. The suite runs on Linux,
+  macOS and Windows, and skips a scenario only where the thing it asserts does
+  not exist on that platform.
 - `make registry-live` and the scheduled *Registry (live)* workflow check
   every recipe against the real upstreams — newest stable version, artifact
   per platform, checksum, unpack, and a probe of every declared executable —
-  so routine upstream releases need no human attention.
+  on one runner per platform block supports, so routine upstream releases need
+  no human attention.
+- `make docs-smoke` and the scheduled *Documentation smoke* workflow read the
+  quickstarts out of README.md and the website's front page and run them for
+  real on a clean machine, so a promise that stops working fails in CI rather
+  than in front of a reader.
+
+[Unreleased]: https://github.com/nao1215/block/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/nao1215/block/releases/tag/v0.1.0
