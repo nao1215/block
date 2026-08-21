@@ -5,7 +5,7 @@
 # v0.40) tag releases without assets, so a constraint pointing at them fails
 # with "has no asset" rather than silently installing something else.
 name = "cometbft"
-ecosystem = "cosmos"
+ecosystems = ["cosmos"]
 description = "Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains"
 
 [source]

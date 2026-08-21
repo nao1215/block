@@ -1,7 +1,7 @@
 # Osmosis: the osmosisd node of the Osmosis chain.
 # https://github.com/osmosis-labs/osmosis
 name = "osmosis"
-ecosystem = "cosmos"
+ecosystems = ["cosmos"]
 description = "Osmosis appchain node (osmosisd), the Cosmos AMM"
 
 [source]

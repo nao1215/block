@@ -1,7 +1,7 @@
 # Lighthouse: an Ethereum consensus client by Sigma Prime.
 # https://github.com/sigp/lighthouse
 name = "lighthouse"
-ecosystem = "ethereum"
+ecosystems = ["ethereum"]
 description = "Ethereum consensus (beacon chain) client written in Rust"
 
 [source]

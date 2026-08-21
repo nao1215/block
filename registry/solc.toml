@@ -5,7 +5,7 @@
 # Linux x86_64 and one universal macOS binary. Assets carry no GitHub digest,
 # so the checksum is recorded on first download.
 name = "solc"
-ecosystem = "ethereum"
+ecosystems = ["ethereum"]
 description = "The Solidity smart-contract compiler"
 
 [source]

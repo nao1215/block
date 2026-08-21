@@ -4,7 +4,7 @@
 # Stable releases are tagged vX.Y.Z. Nightly builds are tagged
 # "nightly-<sha>" and are skipped because they are not semantic versions.
 name = "foundry"
-ecosystem = "ethereum"
+ecosystems = ["ethereum"]
 description = "Fast Ethereum application toolkit: build, test, deploy and inspect contracts"
 
 [source]

@@ -7,7 +7,7 @@
 # Upstream spells arm64 differently per OS (aarch64-linux-gnu but
 # arm64-apple-darwin), so the platform strings are mapped whole.
 name = "bitcoin-core"
-ecosystem = "bitcoin"
+ecosystems = ["bitcoin"]
 description = "Bitcoin reference implementation: full node, wallet and transaction tools"
 
 [source]

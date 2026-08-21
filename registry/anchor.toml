@@ -3,7 +3,7 @@
 #
 # Releases ship one raw executable per platform, not archives.
 name = "anchor"
-ecosystem = "solana"
+ecosystems = ["solana"]
 description = "Framework and CLI for writing, testing and deploying Solana programs"
 
 [source]

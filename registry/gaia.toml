@@ -3,7 +3,7 @@
 #
 # Releases ship one raw executable per platform. Upstream builds amd64 only.
 name = "gaia"
-ecosystem = "cosmos"
+ecosystems = ["cosmos"]
 description = "Cosmos Hub node (gaiad)"
 
 [source]

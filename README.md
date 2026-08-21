@@ -32,24 +32,16 @@ block exec   runs with the installed toolchain.
 > `sync` never resolves. `exec` never installs. `lock` is the only operation
 > that can move a pin.
 
-And one question answered offline — *what tools does block support?*:
+And one question answered offline — *which tools can I use for this chain?*:
 
 ```console
-$ block list
-NAME           ECOSYSTEM   SOURCE           BINARIES
-agave          solana      github_release   solana, solana-keygen, solana-test-validator, agave-ledger-tool
-anchor         solana      github_release   anchor
-bitcoin-core   bitcoin     http             bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet
-cometbft       cosmos      github_release   cometbft
-foundry        ethereum    github_release   forge, cast, anvil, chisel
-gaia           cosmos      github_release   gaiad
-geth           ethereum    http             geth
-hermes         ibc         github_release   hermes
-lighthouse     ethereum    github_release   lighthouse
-osmosis        cosmos      github_release   osmosisd
-reth           ethereum    github_release   reth
-solc           ethereum    github_release   solc
-surfpool       solana      github_release   surfpool
+$ block list ethereum
+NAME         SOURCE           BINARIES
+foundry      github_release   forge, cast, anvil, chisel
+geth         http             geth
+lighthouse   github_release   lighthouse
+reth         github_release   reth
+solc         github_release   solc
 ```
 
 block resolves the tools a project needs, fetches and verifies them, pins
@@ -132,7 +124,7 @@ Commit both `block.toml` and `block.lock`.
 | `block lock --check` | yes | **no** | no | no | no |
 | `block sync` | **no** | **no** | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | **no** | **no** | **no** | **no** | yes |
-| `block list` | **no** | **no** | **no** | **no** | no |
+| `block list [ecosystem]` | **no** | **no** | **no** | **no** | no |
 
 ### `block lock`
 
@@ -216,14 +208,57 @@ $ block exec forge test
 block: foundry 1.7.4 is not installed; run "block sync"
 ```
 
-### `block list`
+### `block list [ecosystem]`
 
-Prints the tools in the registry snapshot embedded in this binary: name,
-ecosystem, source type and the executables each provides. It is read-only and offline —
-no resolution, no network, no `block.toml` — so its output is deterministic
-for a given block version, works when GitHub is down, and needs no token.
-Project-local tools are not listed; a project's own toolchain is its
-`block.toml` and `block.lock`.
+Answers *what can block install?* — and, with an argument, *which tools exist
+for this blockchain system?*
+
+```console
+$ block list                     # every supported tool
+NAME           ECOSYSTEM     SOURCE           BINARIES
+agave          solana        github_release   solana, solana-keygen, solana-test-validator, agave-ledger-tool
+anchor         solana        github_release   anchor
+bitcoin-core   bitcoin       http             bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet
+cometbft       cosmos        github_release   cometbft
+foundry        ethereum      github_release   forge, cast, anvil, chisel
+gaia           cosmos        github_release   gaiad
+geth           ethereum      http             geth
+hermes         cosmos, ibc   github_release   hermes
+lighthouse     ethereum      github_release   lighthouse
+osmosis        cosmos        github_release   osmosisd
+reth           ethereum      github_release   reth
+solc           ethereum      github_release   solc
+surfpool       solana        github_release   surfpool
+
+$ block list cosmos              # only that blockchain system
+NAME       SOURCE           BINARIES
+cometbft   github_release   cometbft
+gaia       github_release   gaiad
+hermes     github_release   hermes
+osmosis    github_release   osmosisd
+```
+
+A tool can serve more than one system — an IBC relayer belongs to both
+`cosmos` and `ibc` — and is listed under each. Rows are sorted by tool name,
+so the output is stable. An unknown name is an error that names the ones that
+exist:
+
+```console
+$ block list etheruem
+block: unknown ecosystem "etheruem"
+available ecosystems: bitcoin, cosmos, ethereum, ibc, solana
+```
+
+Listing is discovery, not selection: block never derives a toolchain from an
+ecosystem. You pick what your project needs and write it in `block.toml`,
+which stays the one place that says what the toolchain is. "Ethereum" means
+contract development to one repository and validator operation to another —
+block does not guess which.
+
+`list` is read-only and offline: no resolution, no network, no `block.toml`,
+no `block.lock`. Its output is deterministic for a given block version, works
+when GitHub is down, and needs no token. Project-local tools are not listed;
+a project's own toolchain is its `block.toml` and `block.lock`.
 
 All commands find `block.toml` in the current directory or any parent, so
 they work from a sub-package of a monorepo.
@@ -418,7 +453,8 @@ whose meaning and safety boundary block understands. There is no
 does not manage the Go, Rust, Node or Python toolchains themselves — that is
 where a general-purpose version manager belongs, not block.
 
-Every tool below is installed today with those two types alone:
+Every tool below is installed today with those two types alone (`block list
+<ecosystem>` shows the same, from the binary):
 
 | ecosystem | tools |
 | --- | --- |

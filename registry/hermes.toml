@@ -3,7 +3,7 @@
 #
 # Assets are named with Rust target triples, so Go's os/arch are mapped.
 name = "hermes"
-ecosystem = "ibc"
+ecosystems = ["cosmos", "ibc"]
 description = "IBC relayer connecting Cosmos SDK chains, written in Rust"
 
 [source]

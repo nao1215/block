@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -13,7 +14,7 @@ import (
 // want describes what one embedded recipe must render, so that a typo in a
 // TOML file fails here instead of at a user's first lock.
 type want struct {
-	ecosystem string
+	ecosystems []string
 	// description is the exact sentence the recipe must carry, so that a
 	// reworded description is a deliberate change rather than a drive-by one.
 	description string
@@ -31,7 +32,7 @@ type want struct {
 //nolint:gochecknoglobals // table shared by the tests below
 var recipes = map[string]want{
 	"bitcoin-core": {
-		ecosystem: "bitcoin", description: "Bitcoin reference implementation: full node, wallet and transaction tools",
+		ecosystems: []string{"bitcoin"}, description: "Bitcoin reference implementation: full node, wallet and transaction tools",
 		sourceKind: recipe.TypeHTTP, sample: "29.4", commit: "abcdef1234",
 		artifacts: map[string]string{
 			"linux/amd64":  "https://bitcoincore.org/bin/bitcoin-core-29.4/bitcoin-29.4-x86_64-linux-gnu.tar.gz",
@@ -42,7 +43,7 @@ var recipes = map[string]want{
 		bins: []string{"bin/bitcoind", "bin/bitcoin-cli", "bin/bitcoin-tx", "bin/bitcoin-util", "bin/bitcoin-wallet"}, strip: 1,
 	},
 	"foundry": {
-		ecosystem: "ethereum", description: "Fast Ethereum application toolkit: build, test, deploy and inspect contracts",
+		ecosystems: []string{"ethereum"}, description: "Fast Ethereum application toolkit: build, test, deploy and inspect contracts",
 		sourceKind: recipe.TypeGitHubRelease, sample: "1.7.1",
 		artifacts: map[string]string{
 			"linux/amd64":  "foundry_v1.7.1_linux_amd64.tar.gz",
@@ -53,7 +54,7 @@ var recipes = map[string]want{
 		bins: []string{"forge", "cast", "anvil", "chisel"},
 	},
 	"solc": {
-		ecosystem: "ethereum", description: "The Solidity smart-contract compiler",
+		ecosystems: []string{"ethereum"}, description: "The Solidity smart-contract compiler",
 		sourceKind: recipe.TypeGitHubRelease, sample: "0.8.36",
 		artifacts: map[string]string{
 			"linux/amd64":  "solc-static-linux",
@@ -63,7 +64,7 @@ var recipes = map[string]want{
 		bins: []string{"solc"},
 	},
 	"geth": {
-		ecosystem: "ethereum", description: "go-ethereum, the Go implementation of an Ethereum execution client",
+		ecosystems: []string{"ethereum"}, description: "go-ethereum, the Go implementation of an Ethereum execution client",
 		sourceKind: recipe.TypeHTTP, sample: "1.17.5", commit: "9621c6ad10934a01",
 		artifacts: map[string]string{
 			"linux/amd64": "https://gethstore.blob.core.windows.net/builds/geth-linux-amd64-1.17.5-9621c6ad.tar.gz",
@@ -72,7 +73,7 @@ var recipes = map[string]want{
 		bins: []string{"geth"}, strip: 1,
 	},
 	"reth": {
-		ecosystem: "ethereum", description: "Modular Ethereum execution client written in Rust",
+		ecosystems: []string{"ethereum"}, description: "Modular Ethereum execution client written in Rust",
 		sourceKind: recipe.TypeGitHubRelease, sample: "2.5.1",
 		artifacts: map[string]string{
 			"linux/amd64":  "reth-v2.5.1-x86_64-unknown-linux-gnu.tar.gz",
@@ -82,7 +83,7 @@ var recipes = map[string]want{
 		bins: []string{"reth"},
 	},
 	"lighthouse": {
-		ecosystem: "ethereum", description: "Ethereum consensus (beacon chain) client written in Rust",
+		ecosystems: []string{"ethereum"}, description: "Ethereum consensus (beacon chain) client written in Rust",
 		sourceKind: recipe.TypeGitHubRelease, sample: "8.2.2",
 		artifacts: map[string]string{
 			"linux/amd64":  "lighthouse-v8.2.2-x86_64-unknown-linux-gnu.tar.gz",
@@ -92,7 +93,7 @@ var recipes = map[string]want{
 		bins: []string{"lighthouse"},
 	},
 	"agave": {
-		ecosystem: "solana", description: "Solana validator client and CLI suite, including a local test validator",
+		ecosystems: []string{"solana"}, description: "Solana validator client and CLI suite, including a local test validator",
 		sourceKind: recipe.TypeGitHubRelease, sample: "4.2.1",
 		artifacts: map[string]string{
 			"linux/amd64":  "solana-release-x86_64-unknown-linux-gnu.tar.bz2",
@@ -102,7 +103,7 @@ var recipes = map[string]want{
 		bins: []string{"bin/solana", "bin/solana-keygen", "bin/solana-test-validator", "bin/agave-ledger-tool"}, strip: 1,
 	},
 	"anchor": {
-		ecosystem: "solana", description: "Framework and CLI for writing, testing and deploying Solana programs",
+		ecosystems: []string{"solana"}, description: "Framework and CLI for writing, testing and deploying Solana programs",
 		sourceKind: recipe.TypeGitHubRelease, sample: "1.1.2",
 		artifacts: map[string]string{
 			"linux/amd64":  "anchor-1.1.2-x86_64-unknown-linux-gnu",
@@ -112,7 +113,7 @@ var recipes = map[string]want{
 		bins: []string{"anchor"},
 	},
 	"surfpool": {
-		ecosystem: "solana", description: "Local Solana network that streams mainnet state for pre-deployment testing",
+		ecosystems: []string{"solana"}, description: "Local Solana network that streams mainnet state for pre-deployment testing",
 		sourceKind: recipe.TypeGitHubRelease, sample: "1.5.0",
 		artifacts: map[string]string{
 			"linux/amd64":  "surfpool-linux-x64.tar.gz",
@@ -122,7 +123,7 @@ var recipes = map[string]want{
 		bins: []string{"surfpool"},
 	},
 	"gaia": {
-		ecosystem: "cosmos", description: "Cosmos Hub node (gaiad)",
+		ecosystems: []string{"cosmos"}, description: "Cosmos Hub node (gaiad)",
 		sourceKind: recipe.TypeGitHubRelease, sample: "27.6.0",
 		artifacts: map[string]string{
 			"linux/amd64":  "gaiad-v27.6.0-linux-amd64",
@@ -131,7 +132,7 @@ var recipes = map[string]want{
 		bins: []string{"gaiad"},
 	},
 	"cometbft": {
-		ecosystem: "cosmos", description: "Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains",
+		ecosystems: []string{"cosmos"}, description: "Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains",
 		sourceKind: recipe.TypeGitHubRelease, sample: "1.0.1",
 		artifacts: map[string]string{
 			"linux/amd64":  "cometbft_1.0.1_linux_amd64.tar.gz",
@@ -142,7 +143,7 @@ var recipes = map[string]want{
 		bins: []string{"cometbft"},
 	},
 	"osmosis": {
-		ecosystem: "cosmos", description: "Osmosis appchain node (osmosisd), the Cosmos AMM",
+		ecosystems: []string{"cosmos"}, description: "Osmosis appchain node (osmosisd), the Cosmos AMM",
 		sourceKind: recipe.TypeGitHubRelease, sample: "31.0.3",
 		artifacts: map[string]string{
 			"linux/amd64":  "osmosisd-31.0.3-linux-amd64.tar.gz",
@@ -153,7 +154,7 @@ var recipes = map[string]want{
 		bins: []string{"osmosisd"},
 	},
 	"hermes": {
-		ecosystem: "ibc", description: "IBC relayer connecting Cosmos SDK chains, written in Rust",
+		ecosystems: []string{"cosmos", "ibc"}, description: "IBC relayer connecting Cosmos SDK chains, written in Rust",
 		sourceKind: recipe.TypeGitHubRelease, sample: "1.13.3",
 		artifacts: map[string]string{
 			"linux/amd64":  "hermes-v1.13.3-x86_64-unknown-linux-gnu.tar.gz",
@@ -171,10 +172,10 @@ func TestBuiltinCoversEveryRecipe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Names()) != len(recipes) {
-		t.Fatalf("registry has %v but the test table has %d entries", r.Names(), len(recipes))
+	if len(r.Recipes()) != len(recipes) {
+		t.Fatalf("registry has %d recipes but the test table has %d entries", len(r.Recipes()), len(recipes))
 	}
-	for _, name := range r.Names() {
+	for _, name := range ecosystemNames(r) {
 		w, ok := recipes[name]
 		if !ok {
 			t.Errorf("recipe %s is not covered by the test table", name)
@@ -183,8 +184,8 @@ func TestBuiltinCoversEveryRecipe(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			rec, _ := r.Lookup(name)
-			if rec.Ecosystem != w.ecosystem {
-				t.Errorf("ecosystem = %q, want %q", rec.Ecosystem, w.ecosystem)
+			if strings.Join(rec.Ecosystems, ",") != strings.Join(w.ecosystems, ",") {
+				t.Errorf("ecosystems = %v, want %v", rec.Ecosystems, w.ecosystems)
 			}
 			if rec.Description != w.description {
 				t.Errorf("description = %q, want %q", rec.Description, w.description)
@@ -217,6 +218,82 @@ func TestBuiltinCoversEveryRecipe(t *testing.T) {
 	}
 }
 
+// ecosystemNames lists the registry's tool names, sorted.
+func ecosystemNames(r *Registry) []string {
+	recs := r.Recipes()
+	out := make([]string, len(recs))
+	for i, rec := range recs {
+		out[i] = rec.Name
+	}
+	return out
+}
+
+func TestEcosystemDiscovery(t *testing.T) {
+	t.Parallel()
+	r, err := Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(r.Ecosystems(), ", "); got != "bitcoin, cosmos, ethereum, ibc, solana" {
+		t.Errorf("Ecosystems() = %q", got)
+	}
+	// Every ecosystem a recipe claims is discoverable, and every recipe is
+	// reachable through each ecosystem it claims.
+	for _, rec := range r.Recipes() {
+		for _, e := range rec.Ecosystems {
+			if !slices.Contains(r.Ecosystems(), e) {
+				t.Errorf("%s claims ecosystem %q that Ecosystems() does not list", rec.Name, e)
+			}
+			if !slices.ContainsFunc(r.ByEcosystem(e), func(x recipe.Recipe) bool { return x.Name == rec.Name }) {
+				t.Errorf("%s is missing from ByEcosystem(%q)", rec.Name, e)
+			}
+		}
+	}
+	// A tool serving two ecosystems appears under both.
+	for _, e := range []string{"cosmos", "ibc"} {
+		if !slices.ContainsFunc(r.ByEcosystem(e), func(x recipe.Recipe) bool { return x.Name == "hermes" }) {
+			t.Errorf("hermes is missing from ByEcosystem(%q)", e)
+		}
+	}
+	names := func(recs []recipe.Recipe) string {
+		out := make([]string, len(recs))
+		for i, rec := range recs {
+			out[i] = rec.Name
+		}
+		return strings.Join(out, ",")
+	}
+	if got := names(r.ByEcosystem("cosmos")); got != "cometbft,gaia,hermes,osmosis" {
+		t.Errorf("ByEcosystem(cosmos) = %q (must be sorted by name)", got)
+	}
+	if got := r.ByEcosystem("sui"); got != nil {
+		t.Errorf("ByEcosystem(unknown) = %v", got)
+	}
+	if got := strings.Join(ecosystemNames(r), ","); got != "agave,anchor,bitcoin-core,cometbft,foundry,gaia,geth,hermes,lighthouse,osmosis,reth,solc,surfpool" {
+		t.Errorf("Recipes() = %q (must be sorted by name)", got)
+	}
+}
+
+func TestEcosystemsAreSortedRegardlessOfRecipeOrder(t *testing.T) {
+	t.Parallel()
+	const body = `name = "tool"
+ecosystems = ["ibc", "cosmos"]
+description = "A tool"
+[source]
+type = "github_release"
+repo = "o/r"
+asset = "tool_{version}.tar.gz"
+bin = ["tool"]
+`
+	r, err := Load(fstest.MapFS{"tool.toml": {Data: []byte(body)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, _ := r.Lookup("tool")
+	if strings.Join(rec.Ecosystems, ",") != "cosmos,ibc" {
+		t.Errorf("ecosystems = %v, want them sorted", rec.Ecosystems)
+	}
+}
+
 func TestLoadErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -225,10 +302,11 @@ func TestLoadErrors(t *testing.T) {
 		want string
 	}{
 		{"syntax", fstest.MapFS{"a.toml": {Data: []byte("name = \n")}}, "a.toml"},
-		{"unknown key", fstest.MapFS{"a.toml": {Data: []byte("name = \"a\"\ndescription = \"A tool\"\nhomepage = \"x\"\n[source]\ntype = \"github_release\"\nrepo = \"o/r\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\n")}}, `unknown key "homepage"`},
-		{"invalid", fstest.MapFS{"a.toml": {Data: []byte("name = \"a\"\ndescription = \"A tool\"\n[source]\ntype = \"github_release\"\n")}}, `tool "a"`},
-		{"no description", fstest.MapFS{"a.toml": {Data: []byte("name = \"a\"\n[source]\ntype = \"github_release\"\nrepo = \"o/r\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\n")}}, `tool "a": description is required`},
-		{"name mismatch", fstest.MapFS{"b.toml": {Data: []byte("name = \"a\"\ndescription = \"A tool\"\n[source]\ntype = \"github_release\"\nrepo = \"o/r\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\n")}}, `recipe name "a" does not match the file name`},
+		{"unknown key", fstest.MapFS{"a.toml": {Data: []byte("name = \"a\"\necosystems = [\"x\"]\ndescription = \"A tool\"\nhomepage = \"x\"\n[source]\ntype = \"github_release\"\nrepo = \"o/r\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\n")}}, `unknown key "homepage"`},
+		{"invalid", fstest.MapFS{"a.toml": {Data: []byte("name = \"a\"\necosystems = [\"x\"]\ndescription = \"A tool\"\n[source]\ntype = \"github_release\"\n")}}, `tool "a"`},
+		{"no ecosystems", fstest.MapFS{"a.toml": {Data: []byte("name = \"a\"\ndescription = \"A tool\"\n[source]\ntype = \"github_release\"\nrepo = \"o/r\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\n")}}, `tool "a": ecosystems is required`},
+		{"no description", fstest.MapFS{"a.toml": {Data: []byte("name = \"a\"\necosystems = [\"x\"]\n[source]\ntype = \"github_release\"\nrepo = \"o/r\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\n")}}, `tool "a": description is required`},
+		{"name mismatch", fstest.MapFS{"b.toml": {Data: []byte("name = \"a\"\necosystems = [\"x\"]\ndescription = \"A tool\"\n[source]\ntype = \"github_release\"\nrepo = \"o/r\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\n")}}, `recipe name "a" does not match the file name`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -240,7 +318,7 @@ func TestLoadErrors(t *testing.T) {
 		})
 	}
 	r, err := Load(fstest.MapFS{"README.md": {Data: []byte("docs")}, "sub": {Mode: 0o755 | 1<<31}})
-	if err != nil || len(r.Names()) != 0 {
+	if err != nil || len(r.Recipes()) != 0 {
 		t.Errorf("Load(non-recipes) = %v, %v", r, err)
 	}
 }

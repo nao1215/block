@@ -81,7 +81,7 @@ func TestSourceValidate(t *testing.T) {
 
 func TestRecipeValidate(t *testing.T) {
 	t.Parallel()
-	valid := Recipe{Name: "foundry", Description: "Fast Ethereum application toolkit", Source: foundry()}
+	valid := Recipe{Name: "foundry", Ecosystems: []string{"ethereum"}, Description: "Fast Ethereum application toolkit", Source: foundry()}
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestRecipeDescription(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			r := Recipe{Name: "foundry", Description: tt.description, Source: foundry()}
+			r := Recipe{Name: "foundry", Ecosystems: []string{"ethereum"}, Description: tt.description, Source: foundry()}
 			err := r.Validate()
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("Validate() error = %v, want containing %q", err, tt.want)
@@ -123,7 +123,7 @@ func TestRecipeDescription(t *testing.T) {
 			}
 		})
 	}
-	ok := Recipe{Name: "foundry", Description: strings.Repeat("x", maxDescription), Source: foundry()}
+	ok := Recipe{Name: "foundry", Ecosystems: []string{"ethereum"}, Description: strings.Repeat("x", maxDescription), Source: foundry()}
 	if err := ok.Validate(); err != nil {
 		t.Errorf("a description of exactly the maximum length was rejected: %v", err)
 	}
@@ -282,6 +282,42 @@ func TestHash(t *testing.T) {
 	}
 	if hermes().Hash() == foundry().Hash() {
 		t.Error("different recipes hash equal")
+	}
+}
+
+func TestRecipeEcosystems(t *testing.T) {
+	t.Parallel()
+	base := Recipe{Name: "hermes", Description: "IBC relayer", Source: foundry()}
+	multi := base
+	multi.Ecosystems = []string{"cosmos", "ibc"}
+	if err := multi.Validate(); err != nil {
+		t.Fatalf("a tool serving two ecosystems was rejected: %v", err)
+	}
+	tests := []struct {
+		name string
+		eco  []string
+		want string
+	}{
+		{"missing", nil, "ecosystems is required"},
+		{"empty", []string{}, "ecosystems is required"},
+		{"blank name", []string{""}, "ecosystem: tool name is empty"},
+		{"upper case", []string{"Ethereum"}, `invalid tool name "Ethereum"`},
+		{"spaced", []string{"cosmos sdk"}, "invalid tool name"},
+		{"duplicate", []string{"cosmos", "cosmos"}, `ecosystem "cosmos" is listed twice`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := base
+			r.Ecosystems = tt.eco
+			err := r.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Validate() error = %v, want containing %q", err, tt.want)
+			}
+			if err != nil && !strings.Contains(err.Error(), `tool "hermes"`) {
+				t.Errorf("error should name the tool: %v", err)
+			}
+		})
 	}
 }
 

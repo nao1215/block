@@ -27,7 +27,7 @@ scenarios:
               - "block sync    installs the toolchain pinned in block.lock"
               - "block exec    runs a command with the installed toolchain"
               - "sync never resolves. exec never installs. lock is the only operation that"
-              - "block list    shows the tools the built-in registry knows (offline)"
+              - "block list    shows the tools block supports, all or by ecosystem"
               - "  lock "
               - "  sync "
               - "  exec "
@@ -40,33 +40,124 @@ scenarios:
               - "  update "
               - "  outdated "
 
-  - name: list shows the embedded registry, offline and read-only
+  - name: list shows every supported tool, offline and read-only
     env:
       BLOCK_HOME: "${workdir}/home"
       BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
     steps:
-      # No block.toml, no network: list only reads the binary's registry snapshot.
+      # No block.toml, no block.lock, no reachable network: list only reads
+      # the registry snapshot embedded in the binary.
       - run:
           command: block list
       - assert:
           exit_code: 0
           stdout:
             contains:
-              - "NAME           ECOSYSTEM   SOURCE           BINARIES"
-              - "bitcoin-core   bitcoin     http             bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet"
-              - "foundry        ethereum    github_release   forge, cast, anvil, chisel"
-              - "geth           ethereum    http             geth"
-              - "hermes         ibc         github_release   hermes"
+              - "NAME           ECOSYSTEM     SOURCE           BINARIES"
+              - "bitcoin-core   bitcoin       http             bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet"
+              - "foundry        ethereum      github_release   forge, cast, anvil, chisel"
+              - "geth           ethereum      http             geth"
+              # A tool serving two blockchain systems shows both.
+              - "hermes         cosmos, ibc   github_release   hermes"
           stderr:
             equals: ""
           changes:
             created: []
             modified: []
             deleted: []
+      # Rows are sorted by tool name, whatever order the registry files load in.
+      - assert:
+          stdout:
+            matches: "agave[\\s\\S]*bitcoin-core[\\s\\S]*foundry[\\s\\S]*hermes[\\s\\S]*surfpool"
+
+  - name: list takes an ecosystem and shows only its tools
+    env: &offline
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+    steps:
+      # The ecosystem column is dropped: every row would repeat the argument.
+      - run:
+          command: block list ethereum
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              NAME         SOURCE           BINARIES
+              foundry      github_release   forge, cast, anvil, chisel
+              geth         http             geth
+              lighthouse   github_release   lighthouse
+              reth         github_release   reth
+              solc         github_release   solc
+          stderr:
+            equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - run:
+          command: block list bitcoin
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              NAME           SOURCE   BINARIES
+              bitcoin-core   http     bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet
+      - run:
+          command: block list solana
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              NAME       SOURCE           BINARIES
+              agave      github_release   solana, solana-keygen, solana-test-validator, agave-ledger-tool
+              anchor     github_release   anchor
+              surfpool   github_release   surfpool
+
+  - name: a tool serving two blockchain systems is listed under each
+    env: *offline
+    steps:
+      - run:
+          command: block list cosmos
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              NAME       SOURCE           BINARIES
+              cometbft   github_release   cometbft
+              gaia       github_release   gaiad
+              hermes     github_release   hermes
+              osmosis    github_release   osmosisd
+      - run:
+          command: block list ibc
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              NAME     SOURCE           BINARIES
+              hermes   github_release   hermes
+
+  - name: an unknown ecosystem names the ones that exist
+    env: *offline
+    steps:
+      - run:
+          command: block list etheruem
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              block: unknown ecosystem "etheruem"
+              available ecosystems: bitcoin, cosmos, ethereum, ibc, solana
+          stdout:
+            equals: ""
+      - run:
+          command: block list ethereum solana
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "accepts at most 1 arg(s), received 2"
 
   - name: list does not show project-local tools
-    env:
-      BLOCK_HOME: "${workdir}/home"
+    env: *offline
     steps:
       - fixture:
           file: block.toml
@@ -83,7 +174,13 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            not_contains: "foo"
+            not_contains: "foo_"
+      - run:
+          command: block list ethereum
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "foo_"
       - run:
           command: block list --installed
       - assert:

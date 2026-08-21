@@ -77,8 +77,11 @@ type Source struct {
 // listing, a future block-registry site, a documentation build.
 type Recipe struct {
 	Name string `toml:"name"`
-	// Ecosystem groups the tool (bitcoin, ethereum, solana, cosmos, ibc).
-	Ecosystem string `toml:"ecosystem,omitempty"`
+	// Ecosystems are the blockchain systems the tool serves (bitcoin,
+	// ethereum, solana, cosmos, ibc, ...). A tool can belong to more than
+	// one: an IBC relayer is used from both cosmos and ibc work. The names
+	// are canonical registry data, not a closed set block knows about.
+	Ecosystems []string `toml:"ecosystems"`
 	// Description is one plain sentence saying what the tool is, phrased so
 	// it reads on its own next to the tool's name.
 	Description string `toml:"description"`
@@ -223,11 +226,31 @@ func (r Recipe) Validate() error {
 	if err := ValidateName(r.Name); err != nil {
 		return err
 	}
+	if err := r.validateEcosystems(); err != nil {
+		return fmt.Errorf("tool %q: %w", r.Name, err)
+	}
 	if err := r.validateDescription(); err != nil {
 		return fmt.Errorf("tool %q: %w", r.Name, err)
 	}
 	if err := r.Source.Validate(); err != nil {
 		return fmt.Errorf("tool %q: %w", r.Name, err)
+	}
+	return nil
+}
+
+func (r Recipe) validateEcosystems() error {
+	if len(r.Ecosystems) == 0 {
+		return errors.New("ecosystems is required: list the blockchain systems the tool serves")
+	}
+	seen := map[string]bool{}
+	for _, e := range r.Ecosystems {
+		if err := ValidateName(e); err != nil {
+			return fmt.Errorf("ecosystem: %w", err)
+		}
+		if seen[e] {
+			return fmt.Errorf("ecosystem %q is listed twice", e)
+		}
+		seen[e] = true
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -69,7 +70,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 sync never resolves. exec never installs. lock is the only operation that
 can move a pin.
 
-  block list    shows the tools the built-in registry knows (offline)`,
+  block list    shows the tools block supports, all or by ecosystem`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -204,26 +205,50 @@ exec never downloads, installs or resolves anything; run "block sync" first.`,
 
 func newListCmd(stdout io.Writer) *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List the tools the built-in registry knows",
-		Long: `list prints every tool in the registry snapshot embedded in this binary:
-its name, the ecosystem it belongs to, how it is obtained, and the
-executables it provides.
+		Use:   "list [ecosystem]",
+		Short: "List the tools block supports",
+		Long: `List tools supported by block.
 
-list is read-only and offline. It does not resolve, download, install, or
-read block.toml; project-local tools are not listed. To learn what a project
-uses, read its block.toml and block.lock.`,
-		Args: cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+Without an argument, lists all tools. With an ecosystem, lists the tools for
+that blockchain system:
+
+  block list
+  block list ethereum
+
+Tools are discovered here and chosen by you: listing an ecosystem never adds
+anything to block.toml. list is read-only and offline — it reads the registry
+snapshot embedded in this binary, resolves nothing, downloads nothing, and
+needs neither block.toml nor block.lock. Project-local tools are not listed;
+a project's own toolchain is its block.toml and block.lock.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
 			reg, err := registry.Builtin()
 			if err != nil {
 				return err
 			}
+			recipes := reg.Recipes()
+			byEcosystem := len(args) == 1
+			if byEcosystem {
+				if !slices.Contains(reg.Ecosystems(), args[0]) {
+					return fmt.Errorf("unknown ecosystem %q\navailable ecosystems: %s", args[0], strings.Join(reg.Ecosystems(), ", "))
+				}
+				recipes = reg.ByEcosystem(args[0])
+			}
 			tw := tabwriter.NewWriter(stdout, 0, 0, 3, ' ', 0) //nolint:mnd // column padding
-			fmt.Fprintln(tw, "NAME\tECOSYSTEM\tSOURCE\tBINARIES")
-			for _, name := range reg.Names() {
-				rec, _ := reg.Lookup(name)
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, rec.Ecosystem, rec.Source.Type, strings.Join(commandNames(rec.Source.Bin), ", "))
+			// The ecosystem column is dropped when every row would repeat the
+			// ecosystem that was asked for.
+			if byEcosystem {
+				fmt.Fprintln(tw, "NAME\tSOURCE\tBINARIES")
+			} else {
+				fmt.Fprintln(tw, "NAME\tECOSYSTEM\tSOURCE\tBINARIES")
+			}
+			for _, rec := range recipes {
+				bins := strings.Join(commandNames(rec.Source.Bin), ", ")
+				if byEcosystem {
+					fmt.Fprintf(tw, "%s\t%s\t%s\n", rec.Name, rec.Source.Type, bins)
+					continue
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", rec.Name, strings.Join(rec.Ecosystems, ", "), rec.Source.Type, bins)
 			}
 			return tw.Flush()
 		},

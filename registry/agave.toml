@@ -4,7 +4,7 @@
 # The release asset carries no version in its name (the release does), is
 # bzip2-compressed, and wraps its tools in solana-release/bin/.
 name = "agave"
-ecosystem = "solana"
+ecosystems = ["solana"]
 description = "Solana validator client and CLI suite, including a local test validator"
 
 [source]
