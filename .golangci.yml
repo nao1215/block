@@ -1,0 +1,98 @@
+version: "2"
+run:
+  go: "1.25"
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - godot
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - makezero
+    - mirror
+    - misspell
+    - mnd
+    - nakedret
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nolintlint
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - reassign
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tagliatelle
+    - testableexamples
+    - testifylint
+    - thelper
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+        use-field-name: true
+  exclusions:
+    generated: lax
+    rules:
+      # Tests and the offline fake GitHub fixtures repeat literals and magic
+      # numbers on purpose: they are tables, not logic.
+      - path: _test\.go
+        linters:
+          - dogsled
+          - goconst
+          - gosec
+          - mnd
+          - prealloc
+          - thelper
+      - path: internal/fakegh/
+        linters:
+          - goconst
+          - mnd
+          - prealloc
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - e2e/
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - e2e/

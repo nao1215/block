@@ -1,0 +1,32 @@
+coverage:
+  paths:
+    - cover.out
+  acceptable: 90%
+  # The atago-driven E2E suite drives the real CLI, so main.go and the cobra
+  # wiring are measured. Only the offline fake GitHub command is excluded: it
+  # is E2E test infrastructure, not part of the block binary.
+  exclude:
+    - "github.com/nao1215/block/e2e/fakegh/main.go"
+    - "github.com/nao1215/block/internal/fakegh/fakegh.go"
+  badge:
+    path: doc/coverage.svg
+diff:
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+comment:
+  if: is_pull_request
+report:
+  if: is_default_branch
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+codeToTestRatio:
+  code:
+    - "**/*.go"
+    - "!**/*_test.go"
+    - "!internal/fakegh/**"
+    - "!e2e/**"
+  test:
+    - "**/*_test.go"
+    - "e2e/atago/**"
+  badge:
+    path: doc/ratio.svg

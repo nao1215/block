@@ -1,0 +1,180 @@
+# Artifact handling: archive formats, nested executables, and the archives
+# block must refuse (path traversal, links, missing executables) plus hosts
+# that ship nothing for this platform. Run with: make e2e
+version: "1"
+
+suite:
+  name: block artifacts
+
+scenarios:
+  - name: zip archives are extracted like tarballs
+    env: &t1
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "zipper  3.0.0  installed"
+      - run:
+          command: block exec zipper
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "zipper 3.0.0 (fake)"
+
+  - name: executables in a subdirectory of the archive are found
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.nested]
+            version = "1"
+            [tools.nested.source]
+            type = "github_release"
+            repo = "example/nested"
+            asset = "nested_{version}_{os}_{arch}.tar.gz"
+            bin = ["bin/nested"]
+      - run:
+          command: block sync
+      - run:
+          command: block exec nested
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "nested 1.0.0 (fake)"
+
+  - name: a recipe that does not ship this platform is rejected at lock time
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.maconly]
+            version = "0.1"
+            [tools.maconly.source]
+            type = "github_release"
+            repo = "example/maconly"
+            asset = "maconly_{version}_{os}_{arch}.tar.gz"
+            platforms = ["darwin/arm64"]
+            bin = ["maconly"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: maconly: unsupported platform linux/amd64 (available: darwin/arm64)\n"
+          changes:
+            created: []
+
+  - name: a release missing the expected asset names what it does have
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo-{version}-{os}-{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - 'block: foo: release v1.2.0 of example/foo has no asset "foo-1.2.0-linux-amd64.tar.gz" (assets: '
+              - "foo_1.2.0_linux_amd64.tar.gz"
+
+  - name: an archive that escapes its directory is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.evil]
+            version = "1"
+            [tools.evil.source]
+            type = "github_release"
+            repo = "example/evil"
+            asset = "evil_{version}_{os}_{arch}.tar.gz"
+            bin = ["evil"]
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: evil: extract evil_1.0.0_linux_amd64.tar.gz: refusing to extract "../escape": path escapes the destination'
+      - assert:
+          file:
+            path: home/tools/escape
+            exists: false
+      - assert:
+          file:
+            path: home/escape
+            exists: false
+      - assert:
+          dir:
+            path: home/tools/evil
+            exists: true
+            count: 0
+
+  - name: an archive containing a symlink is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.linky]
+            version = "1"
+            [tools.linky.source]
+            type = "github_release"
+            repo = "example/linky"
+            asset = "linky_{version}_{os}_{arch}.tar.gz"
+            bin = ["linky"]
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'refusing to extract link "etc-passwd": links are not supported'
+
+  - name: an archive without the declared executable is not installed
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.nobin]
+            version = "1"
+            [tools.nobin.source]
+            type = "github_release"
+            repo = "example/nobin"
+            asset = "nobin_{version}_{os}_{arch}.tar.gz"
+            bin = ["nobin"]
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: nobin: archive nobin_1.0.0_linux_amd64.tar.gz does not contain executable "nobin"'
+      - assert:
+          dir:
+            path: home/tools/nobin
+            count: 0

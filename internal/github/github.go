@@ -1,0 +1,168 @@
+// Package github is the minimal GitHub REST client block needs: list the tags
+// of a repository and fetch one release by tag. It deliberately avoids
+// paging through /releases, which for projects that publish nightlies (Foundry
+// has hundreds) would cost many requests per resolution.
+package github
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// DefaultBaseURL is the public GitHub API.
+const DefaultBaseURL = "https://api.github.com"
+
+// EnvBaseURL overrides the API base URL (used by tests and GitHub Enterprise).
+const EnvBaseURL = "BLOCK_GITHUB_API_URL"
+
+const (
+	perPage      = 100
+	maxTagPages  = 20
+	maxBodyBytes = 8 << 20
+)
+
+// ErrNotFound reports a missing repository, tag or release.
+var ErrNotFound = errors.New("not found")
+
+// Client talks to the GitHub REST API.
+type Client struct {
+	BaseURL   string
+	Token     string
+	HTTP      *http.Client
+	UserAgent string
+}
+
+// NewFromEnv builds a client from BLOCK_GITHUB_API_URL and GITHUB_TOKEN/GH_TOKEN.
+func NewFromEnv(userAgent string) *Client {
+	base := os.Getenv(EnvBaseURL)
+	if base == "" {
+		base = DefaultBaseURL
+	}
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		token = os.Getenv("GH_TOKEN")
+	}
+	const timeout = 60 * time.Second
+	return &Client{BaseURL: strings.TrimRight(base, "/"), Token: token, HTTP: &http.Client{Timeout: timeout}, UserAgent: userAgent}
+}
+
+// Release is the subset of a GitHub release block consumes.
+type Release struct {
+	TagName    string  `json:"tag_name"`
+	Draft      bool    `json:"draft"`
+	Prerelease bool    `json:"prerelease"`
+	Assets     []Asset `json:"assets"`
+}
+
+// Asset is one downloadable release file.
+type Asset struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+	Size               int64  `json:"size"`
+}
+
+// Asset returns the asset with the given file name.
+func (r *Release) Asset(name string) (Asset, bool) {
+	for _, a := range r.Assets {
+		if a.Name == name {
+			return a, true
+		}
+	}
+	return Asset{}, false
+}
+
+type ref struct {
+	Ref string `json:"ref"`
+}
+
+// Tags lists the repository's tag names starting with prefix, newest page
+// last as GitHub returns them (lexically ordered refs).
+func (c *Client) Tags(ctx context.Context, repo, prefix string) ([]string, error) {
+	var tags []string
+	for page := 1; page <= maxTagPages; page++ {
+		endpoint := fmt.Sprintf("%s/repos/%s/git/matching-refs/tags/%s?per_page=%d&page=%d", c.BaseURL, repo, url.PathEscape(prefix), perPage, page)
+		var refs []ref
+		if err := c.getJSON(ctx, endpoint, &refs); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, fmt.Errorf("repository %s: %w", repo, ErrNotFound)
+			}
+			return nil, err
+		}
+		for _, r := range refs {
+			if name, ok := strings.CutPrefix(r.Ref, "refs/tags/"); ok {
+				tags = append(tags, name)
+			}
+		}
+		if len(refs) < perPage {
+			break
+		}
+	}
+	return tags, nil
+}
+
+// ReleaseByTag fetches the release published for tag. A tag without a
+// release yields ErrNotFound.
+func (c *Client) ReleaseByTag(ctx context.Context, repo, tag string) (*Release, error) {
+	endpoint := fmt.Sprintf("%s/repos/%s/releases/tags/%s", c.BaseURL, repo, url.PathEscape(tag))
+	var rel Release
+	if err := c.getJSON(ctx, endpoint, &rel); err != nil {
+		return nil, err
+	}
+	return &rel, nil
+}
+
+func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("github api: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // read-only body
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	if err != nil {
+		return fmt.Errorf("github api: %w", err)
+	}
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return ErrNotFound
+	case resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests:
+		if resp.Header.Get("X-RateLimit-Remaining") == "0" {
+			return rateLimitError(resp.Header.Get("X-RateLimit-Reset"))
+		}
+		return fmt.Errorf("github api: %s returned %s", endpoint, resp.Status)
+	case resp.StatusCode/100 != 2: //nolint:mnd // HTTP status class
+		return fmt.Errorf("github api: %s returned %s", endpoint, resp.Status)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("github api: invalid response from %s: %w", endpoint, err)
+	}
+	return nil
+}
+
+func rateLimitError(reset string) error {
+	msg := "github api: rate limit exceeded (set GITHUB_TOKEN to raise the limit)"
+	if secs, err := strconv.ParseInt(reset, 10, 64); err == nil {
+		msg += "; resets at " + time.Unix(secs, 0).UTC().Format(time.RFC3339)
+	}
+	return errors.New(msg)
+}

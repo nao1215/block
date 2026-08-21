@@ -1,0 +1,20 @@
+# Hermes: the IBC relayer by Informal Systems.
+# https://github.com/informalsystems/hermes
+#
+# Assets are named with Rust target triples, so Go's os/arch are mapped.
+name = "hermes"
+
+[source]
+type = "github_release"
+repo = "informalsystems/hermes"
+asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["hermes"]
+
+[source.os]
+linux = "unknown-linux-gnu"
+darwin = "apple-darwin"
+
+[source.arch]
+amd64 = "x86_64"
+arm64 = "aarch64"

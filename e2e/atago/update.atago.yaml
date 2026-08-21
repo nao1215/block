@@ -1,0 +1,256 @@
+# `block outdated` reads upstream and never writes; `block update` is the only
+# command that moves an existing pin forward. Run with: make e2e
+version: "1"
+
+suite:
+  name: block outdated and update
+
+scenarios:
+  - name: outdated lists tools with a newer matching release and changes nothing
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - run:
+          command: block outdated
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              foo      1.2.0 -> 1.2.3
+              foundry  1.7.1 -> 1.7.4
+              hermes   1.13.0 -> 1.13.1
+          stderr:
+            equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: outdated respects the constraint
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      # 1.7.4 exists at t2 but the project pinned exactly 1.7.1.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7.1"
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - run:
+          command: block outdated
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "all tools are up to date\n"
+
+  - name: outdated needs a lockfile that matches the manifest
+    env: &t2
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block outdated
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: block.lock not found (run "block lock" first)
+
+'
+      - run:
+          command: block lock
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.6"
+      - run:
+          command: block outdated
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "block: block.lock is out of date with block.toml:"
+              - 'foundry: block.toml wants "1.6" but block.lock was resolved from "1.7"'
+
+  - name: update moves every pin to the newest matching release
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - run:
+          command: block update
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "foundry  1.7.1 -> 1.7.4  +linux/amd64"
+              - "hermes   1.13.0 -> 1.13.1  +linux/amd64"
+              - "wrote block.lock"
+          changes:
+            modified: [block.lock]
+            created: ["home/**"]
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - 'version = "1.7.4"'
+              - 'version = "1.13.1"'
+      - assert:
+          file:
+            path: block.lock
+            not_contains: "1.7.1"
+      # sync picks the new pins up; the old installs are left alone.
+      - run:
+          command: block sync --locked
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - run:
+          command: block exec forge
+      - assert:
+          stdout:
+            contains: "forge 1.7.4 (fake)"
+
+  - name: update with a name touches only that tool
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      - run:
+          command: block update hermes
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "foundry  1.7.1 (unchanged)"
+              - "hermes   1.13.0 -> 1.13.1"
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - 'version = "1.7.1"'
+              - 'version = "1.13.1"'
+
+  - name: update is a no-op when everything is current
+    env: *t2
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      - run:
+          command: block update
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              foundry  1.7.4 (unchanged)
+              block.lock is up to date
+          changes:
+            modified: []
+
+  - name: update never crosses the constraint
+    env: *t2
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.6"
+      - run:
+          command: block lock
+      - run:
+          command: block update
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foundry  1.6.0 (unchanged)"
+
+  - name: update rejects a tool that is not in block.toml
+    env: *t2
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block update geth
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: tool "geth" is not declared in block.toml
+
+'
+
+  - name: update without a lockfile behaves like lock
+    env: *t2
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block update
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "foundry  updated 1.7.4"
+              - "wrote block.lock"

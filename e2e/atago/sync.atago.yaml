@@ -1,0 +1,373 @@
+# `block sync` installs block.lock; `--locked` is the CI contract: it never
+# resolves, never rewrites, and fails loudly on any disagreement. Run with:
+# make e2e
+version: "1"
+
+suite:
+  name: block sync
+
+scenarios:
+  - name: sync without a lockfile locks first, then installs
+    env: &t1
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "foundry  1.7.1   installed"
+              - "hermes   1.13.0  installed"
+          changes:
+            created:
+              - block.lock
+              - home/**
+      - assert:
+          dir:
+            path: home/tools/foundry
+            count: 1
+            glob: "1.7.1-*"
+      - assert:
+          dir:
+            path: home/cache/sha256
+            count: 2
+
+  - name: a second sync is served from the store and touches nothing
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block sync
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.1  cached\n"
+          stderr:
+            equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: two projects share one store and the second never downloads
+    env: *t1
+    steps:
+      - fixture:
+          file: a/block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: b/block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: cd a && block sync
+      - assert:
+          stdout:
+            contains: "foundry  1.7.1  installed"
+      - run:
+          shell: true
+          command: cd b && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foundry  1.7.1  cached"
+          # Only b's lockfile is new: the archive and install already existed.
+          changes:
+            created: [b/block.lock]
+            modified: []
+
+  - name: sync --locked installs exactly what block.lock says and leaves it untouched
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      # CI, later: upstream now has 1.7.4, but the lock says 1.7.1.
+      - run:
+          command: block sync --locked
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.1  installed\n"
+          changes:
+            modified: []
+            deleted: []
+      - assert:
+          file:
+            path: block.lock
+            contains: 'version = "1.7.1"'
+
+  - name: sync --locked fails when block.lock is missing
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block sync --locked
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: block.lock not found (run "block lock" and commit the result)
+
+'
+          changes:
+            created: []
+
+  - name: sync --locked fails when block.toml changed after block.lock
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.6"
+            hermes = "1.13"
+      - run:
+          command: block sync --locked
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              block: --locked: block.lock is out of date with block.toml:
+                foundry: block.toml wants "1.6" but block.lock was resolved from "1.7"
+                hermes is declared in block.toml but missing from block.lock
+              run "block lock" to update it
+          changes:
+            modified: []
+            created: []
+
+  - name: sync --locked fails when a tool was removed from block.toml but not block.lock
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block lock
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block sync --locked
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "hermes is in block.lock but not declared in block.toml"
+
+  - name: sync --locked fails when block.lock has no artifact for this platform
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            platforms = ["darwin/arm64"]
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      - run:
+          command: block sync --locked
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "foundry: block.lock has no artifact for linux/amd64"
+          changes:
+            modified: []
+
+  - name: plain sync adds the current platform to a lockfile that lacks it
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            platforms = ["darwin/arm64"]
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foundry  1.7.1  installed"
+          changes:
+            modified: [block.lock]
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - 'platform = "darwin/arm64"'
+              - 'platform = "linux/amd64"'
+
+  - name: a checksum mismatch aborts the install and installs nothing
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      # Simulate a tampered artifact (or a hand-edited lock): flip the digest.
+      - run:
+          shell: true
+          command: sed -i -E 's/^sha256 = "[0-9a-f]{4}/sha256 = "0000/' block.lock
+      # The archive downloaded by lock is in the cache under its real digest;
+      # a fresh store proves sync re-downloads and verifies.
+      - run:
+          command: block sync --locked
+          env:
+            BLOCK_HOME: "${workdir}/fresh"
+      - assert:
+          exit_code: 1
+          stderr:
+            matches: 'block: foundry: checksum mismatch for http://[^ ]+/foundry_v1\.7\.1_linux_amd64\.tar\.gz: want sha256 0000[0-9a-f]{60}, got [0-9a-f]{64}'
+      - assert:
+          dir:
+            path: fresh/tools
+            exists: false
+
+  - name: a cached archive is trusted only under its own digest
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      - run:
+          shell: true
+          command: sed -i -E 's/^sha256 = "[0-9a-f]{4}/sha256 = "0000/' block.lock
+      # Same store as lock used: the real blob is cached, but under the real
+      # digest, so the bogus digest still misses and the download mismatches.
+      - run:
+          command: block sync --locked
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "checksum mismatch"
+
+  - name: a lockfile pointing at a plain-http host is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      - run:
+          shell: true
+          command: sed -i -E 's#^url = "http://[^/]+/#url = "http://mirror.example.com/#' block.lock
+      - run:
+          command: block sync --locked
+          env:
+            BLOCK_HOME: "${workdir}/fresh"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "block: foundry: refusing insecure url http://mirror.example.com/download/foundry-rs/foundry/v1.7.1/foundry_v1.7.1_linux_amd64.tar.gz: only https is allowed"
+
+  - name: a hand-edited lockfile with an invalid digest is rejected before any network access
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/ratelimited"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "1.7.1"
+            [tools.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge"]
+
+            [[tools.artifacts]]
+            platform = "linux/amd64"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "nothex"
+      - run:
+          command: block sync --locked
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: block.lock: tool "foundry" (linux/amd64): sha256 "nothex" is not a 64-character hex digest
+
+'
+
+  - name: a lockfile from a newer block is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: block.lock
+          content: |
+            version = 2
+      - run:
+          command: block sync --locked
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: block.lock: unsupported lockfile version 2 (this block writes version 1)\n"

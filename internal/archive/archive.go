@@ -1,0 +1,172 @@
+// Package archive extracts the tar.gz and zip archives upstreams publish.
+// Extraction is defensive: every entry must stay inside the destination,
+// symlinks and hard links are refused, and only the owner-executable bit is
+// preserved from the archive's permissions.
+package archive
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// maxFileBytes caps a single extracted file so a crafted archive cannot fill
+// the disk through compression.
+const maxFileBytes = 2 << 30
+
+const (
+	dirMode  = 0o755
+	fileMode = 0o644
+	execMode = 0o755
+)
+
+// Extract unpacks src into dst based on src's file name extension. dst must
+// already exist and should be empty.
+func Extract(src, dst, name string) error {
+	switch {
+	case strings.HasSuffix(name, ".tar.gz"), strings.HasSuffix(name, ".tgz"):
+		return extractTarGz(src, dst)
+	case strings.HasSuffix(name, ".zip"):
+		return extractZip(src, dst)
+	default:
+		return fmt.Errorf("unsupported archive format: %s", name)
+	}
+}
+
+func extractTarGz(src, dst string) error {
+	f, err := os.Open(src) //nolint:gosec // cache path
+	if err != nil {
+		return err
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("invalid gzip archive: %w", err)
+	}
+	defer gz.Close() //nolint:errcheck // read-only
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("invalid tar archive: %w", err)
+		}
+		target, err := safePath(dst, hdr.Name)
+		if err != nil {
+			return err
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, dirMode); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := writeFile(target, tr, hdr.FileInfo().Mode()); err != nil {
+				return err
+			}
+		case tar.TypeSymlink, tar.TypeLink:
+			return fmt.Errorf("refusing to extract link %q: links are not supported", hdr.Name)
+		case tar.TypeXGlobalHeader, tar.TypeXHeader:
+			continue
+		default:
+			return fmt.Errorf("refusing to extract %q: unsupported entry type %q", hdr.Name, hdr.Typeflag)
+		}
+	}
+}
+
+func extractZip(src, dst string) error {
+	zr, err := zip.OpenReader(src)
+	if err != nil {
+		return fmt.Errorf("invalid zip archive: %w", err)
+	}
+	defer zr.Close() //nolint:errcheck // read-only
+	for _, zf := range zr.File {
+		target, err := safePath(dst, zf.Name)
+		if err != nil {
+			return err
+		}
+		mode := zf.Mode()
+		switch {
+		case mode.IsDir():
+			if err := os.MkdirAll(target, dirMode); err != nil {
+				return err
+			}
+		case mode&os.ModeSymlink != 0:
+			return fmt.Errorf("refusing to extract link %q: links are not supported", zf.Name)
+		case mode.IsRegular():
+			rc, err := zf.Open()
+			if err != nil {
+				return err
+			}
+			err = writeFile(target, rc, mode)
+			_ = rc.Close()
+			if err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("refusing to extract %q: unsupported entry type", zf.Name)
+		}
+	}
+	return nil
+}
+
+// safePath resolves an archive member name inside dst, rejecting absolute
+// names and any traversal outside dst.
+func safePath(dst, name string) (string, error) {
+	if name == "" {
+		return "", errors.New("archive entry has an empty name")
+	}
+	clean := filepath.Clean(filepath.FromSlash(name))
+	// A leading separator is rejected explicitly: on Windows "\etc" is not
+	// absolute in filepath's terms, but it is never a legitimate member name.
+	if filepath.IsAbs(clean) || strings.HasPrefix(clean, string(filepath.Separator)) ||
+		strings.HasPrefix(clean, "..") || filepath.VolumeName(clean) != "" {
+		return "", fmt.Errorf("refusing to extract %q: path escapes the destination", name)
+	}
+	target := filepath.Join(dst, clean)
+	rel, err := filepath.Rel(dst, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("refusing to extract %q: path escapes the destination", name)
+	}
+	// Refuse to follow a symlink that an earlier entry could not have created
+	// but that might pre-exist in dst.
+	for dir := filepath.Dir(target); strings.HasPrefix(dir, dst) && dir != dst; dir = filepath.Dir(dir) {
+		if st, err := os.Lstat(dir); err == nil && st.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("refusing to extract %q: parent %q is a symlink", name, dir)
+		}
+	}
+	return target, nil
+}
+
+func writeFile(target string, r io.Reader, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
+		return err
+	}
+	perm := os.FileMode(fileMode)
+	if mode&0o100 != 0 {
+		perm = execMode
+	}
+	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm) //nolint:gosec // inside the install dir
+	if err != nil {
+		return err
+	}
+	n, err := io.Copy(f, io.LimitReader(r, maxFileBytes+1))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	if n > maxFileBytes {
+		return fmt.Errorf("refusing to extract %q: file exceeds %d bytes", filepath.Base(target), maxFileBytes)
+	}
+	return nil
+}

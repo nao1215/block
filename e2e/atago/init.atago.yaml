@@ -1,0 +1,61 @@
+# `block init` writes a starter manifest and nothing else. Run with: make e2e
+version: "1"
+
+suite:
+  name: block init
+
+scenarios:
+  - name: init creates exactly block.toml with a commented template
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - run:
+          command: block init
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "created block.toml\n"
+          changes:
+            created: [block.toml]
+            modified: []
+            deleted: []
+      - assert:
+          file:
+            path: block.toml
+            contains:
+              - "[tools]"
+              - 'foundry = "1"'
+              - "# platforms ="
+
+  - name: init refuses to overwrite an existing manifest
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            hermes = "1.13"
+      - run:
+          command: block init
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: block.toml already exists\n"
+      - assert:
+          file:
+            path: block.toml
+            contains: 'hermes = "1.13"'
+
+  - name: the template locks as-is against the registry
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - run:
+          command: block init
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foundry  locked 1.7.4"

@@ -1,0 +1,81 @@
+# Top-level CLI contract: version, help, usage errors. Run with: make e2e
+version: "1"
+
+suite:
+  name: block cli
+
+scenarios:
+  - name: version prints the injected build version
+    steps:
+      - run:
+          command: block version
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "block v0.0.0-e2e\n"
+
+  - name: help lists every subcommand
+    steps:
+      - run:
+          command: block --help
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "block init"
+              - "block lock"
+              - "block sync [--locked]"
+              - "block exec forge test"
+              - "block outdated"
+              - "block update [tool...]"
+              - "  init "
+              - "  lock "
+              - "  sync "
+              - "  update "
+              - "  outdated "
+              - "  exec "
+              - "  registry "
+              - "  version "
+
+  - name: an unknown subcommand fails with exit 1 and a block-prefixed error
+    steps:
+      - run:
+          command: block frobnicate
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: unknown command "frobnicate" for "block"'
+
+  - name: registry lists the built-in recipes with their repositories
+    steps:
+      - run:
+          command: block registry
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "foundry\tfoundry-rs/foundry"
+              - "hermes\tinformalsystems/hermes"
+
+  - name: commands that need a project fail clearly when block.toml is absent
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: block.toml not found in the current directory or any parent (run "block init" to create one)'
+      - run:
+          command: block sync --locked
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "block.toml not found"
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "block.toml not found"

@@ -30,3 +30,9 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# block build and coverage output
+/block
+/dist/
+/.coverage/
+cover.html

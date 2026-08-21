@@ -1,0 +1,13 @@
+# Foundry: forge, cast, anvil and chisel for EVM development.
+# https://github.com/foundry-rs/foundry
+#
+# Stable releases are tagged vX.Y.Z. Nightly builds are tagged
+# "nightly-<sha>" and are skipped because they are not semantic versions.
+name = "foundry"
+
+[source]
+type = "github_release"
+repo = "foundry-rs/foundry"
+asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["forge", "cast", "anvil", "chisel"]
