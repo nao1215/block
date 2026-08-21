@@ -42,8 +42,17 @@ func setup(t *testing.T) (string, string) {
 func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 	dir, _ := setup(t)
 	code, out, _ := run(t, dir, "version")
-	if code != 0 || out != "block "+cmdinfo.Version+"\n" {
+	if code != 0 || !strings.HasPrefix(out, "block "+cmdinfo.Version+"\n") {
 		t.Errorf("version = %d, %q", code, out)
+	}
+	// A binary says which registry snapshot it carries, so a resolution can
+	// be traced back to the recipes that produced it.
+	snap, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "registry "+snap.Revision[:12]) || !strings.Contains(out, snap.Source) {
+		t.Errorf("version does not name the registry snapshot: %q", out)
 	}
 	code, out, _ = run(t, dir, "--help")
 	if code != 0 || !strings.Contains(out, "sync never resolves. exec never installs.") {

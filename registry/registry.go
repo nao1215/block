@@ -6,9 +6,13 @@
 // The registry is a set of rules, not a version database: a new upstream
 // release needs no change here. A recipe only changes when the upstream
 // renames its assets or moves repositories. Ecosystem names are recipe data
-// too, so a new blockchain system needs no change to block itself. The
-// directory is kept free of any other logic so it can later move to its own
-// repository unchanged.
+// too, so a new blockchain system needs no change to block itself.
+//
+// The recipes are not written here. They are a vendored copy of
+// block-registry at one revision, recorded in SNAPSHOT beside them and
+// refreshed by "make registry-sync"; see the README in this directory.
+// Embedding them is what lets `block list` and `block lock` work with no
+// network and ties a block version to a registry it was tested against.
 package registry
 
 import (
@@ -22,10 +26,22 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/nao1215/block/internal/recipe"
+	"github.com/nao1215/block/internal/snapshot"
 )
 
 //go:embed *.toml
 var files embed.FS
+
+// snapshotFile records which block-registry revision the recipes came from.
+// It travels with them so that a built binary can say what it is carrying.
+//
+//go:embed SNAPSHOT
+var snapshotFile []byte
+
+// Snapshot reports the provenance of the embedded recipes.
+func Snapshot() (snapshot.Snapshot, error) {
+	return snapshot.Parse(snapshotFile)
+}
 
 // Registry is a set of recipes indexed by tool name.
 type Registry struct {

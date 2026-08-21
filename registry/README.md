@@ -1,16 +1,72 @@
-# block registry
+# block registry — generated, do not edit
+
+Every `*.toml` beside this file is a **vendored copy** of
+[block-registry](https://github.com/nao1215/block-registry) at the revision
+[`SNAPSHOT`](./SNAPSHOT) records. Recipes are written and reviewed there.
+A change made here fails CI (`make registry-verify`) and would be undone by
+the next sync.
+
+```text
+block-registry (recipes are written and reviewed here)
+      │  make registry-sync   — vendors one revision
+      ▼
+registry/*.toml + registry/SNAPSHOT   (generated; embedded in the binary)
+      │  make registry-verify — every push, offline
+      ▼
+go test ./registry/  (every push)  +  make registry-live  (weekly, real upstreams)
+```
+
+| I want to… | Do this |
+| --- | --- |
+| add or fix a recipe | open a pull request against [block-registry](https://github.com/nao1215/block-registry) |
+| bring those changes into block | `make registry-sync` (add `REVISION=<sha>` to pin one), then commit `registry/` |
+| check the copy is untouched | `make registry-verify` |
+| undo an accidental edit here | `git checkout -- registry/` |
+
+The copy is what makes `block list` and `block lock` work with no network,
+and `block version` prints the revision it carries so a resolution can be
+traced back to the recipes that produced it. block does not depend on
+block-registry as a Go module: a `go install` of block resolves nothing but
+block itself.
+
+Only the recipes are vendored. `policy/hosts.toml`, the JSON Schema, the
+recipe linter and the catalog site stay in block-registry, because they are
+how a recipe is reviewed before it is merged — not something block executes.
+The check block owns is the other one: that a recipe still resolves,
+downloads, unpacks and runs against the real upstream.
+
+## How a recipe reaches a user
+
+```text
+1. a pull request against block-registry
+     registry-lint (file name, description, executable paths,
+     download-source policy) and the JSON Schema run there
+2. make registry-sync in block
+     registry/*.toml and registry/SNAPSHOT are regenerated, then
+     go test ./registry/ runs; a failure fails the sync
+3. the Registry (live) workflow, dispatched for the tools that changed
+     resolves, downloads, unpacks and runs them against the real upstream
+4. a "chore(registry): sync to <sha>" pull request against block
+     make registry-verify and the rest of CI must be green
+5. the next block release carries it to users
+```
+
+Routine upstream releases go through none of this: a recipe is a rule, so a
+new version of a tool needs no change anywhere. Steps 1–5 are for the day an
+upstream renames an asset, moves repository, or a tool is added.
+
+Nothing detects a new block-registry commit automatically today; step 2 is a
+maintainer's call, which is deliberate while both repositories are private —
+an automated sync pull request would need a personal access token stored as a
+secret in block with write access to block, and read access to block-registry.
+Add that only when the release cadence makes it worth the credential.
+
+## What a recipe is
 
 One TOML recipe per tool. A recipe is **how to find and fetch** a tool, not a
-list of its versions: a new upstream release needs no change here. Recipes
+list of its versions: a new upstream release needs no change to it. Recipes
 change only when the upstream moves repositories, renames assets, changes how
 it distributes builds, or drops a platform.
-
-This directory is a snapshot of
-[block-registry](https://github.com/nao1215/block-registry), which is where
-recipes are written and reviewed. The snapshot is embedded into the `block`
-binary, so `block list` and `block lock` work offline and a block version
-always pairs with a registry it was tested against. Edit a recipe here only
-as part of syncing the snapshot; the canonical copy lives there.
 
 ## Where a recipe may download from
 
@@ -131,10 +187,12 @@ Foundry, whose release list is dominated by nightly builds.
 
 Two layers, deliberately separate.
 
-**Static, on every push.** `go test ./registry/` validates every recipe
+**Static, on every push.** `make registry-verify` recomputes the digest of
+these files and compares it with `SNAPSHOT`, so a recipe edited in this copy
+fails rather than ships. `go test ./registry/` then validates every recipe
 against a table that pins, for each supported platform, the exact asset name
 or URL it renders, plus its description and executables. A typo fails there
-rather than at a user's first `block lock`. It touches no network.
+rather than at a user's first `block lock`. Neither touches the network.
 
 **Live, on a schedule.** `make registry-live` (the
 [Registry (live)](../.github/workflows/registry-live.yml) workflow, weekly and

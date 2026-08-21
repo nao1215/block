@@ -109,6 +109,12 @@ Answers *what can block install?*, and with an argument, *which tools exist
 for this blockchain system?* It reads the registry snapshot embedded in the
 binary: no network, no `block.toml`, no `block.lock`.
 
+That snapshot is a vendored copy of
+[block-registry](https://github.com/nao1215/block-registry) at one revision,
+built into the binary rather than fetched, so a block version always pairs
+with a registry it was tested against. `block version` prints which revision
+it carries.
+
 Listing is discovery, not selection. block never derives a toolchain from an
 ecosystem — "Ethereum" means contract development to one repository and
 validator operation to another. You pick, `block.toml` records.

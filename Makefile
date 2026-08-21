@@ -1,4 +1,4 @@
-.PHONY: build test e2e registry-live coverage clean vet fmt lint website website-serve changelog help
+.PHONY: build test e2e registry-verify registry-sync registry-live coverage clean vet fmt lint website website-serve changelog help
 
 APP         = block
 VERSION     = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -28,6 +28,12 @@ test: ## Start test
 
 e2e: ## Run offline end-to-end tests against the real CLI (requires atago)
 	./e2e/run.sh
+
+registry-verify: ## Check that registry/ is still the block-registry snapshot it records (offline)
+	$(GO) run ./scripts/registry-snapshot -verify
+
+registry-sync: ## Vendor block-registry's recipes into registry/ (network; REVISION=<sha> pins one)
+	./scripts/registry-sync.sh
 
 registry-live: ## Check every registry recipe against the real upstreams (downloads artifacts; RECIPE=foundry limits it)
 	$(GO) test -tags=live -v -timeout 50m ./registry/ -run 'TestLiveRegistry/($(RECIPE))'

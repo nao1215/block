@@ -11,6 +11,26 @@ permissions:
   contents: read
 
 jobs:
+  # registry/ is a vendored copy of block-registry, so the first thing to
+  # check is that it still is one: a recipe edited here would otherwise ship
+  # and then be undone by the next sync. Offline and seconds long, so it
+  # fails before the matrix spends anything.
+  registry_snapshot:
+    name: registry/ matches its snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Verify the vendored registry
+        run: make registry-verify
+
   unit_test:
     name: Unit test (${{ matrix.os }}, go ${{ matrix.go }})
     strategy:
