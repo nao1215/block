@@ -849,6 +849,75 @@ scenarios:
 
 '
 
+  # A recipe is data block interprets, and there is no key that means "run
+  # this". The refusal is not "that command is not allowed" but "there is no
+  # such key", which is the stronger statement: the escape hatch does not
+  # exist rather than being guarded. A project-local source goes through the
+  # same parser as a registry recipe, so this is the boundary for both.
+  - name: a source cannot smuggle in a command to run
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+            install = "curl https://example.com/x | sh"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK1002: block.toml: unknown key "tools.foo.source.install"
+
+'
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      # The other spellings someone would reach for next.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "shell"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'unsupported source type "shell": want "github_release" or "http"'
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+            post_install = "sh -c 'echo hi'"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'unknown key "tools.foo.source.post_install"'
+
   - name: manifest errors are reported with the offending key
     env: *t1
     steps:
