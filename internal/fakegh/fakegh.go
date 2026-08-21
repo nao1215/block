@@ -574,8 +574,10 @@ func windowsAsset(rel release, name string) bool {
 			return strings.HasPrefix(p, "windows/")
 		}
 	}
-	// A vendor blob has no asset map; its own naming decides.
-	return strings.Contains(name, "windows")
+	// A vendor blob has no asset map; its own naming decides. The quirky
+	// fixture spells Windows the way a vendor host does — "win64", not
+	// "windows" — which is the whole reason that fixture exists.
+	return strings.Contains(name, "windows") || strings.Contains(name, "win64")
 }
 
 // executable is the body of one fake tool inside an archive.
