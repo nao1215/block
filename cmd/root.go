@@ -288,7 +288,7 @@ func newVersionCmd(stdout io.Writer) *cobra.Command {
 		Short: "Print the block version and the registry snapshot it carries",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			fmt.Fprintf(stdout, "%s %s\n", cmdinfo.Name, cmdinfo.Version)
+			fmt.Fprintf(stdout, "%s %s\n", cmdinfo.Name, cmdinfo.Resolve())
 			// The recipes are vendored, so "which block" does not by itself
 			// answer "which registry". A binary that cannot say which
 			// revision it was built from cannot be matched to the recipes it
