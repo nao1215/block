@@ -2,6 +2,7 @@
 # https://github.com/osmosis-labs/osmosis
 name = "osmosis"
 ecosystem = "cosmos"
+description = "Osmosis appchain node (osmosisd), the Cosmos AMM"
 
 [source]
 type = "github_release"

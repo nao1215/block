@@ -2,6 +2,7 @@
 # https://github.com/paradigmxyz/reth
 name = "reth"
 ecosystem = "ethereum"
+description = "Modular Ethereum execution client written in Rust"
 
 [source]
 type = "github_release"

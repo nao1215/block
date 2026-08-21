@@ -81,15 +81,51 @@ func TestSourceValidate(t *testing.T) {
 
 func TestRecipeValidate(t *testing.T) {
 	t.Parallel()
-	if err := (Recipe{Name: "foundry", Source: foundry()}).Validate(); err != nil {
+	valid := Recipe{Name: "foundry", Description: "Fast Ethereum application toolkit", Source: foundry()}
+	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := (Recipe{Name: "Foundry", Source: foundry()}).Validate(); err == nil {
+	bad := valid
+	bad.Name = "Foundry"
+	if err := bad.Validate(); err == nil {
 		t.Error("upper-case name accepted")
 	}
-	err := (Recipe{Name: "foundry", Source: Source{}}).Validate()
+	bad = valid
+	bad.Source = Source{}
+	err := bad.Validate()
 	if err == nil || !strings.Contains(err.Error(), `tool "foundry"`) {
 		t.Errorf("error should name the tool: %v", err)
+	}
+}
+
+func TestRecipeDescription(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, description, want string
+	}{
+		{"empty", "", "description is required"},
+		{"blank", "   ", "description is required"},
+		{"padded", " a tool ", "leading or trailing whitespace"},
+		{"multi line", "a tool\nand more", "single line"},
+		{"tab", "a\ttool", "single line"},
+		{"too long", strings.Repeat("x", maxDescription+1), "keep it under 100"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := Recipe{Name: "foundry", Description: tt.description, Source: foundry()}
+			err := r.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Validate() error = %v, want containing %q", err, tt.want)
+			}
+			if err != nil && !strings.Contains(err.Error(), `tool "foundry"`) {
+				t.Errorf("error should name the tool: %v", err)
+			}
+		})
+	}
+	ok := Recipe{Name: "foundry", Description: strings.Repeat("x", maxDescription), Source: foundry()}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("a description of exactly the maximum length was rejected: %v", err)
 	}
 }
 

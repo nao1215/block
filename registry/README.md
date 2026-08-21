@@ -32,7 +32,8 @@ block does not manage language runtimes (Go, Rust, Node, Python) either.
 
 ```toml
 name = "hermes"                         # must equal the file name
-ecosystem = "ibc"                       # display metadata for `block list`
+ecosystem = "ibc"                       # bitcoin, ethereum, solana, cosmos, ibc
+description = "IBC relayer connecting Cosmos SDK chains, written in Rust"
 
 [source]
 type = "github_release"                 # or "http"
@@ -61,7 +62,7 @@ arm64 = "aarch64"
 | `platforms` | `os/arch` pairs the upstream ships; empty means all four, or the keys of `target` | same |
 | `os`, `arch` | rename `{os}` / `{arch}` | same |
 | `target` | `os/arch` → the upstream's whole platform string, for `{target}` | same |
-| `ecosystem` | display only — block attaches no behaviour to it | same |
+| `ecosystem`, `description` | metadata about the tool — block attaches no behaviour to either | same |
 
 Placeholders: `{version}` (as the upstream spells it, without the tag
 prefix), `{os}`, `{arch}`, `{target}`, and `{commit}` (`http` only — the first
@@ -75,6 +76,21 @@ under the one name in `bin`.
 OS and architecture: Bitcoin Core writes `aarch64-linux-gnu` but
 `arm64-apple-darwin`. Use `os`/`arch` when they suffice, `target` when they
 do not.
+
+## Metadata
+
+`ecosystem` and `description` say what a tool *is*; nothing about resolution
+depends on them. They exist so that the registry, rather than a README
+somewhere, is the one place that answers "what is this tool?" — for `block
+list` today and for whatever reads the registry later (a `block-registry`
+site, generated documentation).
+
+A description is required, and is one plain sentence under 100 characters,
+with no leading or trailing whitespace and no line breaks. Write it so it
+reads on its own beside the tool's name — "Cosmos Hub node (gaiad)", not
+"This is the node for the Cosmos Hub". Say what the tool is, not how good it
+is: upstream marketing ("blazing fast", "the best place to…") does not
+belong here.
 
 ## Version discovery
 

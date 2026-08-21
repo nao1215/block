@@ -5,6 +5,7 @@
 # "nightly-<sha>" and are skipped because they are not semantic versions.
 name = "foundry"
 ecosystem = "ethereum"
+description = "Fast Ethereum application toolkit: build, test, deploy and inspect contracts"
 
 [source]
 type = "github_release"

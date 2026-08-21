@@ -11,8 +11,8 @@ more team.
   deliberately small — see [Non-goals](./README.md#non-goals) before proposing
   a package manager feature.
 - New registry recipe: open a PR adding `registry/<tool>.toml` and its row in
-  the table in `registry/registry_test.go`, which pins the artifact each
-  supported platform resolves to. See [registry/README.md](./registry/README.md)
+  the table in `registry/registry_test.go`, which pins the description and
+  the artifact each supported platform resolves to. See [registry/README.md](./registry/README.md)
   for the schema and the order of preference between install methods.
 
 ### 2. Keep the quality bar high

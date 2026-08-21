@@ -2,6 +2,7 @@
 # https://github.com/txtx/surfpool
 name = "surfpool"
 ecosystem = "solana"
+description = "Local Solana network that streams mainnet state for pre-deployment testing"
 
 [source]
 type = "github_release"

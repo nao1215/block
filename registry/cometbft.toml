@@ -6,6 +6,7 @@
 # with "has no asset" rather than silently installing something else.
 name = "cometbft"
 ecosystem = "cosmos"
+description = "Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains"
 
 [source]
 type = "github_release"

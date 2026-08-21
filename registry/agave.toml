@@ -5,6 +5,7 @@
 # bzip2-compressed, and wraps its tools in solana-release/bin/.
 name = "agave"
 ecosystem = "solana"
+description = "Solana validator client and CLI suite, including a local test validator"
 
 [source]
 type = "github_release"

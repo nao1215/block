@@ -7,6 +7,7 @@
 # the same name. macOS builds stopped after 1.15, so only Linux is listed.
 name = "geth"
 ecosystem = "ethereum"
+description = "go-ethereum, the Go implementation of an Ethereum execution client"
 
 [source]
 type = "http"

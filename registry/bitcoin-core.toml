@@ -8,6 +8,7 @@
 # arm64-apple-darwin), so the platform strings are mapped whole.
 name = "bitcoin-core"
 ecosystem = "bitcoin"
+description = "Bitcoin reference implementation: full node, wallet and transaction tools"
 
 [source]
 type = "http"

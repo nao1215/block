@@ -6,6 +6,7 @@
 # so the checksum is recorded on first download.
 name = "solc"
 ecosystem = "ethereum"
+description = "The Solidity smart-contract compiler"
 
 [source]
 type = "github_release"

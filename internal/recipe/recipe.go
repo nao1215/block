@@ -71,14 +71,23 @@ type Source struct {
 	Bin []string `toml:"bin"`
 }
 
-// Recipe is a named Source.
+// Recipe is a named Source plus the metadata that describes the tool to a
+// human. block attaches no behaviour to the metadata: it exists so that the
+// registry can answer "what is this tool?" wherever that is asked — a
+// listing, a future block-registry site, a documentation build.
 type Recipe struct {
 	Name string `toml:"name"`
-	// Ecosystem is display metadata for `block list` (bitcoin, ethereum,
-	// solana, cosmos, ibc). block attaches no behaviour to it.
+	// Ecosystem groups the tool (bitcoin, ethereum, solana, cosmos, ibc).
 	Ecosystem string `toml:"ecosystem,omitempty"`
-	Source    Source `toml:"source"`
+	// Description is one plain sentence saying what the tool is, phrased so
+	// it reads on its own next to the tool's name.
+	Description string `toml:"description"`
+	Source      Source `toml:"source"`
 }
+
+// maxDescription keeps a description to something that still fits a terminal
+// column next to the other metadata.
+const maxDescription = 100
 
 // Validate checks that the source is complete and internally consistent.
 func (s Source) Validate() error {
@@ -209,13 +218,30 @@ func validateBin(b string) error {
 	return nil
 }
 
-// Validate checks the recipe name and its source.
+// Validate checks the recipe name, its metadata and its source.
 func (r Recipe) Validate() error {
 	if err := ValidateName(r.Name); err != nil {
 		return err
 	}
+	if err := r.validateDescription(); err != nil {
+		return fmt.Errorf("tool %q: %w", r.Name, err)
+	}
 	if err := r.Source.Validate(); err != nil {
 		return fmt.Errorf("tool %q: %w", r.Name, err)
+	}
+	return nil
+}
+
+func (r Recipe) validateDescription() error {
+	switch {
+	case strings.TrimSpace(r.Description) == "":
+		return errors.New("description is required: one sentence saying what the tool is")
+	case r.Description != strings.TrimSpace(r.Description):
+		return fmt.Errorf("description %q has leading or trailing whitespace", r.Description)
+	case strings.ContainsAny(r.Description, "\n\r\t"):
+		return errors.New("description must be a single line")
+	case len(r.Description) > maxDescription:
+		return fmt.Errorf("description is %d characters long, keep it under %d", len(r.Description), maxDescription)
 	}
 	return nil
 }

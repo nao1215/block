@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implemented source types: Bitcoin Core; Foundry, solc, geth, reth and
   Lighthouse; Agave, Anchor and Surfpool; Gaia, CometBFT and Osmosis; Hermes.
 - `block list` shows each tool's ecosystem alongside its source type and
-  the commands it provides.
+  the commands it provides. Every recipe also carries a one-sentence
+  `description` of the tool, validated by the registry tests.
 - Source types: `github_release` (versions from git tags, artifacts from
   release assets — `.tar.gz`, `.tar.bz2` or `.zip` archives, or a single raw
   executable — using GitHub's per-asset sha256 when recorded) and `http`
