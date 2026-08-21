@@ -69,12 +69,23 @@ fi
 BLOCK_PLATFORM="$(go env GOOS)/$(go env GOARCH)"
 BLOCK_ASSET_PLATFORM="$(go env GOOS)_$(go env GOARCH)"
 BLOCK_DASH_PLATFORM="$(go env GOOS)-$(go env GOARCH)"
+# The Rust target triple this machine's artifacts are named with, spelled out
+# here rather than derived from a recipe: the scenario that checks the os/arch
+# rename tables needs an expectation that does not come from the code under
+# test.
+case "$(go env GOOS)-$(go env GOARCH)" in
+linux-amd64) BLOCK_RUST_TRIPLE="x86_64-unknown-linux-gnu" ;;
+linux-arm64) BLOCK_RUST_TRIPLE="aarch64-unknown-linux-gnu" ;;
+darwin-amd64) BLOCK_RUST_TRIPLE="x86_64-apple-darwin" ;;
+darwin-arm64) BLOCK_RUST_TRIPLE="aarch64-apple-darwin" ;;
+*) echo "e2e: unsupported platform $(go env GOOS)/$(go env GOARCH)" >&2 && exit 1 ;;
+esac
 if [ "$(go env GOOS)" = "linux" ]; then
 	BLOCK_OTHER_PLATFORM="darwin/arm64"
 else
 	BLOCK_OTHER_PLATFORM="linux/amd64"
 fi
-export BLOCK_PLATFORM BLOCK_ASSET_PLATFORM BLOCK_DASH_PLATFORM BLOCK_OTHER_PLATFORM
+export BLOCK_PLATFORM BLOCK_ASSET_PLATFORM BLOCK_DASH_PLATFORM BLOCK_RUST_TRIPLE BLOCK_OTHER_PLATFORM
 
 # FAKEGH_URL is the root; scenarios derive BLOCK_GITHUB_API_URL from it so
 # they can pick the /t1 snapshot or the failure-mode prefixes.

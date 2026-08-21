@@ -349,7 +349,7 @@ scenarios:
       - assert:
           file:
             path: block.lock
-            contains: "/download/informalsystems/hermes/v1.13.0/hermes-v1.13.0-x86_64-unknown-linux-gnu.tar.gz"
+            contains: "/download/informalsystems/hermes/v1.13.0/hermes-v1.13.0-${env:BLOCK_RUST_TRIPLE}.tar.gz"
 
   - name: a project-local source works without a registry entry
     env: *t1
