@@ -30,7 +30,7 @@ block-registry as a Go module: a `go install` of block resolves nothing but
 block itself.
 
 Only the recipes are vendored. `policy/hosts.toml`, the JSON Schema, the
-recipe linter and the catalog site stay in block-registry, because they are
+recipe linter and the catalogue site stay in block-registry, because they are
 how a recipe is reviewed before it is merged — not something block executes.
 The check block owns is the other one: that a recipe still resolves,
 downloads, unpacks and runs against the real upstream.

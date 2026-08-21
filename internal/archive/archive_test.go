@@ -109,7 +109,7 @@ func TestExtractTarGz(t *testing.T) {
 		}
 		st, _ = os.Stat(filepath.Join(dst, "README"))
 		if st.Mode().Perm() != 0o644 {
-			t.Errorf("README mode = %v, want 0644 (archive permissions are normalized)", st.Mode().Perm())
+			t.Errorf("README mode = %v, want 0644 (archive permissions are normalised)", st.Mode().Perm())
 		}
 	}
 }

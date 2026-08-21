@@ -141,7 +141,7 @@ scenarios:
           command: block list
       - assert:
           exit_code: 0
-          # Column widths depend on the whole catalog, so a row is matched by
+          # Column widths depend on the whole catalogue, so a row is matched by
           # its fields rather than by the spacing of the day.
           stdout:
             matches: '(?m)^NAME +ECOSYSTEM +DESCRIPTION$'
