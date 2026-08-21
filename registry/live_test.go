@@ -123,7 +123,10 @@ func TestLiveRegistry(t *testing.T) {
 			}
 			t.Logf("downloaded %s (sha256:%s, cached: %v)", filepath.Base(mine.URL), sha, cached)
 
-			dir := st.InstallDir(rec.Name, v.String(), sha)
+			dir, err := st.InstallDir(rec.Name, v.String(), sha)
+			if err != nil {
+				t.Fatalf("install directory: %v", err)
+			}
 			if err := st.Install(blob, filepath.Base(mine.URL), dir, rec.Source.Bin, rec.Source.StripComponents); err != nil {
 				t.Fatalf("installing: %v", err)
 			}
