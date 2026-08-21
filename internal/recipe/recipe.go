@@ -133,26 +133,8 @@ func (s Source) Validate() error {
 			return errors.New("strip_components is only valid for archives")
 		}
 	}
-	seen := map[string]bool{}
-	commands := map[string]string{}
-	for _, b := range s.Bin {
-		if err := ValidateBin(b); err != nil {
-			return err
-		}
-		// A duplicate would be written to a lockfile that then refuses to
-		// parse, so it is refused here where the message can point at the
-		// recipe.
-		if seen[b] {
-			return fmt.Errorf("bin %q is listed twice", b)
-		}
-		seen[b] = true
-		// Two different paths ending in the same command name are worse than
-		// a duplicate: only one of them can be the command, and which one
-		// depends on whether the caller went through a shim or through PATH.
-		if first, ok := commands[CommandKey(b)]; ok {
-			return fmt.Errorf("bin %q and %q would both provide the command %q", first, b, CommandName(b))
-		}
-		commands[CommandKey(b)] = b
+	if err := ValidateBins(s.Bin); err != nil {
+		return err
 	}
 	for _, p := range s.Platforms {
 		if _, err := platform.Parse(p); err != nil {
@@ -246,6 +228,36 @@ func ValidateBin(b string) error {
 	clean := path.Clean(b)
 	if clean != b || path.IsAbs(b) || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
 		return fmt.Errorf("invalid bin entry %q: want a relative path inside the archive", b)
+	}
+	return nil
+}
+
+// ValidateBins checks one tool's list of executables: every entry a relative
+// path inside the artifact, no entry twice, and no two entries ending in the
+// same command name.
+//
+// A recipe and a lockfile carry the same list and are checked by this same
+// function, because they have to agree: a list a recipe accepted and a
+// lockfile then refused would be a toolchain that locks and will not sync.
+// Each caller wraps the result with whichever of the two it is reading.
+func ValidateBins(bins []string) error {
+	seen := map[string]bool{}
+	commands := map[string]string{}
+	for _, b := range bins {
+		if err := ValidateBin(b); err != nil {
+			return err
+		}
+		if seen[b] {
+			return fmt.Errorf("bin %q is listed twice", b)
+		}
+		seen[b] = true
+		// Two different paths ending in the same command name are worse than
+		// a duplicate: only one of them can be the command, and which one
+		// depends on whether the caller went through a shim or through PATH.
+		if first, ok := commands[CommandKey(b)]; ok {
+			return fmt.Errorf("bin %q and %q are both the command %q", first, b, CommandName(b))
+		}
+		commands[CommandKey(b)] = b
 	}
 	return nil
 }

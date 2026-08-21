@@ -9,7 +9,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -212,6 +211,3 @@ func SHA256File(path string) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
-
-// ErrCanceled wraps context cancellation for callers that want a short message.
-var ErrCanceled = errors.New("download canceled")

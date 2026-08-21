@@ -94,26 +94,50 @@ func (a *App) sourceFor(t manifest.Tool) (recipe.Source, error) {
 // [commandConflict] applies to a lockfile, moved to the earliest point it can
 // be answered, so `block lock` refuses before it downloads anything.
 func (a *App) manifestCommandConflict(m *manifest.Manifest) error {
-	type owner struct{ tool, bin string }
-	seen := map[string]owner{}
+	var claimed commandSet
 	for _, t := range m.Tools {
 		src, err := a.sourceFor(t)
 		if err != nil {
 			return err
 		}
-		for _, b := range src.Bin {
-			key := recipe.CommandKey(b)
-			first, ok := seen[key]
-			switch {
-			case !ok:
-				seen[key] = owner{tool: t.Name, bin: b}
-			case first.tool != t.Name:
-				return diag.CommandConflict.Errorf("tools %q and %q both provide the command %q; remove one from %s",
-					first.tool, t.Name, recipe.CommandName(b), manifest.FileName)
-			default:
-				return diag.CommandConflict.Errorf("tool %q lists %q and %q, which are both the command %q",
-					t.Name, first.bin, b, recipe.CommandName(b))
-			}
+		if err := claimed.add(t.Name, src.Bin); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// commandSet accumulates which tool provides which command, and is where the
+// refusal below is actually written. Two callers ask the same question of two
+// different things — a manifest plus the registry, and a lockfile — and the
+// answer has to be the same one, phrased the same way, or a toolchain could
+// be refused at lock time and accepted at sync time.
+type commandSet struct {
+	seen map[string]commandOwner
+}
+
+type commandOwner struct{ tool, bin string }
+
+// add records one tool's executables, or reports the collision they cause.
+//
+// The comparison is case-insensitive on every platform: see
+// [recipe.CommandKey].
+func (c *commandSet) add(tool string, bins []string) error {
+	if c.seen == nil {
+		c.seen = map[string]commandOwner{}
+	}
+	for _, b := range bins {
+		key := recipe.CommandKey(b)
+		first, ok := c.seen[key]
+		switch {
+		case !ok:
+			c.seen[key] = commandOwner{tool: tool, bin: b}
+		case first.tool != tool:
+			return diag.CommandConflict.Errorf("tools %q and %q both provide the command %q; remove one from %s",
+				first.tool, tool, recipe.CommandName(b), manifest.FileName)
+		default:
+			return diag.CommandConflict.Errorf("tool %q lists %q and %q, which are both the command %q",
+				tool, first.bin, b, recipe.CommandName(b))
 		}
 	}
 	return nil
@@ -455,26 +479,11 @@ func droppedTools(old, next *lockfile.Lock) []lockfile.Tool {
 // project should depend on — and it is not even stable, because a shim
 // resolves the command through the lockfile while PATH resolves it by
 // directory order, so the two can disagree inside one toolchain.
-//
-// The comparison is case-insensitive on every platform: see
-// [recipe.CommandKey].
 func commandConflict(l *lockfile.Lock) error {
-	type owner struct{ tool, bin string }
-	seen := map[string]owner{}
+	var claimed commandSet
 	for _, t := range l.Tools {
-		for _, b := range t.Bin {
-			key := recipe.CommandKey(b)
-			first, ok := seen[key]
-			switch {
-			case !ok:
-				seen[key] = owner{tool: t.Name, bin: b}
-			case first.tool != t.Name:
-				return diag.CommandConflict.Errorf("tools %q and %q both provide the command %q; remove one from %s",
-					first.tool, t.Name, recipe.CommandName(b), manifest.FileName)
-			default:
-				return diag.CommandConflict.Errorf("tool %q lists %q and %q, which are both the command %q",
-					t.Name, first.bin, b, recipe.CommandName(b))
-			}
+		if err := claimed.add(t.Name, t.Bin); err != nil {
+			return err
 		}
 	}
 	return nil
