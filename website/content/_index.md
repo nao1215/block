@@ -53,7 +53,7 @@ overnight, and a stale lockfile is an error rather than a guess.
 
 ## What can it install?
 
-45 tools across 17 blockchain systems, from Bitcoin Core and Foundry to Agave,
+47 tools across 17 blockchain systems, from Bitcoin Core and Foundry to Agave,
 Gaia, Hermes and Starknet Foundry. Ask the binary — offline, with no
 `block.toml` and no token:
 

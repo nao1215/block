@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Two recipes in the registry snapshot: `sp1` (Succinct's RISC-V zkVM, run as
+  `cargo prove`) and `besu` (the Java Ethereum execution client and its
+  `evmtool`), bringing it to 47 tools across 17 blockchain systems.
 - `BLK` diagnostic codes on every refusal, a `block explain <code>` lookup,
   and a generated reference page (`doc/errors.md`, published at
   https://nao1215.github.io/block/errors/). The thousands digit says where the

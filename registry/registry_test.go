@@ -76,6 +76,17 @@ var recipes = map[string]want{
 		},
 		bins: []string{"aptos"},
 	},
+	"besu": {
+		ecosystems: []string{"ethereum"}, description: "Ethereum execution client written in Java, with the evmtool EVM debugger",
+		sourceKind: recipe.TypeGitHubRelease, sample: "26.8.0",
+		artifacts: map[string]string{
+			"linux/amd64":  "besu-26.8.0.tar.gz",
+			"linux/arm64":  "besu-26.8.0.tar.gz",
+			"darwin/amd64": "besu-26.8.0.tar.gz",
+			"darwin/arm64": "besu-26.8.0.tar.gz",
+		},
+		bins: []string{"bin/besu", "bin/evmtool"}, strip: 1,
+	},
 	"avalanche-cli": {
 		ecosystems: []string{"avalanche"}, description: "Creates and runs Avalanche L1s and local test networks",
 		sourceKind: recipe.TypeGitHubRelease, sample: "1.9.6",
@@ -457,6 +468,17 @@ var recipes = map[string]want{
 			"windows/amd64": "solc-windows.exe",
 		},
 		bins: []string{"solc"},
+	},
+	"sp1": {
+		ecosystems: []string{"ethereum", "zk"}, description: "SP1 zkVM toolchain: build, prove and verify RISC-V programs as cargo prove",
+		sourceKind: recipe.TypeGitHubRelease, sample: "6.4.0",
+		artifacts: map[string]string{
+			"linux/amd64":  "cargo_prove_v6.4.0_linux_amd64.tar.gz",
+			"linux/arm64":  "cargo_prove_v6.4.0_linux_arm64.tar.gz",
+			"darwin/amd64": "cargo_prove_v6.4.0_darwin_amd64.tar.gz",
+			"darwin/arm64": "cargo_prove_v6.4.0_darwin_arm64.tar.gz",
+		},
+		bins: []string{"cargo-prove"},
 	},
 	"starkli": {
 		ecosystems: []string{"starknet"}, description: "Starknet command-line interface for accounts, contracts and calls",

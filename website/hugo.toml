@@ -11,7 +11,7 @@ timeZone = "UTC"
 
 [params]
 tagline = "lock the blockchain CLIs your project builds with"
-description = "block pins the blockchain CLI tools a project depends on — Foundry, geth, reth, Lighthouse, Agave, Hermes and 40 more — verifies every download against a lockfile, and reproduces the same toolchain locally and in CI."
+description = "block pins the blockchain CLI tools a project depends on — Foundry, geth, reth, Lighthouse, Agave, Hermes and 41 more — verifies every download against a lockfile, and reproduces the same toolchain locally and in CI."
 
 [markup.highlight]
 noClasses = false
