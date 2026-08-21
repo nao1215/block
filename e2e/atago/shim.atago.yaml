@@ -302,3 +302,104 @@ scenarios:
           exit_code: 0
           stdout:
             contains: "system forge"
+
+  # A shim and "block exec" are two doors into the same room. If they could
+  # disagree — about which version, about whether the lockfile is current,
+  # about what a failure exits with — then which door a script happened to use
+  # would change what a build does, which is the one thing block exists to
+  # prevent. So the two are run side by side and compared.
+  - name: a shim and block exec answer identically
+    env: *shimmed
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      # The same version, from both doors.
+      - run:
+          shell: true
+          command: block exec forge --version > exec.txt && forge --version > shim.txt && diff -u exec.txt shim.txt
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: ""
+      # The same exit status.
+      - run:
+          command: block exec forge --exit 42
+      - assert:
+          exit_code: 42
+      - run:
+          shell: true
+          command: forge --exit 42
+      - assert:
+          exit_code: 42
+      # The same refusal when the lockfile no longer matches the manifest.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.6"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: block exec forge --version 2> exec-err.txt; echo "exit $?" >> exec-err.txt
+      - run:
+          shell: true
+          command: forge --version 2> shim-err.txt; echo "exit $?" >> shim-err.txt
+      - run:
+          shell: true
+          command: diff -u exec-err.txt shim-err.txt
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: ""
+      - assert:
+          file:
+            path: exec-err.txt
+            contains:
+              - 'block: BLK1005: block.lock is stale; run "block lock"'
+              - "exit 1"
+      # And the same refusal when nothing is installed at all.
+      - run:
+          shell: true
+          command: block lock
+      - run:
+          shell: true
+          command: block exec forge --version 2> exec-none.txt; echo "exit $?" >> exec-none.txt
+          env:
+            BLOCK_HOME: "${workdir}/empty"
+            PATH: "${workdir}/home/shims${env:BLOCK_PATH_SEP}${env:PATH}"
+      - run:
+          shell: true
+          command: forge --version 2> shim-none.txt; echo "exit $?" >> shim-none.txt
+          env:
+            BLOCK_HOME: "${workdir}/empty"
+            PATH: "${workdir}/home/shims${env:BLOCK_PATH_SEP}${env:PATH}"
+      - run:
+          shell: true
+          command: diff -u exec-none.txt shim-none.txt
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: ""
+      - assert:
+          file:
+            path: exec-none.txt
+            contains:
+              - 'block: BLK4004: foundry 1.6.0 is not installed; run "block sync"'
+              - "exit 1"
