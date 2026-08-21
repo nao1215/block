@@ -76,8 +76,15 @@ type Repo struct {
 }
 
 const (
-	// version strings are derived from tags by stripping "v".
-	allPlatforms = "linux/amd64,linux/arm64,darwin/amd64,darwin/arm64"
+	// allPlatforms is every platform block installs for. The fixtures publish
+	// an asset for each, so a scenario runs the same wherever the suite does:
+	// a fixture that shipped Unix builds only would refuse the whole Windows
+	// leg with "unsupported platform" long before it reached what the
+	// scenario is about.
+	//
+	// A fixture that is deliberately narrower — the one that has no build for
+	// this machine — names its platforms itself.
+	allPlatforms = "linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64,windows/arm64"
 )
 
 func platformAssets(template, platforms string, osMap, archMap map[string]string) map[string]string {
@@ -106,7 +113,7 @@ func Fixtures() []Repo {
 	hermes := func(tag string, at int) release {
 		return release{tag: tag, at: at, bins: []string{"hermes"},
 			assets: platformAssets("hermes-"+tag+"-{arch}-{os}.tar.gz", allPlatforms,
-				map[string]string{"linux": "unknown-linux-gnu", "darwin": "apple-darwin"},
+				map[string]string{"linux": "unknown-linux-gnu", "darwin": "apple-darwin", "windows": "pc-windows-msvc"},
 				map[string]string{"amd64": "x86_64", "arm64": "aarch64"})}
 	}
 	example := func(tag string, at int, bin, platforms, ext string) release {

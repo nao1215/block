@@ -393,11 +393,11 @@ func tapeOutputGIFs(dir string) (map[string]string, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
-		result[path] = "" // record the tape even when it declares no Output
+		result[filepath.ToSlash(path)] = "" // record the tape even when it declares no Output
 		scanner := bufio.NewScanner(strings.NewReader(string(data)))
 		for scanner.Scan() {
 			if m := output.FindStringSubmatch(strings.TrimSpace(scanner.Text())); m != nil {
-				result[path] = m[1]
+				result[filepath.ToSlash(path)] = m[1]
 				break
 			}
 		}
@@ -422,7 +422,10 @@ func markdownGIFRefs(path string) ([]docImageRef, error) {
 	for scanner.Scan() {
 		lineNo++
 		for _, m := range image.FindAllStringSubmatch(scanner.Text(), -1) {
-			refs = append(refs, docImageRef{path: filepath.Join("doc", "img", m[1]), line: lineNo})
+			// Slash-separated on every platform: it is compared against the
+			// path a tape's Output directive writes, which is a tape file's
+			// text and not a filesystem path.
+			refs = append(refs, docImageRef{path: "doc/img/" + m[1], line: lineNo})
 		}
 	}
 	return refs, scanner.Err()
