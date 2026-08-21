@@ -632,3 +632,110 @@ func TestDocs_CatalogueCountsMatchTheRegistry(t *testing.T) {
 		t.Error("no page states how large the catalogue is; the check has nothing to guard")
 	}
 }
+
+// The documentation is a web: the README points at the cookbook, the cookbook
+// at examples/, SECURITY.md at the security page, CONTRIBUTING at the
+// registry's own repository. A link that stops resolving is a reader who
+// stops. Every relative link in every user-facing document — and every anchor
+// it names inside one — has to exist.
+//
+// Absolute links are left alone: checking them would put the network in the
+// unit suite, and a page on another site is not something this repository can
+// keep true anyway.
+func TestDocs_EveryRelativeLinkResolves(t *testing.T) {
+	t.Parallel()
+
+	files := docFiles(t)
+	if len(files) < 10 {
+		t.Fatalf("only %d documents were found; the collector is broken", len(files))
+	}
+	for _, doc := range files {
+		data, err := os.ReadFile(filepath.Clean(doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for lineNo, line := range strings.Split(string(data), "\n") {
+			for _, m := range markdownLink.FindAllStringSubmatch(line, -1) {
+				checkLink(t, doc, lineNo+1, m[1])
+			}
+		}
+	}
+}
+
+var markdownLink = regexp.MustCompile(`\[[^\]]*\]\(([^)\s]+)\)`)
+
+// heading matches an ATX heading, whose text becomes an anchor.
+var heading = regexp.MustCompile(`^#{1,6}\s+(.*?)\s*$`)
+
+// anchorChars keeps what GitHub and Hugo keep when they derive an anchor.
+var anchorChars = regexp.MustCompile(`[^a-z0-9 -]`)
+
+func checkLink(t *testing.T, doc string, line int, target string) {
+	t.Helper()
+	switch {
+	case strings.HasPrefix(target, "http://"), strings.HasPrefix(target, "https://"), strings.HasPrefix(target, "mailto:"):
+		return
+	// A site-absolute link is a Hugo route ("/commands/"), resolved by the
+	// site rather than by the filesystem.
+	case strings.HasPrefix(target, "/"):
+		return
+	}
+	path, fragment, _ := strings.Cut(target, "#")
+	if path == "" {
+		if fragment != "" && !hasAnchor(t, doc, fragment) {
+			t.Errorf("%s:%d links to #%s, which is not a heading in this file", doc, line, fragment)
+		}
+		return
+	}
+	resolved := filepath.Join(filepath.Dir(doc), filepath.FromSlash(path))
+	if _, err := os.Stat(resolved); err != nil {
+		t.Errorf("%s:%d links to %q, which does not exist", doc, line, target)
+		return
+	}
+	if fragment != "" && strings.HasSuffix(resolved, ".md") && !hasAnchor(t, resolved, fragment) {
+		t.Errorf("%s:%d links to %q, whose anchor is not a heading there", doc, line, target)
+	}
+}
+
+// hasAnchor reports whether a document has a heading that renders as anchor.
+func hasAnchor(t *testing.T, doc, anchor string) bool {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Clean(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		m := heading.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		text := strings.ToLower(m[1])
+		text = anchorChars.ReplaceAllString(text, "")
+		if strings.ReplaceAll(text, " ", "-") == anchor {
+			return true
+		}
+	}
+	return false
+}
+
+// docFiles are every markdown document this repository publishes: the ones at
+// the root, the hand-written and generated pages under doc/, and the website's
+// content.
+func docFiles(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for _, pattern := range []string{
+		"*.md",
+		filepath.Join("doc", "*.md"),
+		filepath.Join("website", "content", "*.md"),
+		filepath.Join("registry", "*.md"),
+		filepath.Join("examples", "*.md"),
+	} {
+		matches, err := filepath.Glob(repoPath(pattern))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, matches...)
+	}
+	return out
+}

@@ -56,5 +56,5 @@ stay anonymous.
 
 ## Verifying releases
 Release artifacts are signed with cosign and ship with an SBOM and build
-provenance. See [Verifying release integrity](./README.md#verifying-release-integrity)
+provenance. See [Verifying a block release](https://nao1215.github.io/block/security/#verifying-a-block-release)
 for how to check what you download.
