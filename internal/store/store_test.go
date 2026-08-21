@@ -119,6 +119,30 @@ func TestInstall(t *testing.T) {
 	}
 }
 
+// Some upstreams package their binary without the executable bit (Lotus
+// ships lotus as 0644). block declared that path an executable, so it makes
+// it one — and touches nothing else in the archive.
+func TestInstallSetsTheExecutableBitOnDeclaredBins(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("executable bits are not tracked on windows")
+	}
+	s := &Store{Root: t.TempDir()}
+	src := tarGz(t, map[string]string{"lotus": "x", "README": "docs"}, false)
+	dir := s.InstallDir("lotus", "1.36.2", "abcdef012345")
+	if err := s.Install(src, "lotus.tar.gz", dir, []string{"lotus"}, 0); err != nil {
+		t.Fatalf("Install() = %v", err)
+	}
+	st, err := os.Stat(filepath.Join(dir, "lotus"))
+	if err != nil || st.Mode().Perm()&0o111 == 0 {
+		t.Errorf("lotus mode = %v, %v", st.Mode(), err)
+	}
+	// The bit is given to what the recipe named, not to the whole archive.
+	if st, err := os.Stat(filepath.Join(dir, "README")); err != nil || st.Mode().Perm()&0o111 != 0 {
+		t.Errorf("README mode = %v, %v", st.Mode(), err)
+	}
+}
+
 func TestInstallRejectsBadArchives(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
@@ -132,7 +156,9 @@ func TestInstallRejectsBadArchives(t *testing.T) {
 		want string
 	}{
 		{"missing bin", tarGz(t, map[string]string{"forge": "x"}, true), []string{"cast"}, `executable "cast" is missing`},
-		{"not executable", tarGz(t, map[string]string{"forge": "x"}, false), []string{"forge"}, `"forge" is not an executable file`},
+		// A directory where an executable was promised cannot be repaired
+		// by setting a bit, so it is still refused.
+		{"not a file", tarGz(t, map[string]string{"forge/inner": "x"}, true), []string{"forge"}, `"forge" is not an executable file`},
 		{"bad archive", filepath.Join(t.TempDir(), "missing.tar.gz"), []string{"forge"}, "extract"},
 	}
 	for _, tt := range tests {

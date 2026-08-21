@@ -164,6 +164,9 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 	default:
 		return fmt.Errorf("raw executable %s needs exactly one bin name", assetName)
 	}
+	if err := ensureExecutable(tmp, bins); err != nil {
+		return fmt.Errorf("archive %s: %w", assetName, err)
+	}
 	if err := verifyBins(tmp, bins); err != nil {
 		return fmt.Errorf("archive %s: %w", assetName, err)
 	}
@@ -178,6 +181,29 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 			return nil
 		}
 		return err
+	}
+	return nil
+}
+
+// ensureExecutable gives the executable bit to the paths the recipe declared
+// as executables, and to nothing else. Some upstreams package a binary 0644
+// (Lotus does), and a raw-executable asset arrives with no mode at all — that
+// one is already handled on copy, so this makes an archive behave the same
+// way. A path that is missing is left to verifyBins, which says so plainly.
+func ensureExecutable(dir string, bins []string) error {
+	const binMode = 0o755
+	for _, b := range bins {
+		target, err := BinPath(dir, b)
+		if err != nil {
+			return err
+		}
+		st, err := os.Stat(target)
+		if err != nil || !st.Mode().IsRegular() || isExecutable(st) {
+			continue
+		}
+		if err := os.Chmod(target, st.Mode().Perm()|binMode); err != nil {
+			return fmt.Errorf("making %q executable: %w", b, err)
+		}
 	}
 	return nil
 }
