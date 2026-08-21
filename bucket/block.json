@@ -1,0 +1,22 @@
+{
+    "version": "0.1.0",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/nao1215/block/releases/download/v0.1.0/block_0.1.0_windows_amd64.zip",
+            "bin": [
+                "block.exe"
+            ],
+            "hash": "02277045dc709e25711ec34ca9cbe92ccd8ec8b6f85b157ed2ee1013425d7b7b"
+        },
+        "arm64": {
+            "url": "https://github.com/nao1215/block/releases/download/v0.1.0/block_0.1.0_windows_arm64.zip",
+            "bin": [
+                "block.exe"
+            ],
+            "hash": "d9f9c5bb5af94506cb1a16cfbf8a6eefafd8e8a68684d93c36ecf3861e5b670d"
+        }
+    },
+    "homepage": "https://github.com/nao1215/block",
+    "license": "MIT",
+    "description": "Lock your blockchain toolchain: pin Foundry, Hermes and friends per project and reproduce them in CI"
+}
