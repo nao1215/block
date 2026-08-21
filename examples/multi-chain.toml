@@ -1,0 +1,22 @@
+# A repository that spans chains — a bridge, an indexer, a wallet backend — is
+# one toolchain, not three. One manifest, one lockfile, one "block sync".
+#
+# The platforms list is the union of what everyone on the project uses: Apple
+# Silicon laptops and a Linux runner. block resolves artifacts for both from
+# whichever machine runs "block lock", so nobody has to lock twice.
+platforms = ["darwin/arm64", "linux/amd64"]
+
+[tools]
+# EVM side
+foundry = "1.7"
+solc = "0.8.28"
+
+# Cosmos / IBC side.
+# osmosis rather than gaia: the Cosmos Hub publishes no arm64 build, and this
+# manifest wants one toolchain that installs everywhere the team works.
+osmosis = "31"
+hermes = "1"
+
+# Solana side
+agave = "3"
+anchor = "0.31"

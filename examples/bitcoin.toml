@@ -1,0 +1,12 @@
+# A repository whose tests drive a Bitcoin node: bitcoind in regtest, and
+# bitcoin-cli to talk to it.
+#
+# Bitcoin Core publishes its binaries on bitcoincore.org rather than attaching
+# them to a GitHub release, so its recipe is one of the three that download
+# from a vendor host — recorded in block-registry's policy/hosts.toml with the
+# reason. Nothing about using it here differs.
+platforms = ["darwin/arm64", "linux/amd64"]
+
+[tools]
+bitcoin-core = "29"  # bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet
+ord = "0"            # ordinal index and explorer, for the tests that need one

@@ -1,0 +1,13 @@
+# A Solana program repository: Anchor for the framework, the Agave suite for
+# solana / solana-keygen / solana-test-validator, and solana-verify so a
+# deployed program can be checked against this source.
+#
+# surfpool streams mainnet state into a local validator, which is how a program
+# is tested against accounts that already exist.
+platforms = ["darwin/arm64", "linux/amd64"]
+
+[tools]
+anchor = "0.31"
+agave = "3"
+solana-verify = "0"
+surfpool = "0"

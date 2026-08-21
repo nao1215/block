@@ -1,0 +1,8 @@
+# Cairo contracts for Starknet: the package manager, the test and deployment
+# toolkit, and the CLI that talks to a node.
+platforms = ["darwin/arm64", "linux/amd64"]
+
+[tools]
+scarb = "2"              # Cairo package manager
+starknet-foundry = "0"   # snforge, sncast
+starkli = "0"            # accounts, contracts and calls

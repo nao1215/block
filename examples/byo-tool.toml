@@ -1,0 +1,27 @@
+# A tool the registry does not carry — or a fork of one it does — is declared in
+# the project itself, with the same fields a registry recipe uses. Nothing
+# waits on a registry pull request, and promoting the definition later is a
+# copy.
+#
+# Every key below except version, type, repo and bin is optional; they are all
+# shown so this file doubles as a reference. See the cookbook for what each
+# one is for: https://nao1215.github.io/block/cookbook/#bring-your-own-tool
+platforms = ["darwin/arm64", "linux/amd64"]
+
+[tools]
+foundry = "1.7"          # a registry tool, alongside
+
+[tools.mychain]
+version = "1.2"
+
+[tools.mychain.source]
+type = "github_release"
+repo = "example/mychain"
+asset = "mychain-{version}-{target}.tar.gz"   # {version} carries no "v"
+bin = ["bin/mychaind", "bin/mychain-cli"]     # paths inside the archive
+tag_prefix = "release-"                       # tags read "release-1.2.0"
+strip_components = 1                          # the archive wraps everything
+
+[tools.mychain.source.target]
+"linux/amd64" = "x86_64-linux-gnu"
+"darwin/arm64" = "arm64-apple-darwin"

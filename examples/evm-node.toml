@@ -1,0 +1,12 @@
+# Running an Ethereum node pair: an execution client and a consensus client.
+#
+# Both ship Linux-only or Linux-mostly builds, which is what a machine that
+# runs a node looks like anyway — so this manifest declares Linux and lets
+# block refuse anything else rather than substituting a build that does not
+# exist.
+platforms = ["linux/amd64", "linux/arm64"]
+
+[tools]
+geth = "1"           # execution client
+lighthouse = "8"     # consensus client
+geth-tools = "1"     # abigen, evm, rlpdump — for the tests around it

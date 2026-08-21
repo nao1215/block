@@ -1,0 +1,13 @@
+# A Solidity contract repository: Foundry to build and test, a pinned compiler
+# so bytecode is reproducible, and two fuzzers for the invariants that matter.
+#
+# The compiler is pinned exactly. Contract bytecode depends on the compiler
+# version, so "newest 0.8.x" would mean a verified deployment stops matching
+# its source the day upstream publishes a patch.
+platforms = ["darwin/arm64", "linux/amd64"]
+
+[tools]
+foundry = "1.7"      # forge, cast, anvil, chisel
+solc = "0.8.28"      # exactly this release
+echidna = "2"        # property-based fuzzer
+medusa = "1"         # parallelised coverage-guided fuzzer

@@ -1,0 +1,21 @@
+# A Cosmos SDK appchain: the scaffolding tool, the consensus engine it runs on,
+# the upgrade supervisor a validator uses in production, and both IBC relayers
+# so integration tests can be run against either.
+#
+# gaia is here because a relayer test needs a counterparty chain, and the
+# Cosmos Hub is the obvious one.
+#
+# The platform list says darwin/amd64 rather than darwin/arm64 because gaia and
+# cosmovisor publish no Apple Silicon build. block will not substitute one, so
+# an Apple Silicon developer either runs those two under Rosetta from an
+# amd64 install, or leaves them out of their own manifest. That is the upstream
+# telling you something, and block passes it on rather than papering over it.
+platforms = ["darwin/amd64", "linux/amd64"]
+
+[tools]
+ignite = "29"        # scaffold and serve the chain
+cometbft = "1"       # the consensus engine underneath it
+cosmovisor = "1"     # supervises the binary across scheduled upgrades
+gaia = "27"          # gaiad, as a counterparty chain
+hermes = "1"         # IBC relayer, Rust
+cosmos-relayer = "2" # IBC relayer, Go (rly)
