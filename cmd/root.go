@@ -103,7 +103,11 @@ can move a pin.
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
-	root.SetVersionTemplate(versionText())
+	// cobra renders the version template with text/template, and this text is
+	// data — a version string and a registry revision — not a template. The
+	// one sequence that would turn it into one is escaped, so `--version` and
+	// `version` cannot diverge over a brace.
+	root.SetVersionTemplate(strings.ReplaceAll(versionText(), "{{", `{{"{{"}}`))
 	root.AddCommand(
 		newLockCmd(stdout, stderr),
 		newSyncCmd(stdout, stderr),
