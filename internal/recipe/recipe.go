@@ -133,6 +133,7 @@ func (s Source) Validate() error {
 		}
 	}
 	seen := map[string]bool{}
+	commands := map[string]string{}
 	for _, b := range s.Bin {
 		if err := ValidateBin(b); err != nil {
 			return err
@@ -144,6 +145,13 @@ func (s Source) Validate() error {
 			return fmt.Errorf("bin %q is listed twice", b)
 		}
 		seen[b] = true
+		// Two different paths ending in the same command name are worse than
+		// a duplicate: only one of them can be the command, and which one
+		// depends on whether the caller went through a shim or through PATH.
+		if first, ok := commands[CommandKey(b)]; ok {
+			return fmt.Errorf("bin %q and %q would both provide the command %q", first, b, CommandName(b))
+		}
+		commands[CommandKey(b)] = b
 	}
 	for _, p := range s.Platforms {
 		if _, err := platform.Parse(p); err != nil {
@@ -243,6 +251,15 @@ func ValidateBin(b string) error {
 
 // CommandName is the command a user types for an executable path.
 func CommandName(bin string) string { return path.Base(bin) }
+
+// CommandKey is the name two commands must not share. Windows resolves a
+// command on PATH without regard to case, so "foo" and "FOO" are one command
+// there and two everywhere else. A lockfile is committed and read on every
+// platform, so block takes the stricter reading everywhere: a toolchain that
+// installs on Linux and collides on Windows is the failure block exists to
+// prevent, and it should be found by whoever runs lock, not by whoever runs
+// Windows.
+func CommandKey(bin string) string { return strings.ToLower(CommandName(bin)) }
 
 // Validate checks the recipe name, its metadata and its source.
 func (r Recipe) Validate() error {

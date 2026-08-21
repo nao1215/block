@@ -819,6 +819,22 @@ order:
 block: tools "agave" and "my-solana-fork" both provide the command "solana"; remove one from block.toml
 ```
 
+The same inside one tool, where two paths in the archive end in one command
+name:
+
+```text
+block: tool "foo" lists "bin/foo" and "sbin/foo", which are both the command "foo"
+```
+
+Command names are compared without regard to case, on every platform. Windows
+resolves a command on `PATH` that way, and a lockfile is committed and read
+everywhere, so a toolchain that installs on Linux and collides on Windows is
+refused by whoever runs `block lock` rather than by whoever runs Windows:
+
+```text
+block: tool "foo" lists "foo" and "FOO", which are both the command "FOO"
+```
+
 A shim run outside a block project, for a command nothing else on `PATH`
 provides:
 

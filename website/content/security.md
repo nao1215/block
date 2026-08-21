@@ -41,8 +41,13 @@ runnable, a completion marker is written, and only then is the directory
 renamed into place. An install without that marker — or missing one of its
 executables — is replaced, never run.
 
-Two tools that provide the same command name are a conflict block reports, not
-something it resolves by `PATH` order.
+One command name may not mean two executables — across tools or inside one.
+Which of them runs would otherwise depend on how it was called: a shim
+resolves a command through the lockfile, `PATH` resolves it by directory
+order, and the two can disagree. Names are compared without regard to case on
+every platform, because Windows resolves `PATH` that way and a lockfile is
+committed and read everywhere; block refuses the ambiguity where it is
+written rather than where it happens to break.
 
 ## Boundaries
 

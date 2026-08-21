@@ -147,6 +147,19 @@ func TestParseErrors(t *testing.T) {
 		{"version is a pre-release its constraint excludes", valid(func(s string) string {
 			return strings.Replace(s, `version = "1.7.1"`, `version = "1.7.2-rc.1"`, 1)
 		}), `does not satisfy the constraint`},
+
+		// One command name cannot mean two executables. A shim resolves the
+		// command through this list, PATH resolves it by directory order, and
+		// the two would pick different files.
+		{"two bins of one tool share a command name", valid(func(s string) string {
+			return strings.Replace(s, `bin = ["hermes"]`, `bin = ["a/hermes", "b/hermes"]`, 1)
+		}), `bin "a/hermes" and "b/hermes" are both the command "hermes"`},
+		{"two bins of one tool differ only in case", valid(func(s string) string {
+			return strings.Replace(s, `bin = ["hermes"]`, `bin = ["hermes", "HERMES"]`, 1)
+		}), `bin "hermes" and "HERMES" are both the command "HERMES"`},
+		{"two bins collide across directories and case", valid(func(s string) string {
+			return strings.Replace(s, `bin = ["hermes"]`, `bin = ["bin/hermes", "sbin/Hermes"]`, 1)
+		}), `are both the command "Hermes"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

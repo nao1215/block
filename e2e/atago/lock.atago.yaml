@@ -734,3 +734,98 @@ scenarios:
           exit_code: 1
           stderr:
             contains: "block: foundry: github api: rate limit exceeded (set GITHUB_TOKEN to raise the limit); resets at 2023-11-14T22:13:20Z"
+
+  # One command name must not mean two executables. A shim resolves a command
+  # through the lockfile while PATH resolves it by directory order, so an
+  # ambiguous toolchain can run different programs depending on how it was
+  # called. block refuses it at lock, before anything is written.
+  - name: two tools claiming one command name are refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+
+            [tools.clash]
+            version = "1.2"
+
+            [tools.clash.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: tools "clash" and "foo" both provide the command "foo"; remove one from block.toml
+
+'
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  # The same rule inside one tool: two paths in the archive whose base name is
+  # the same command.
+  - name: one tool listing the same command twice is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["bin/foo", "sbin/foo"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'bin "bin/foo" and "sbin/foo" would both provide the command "foo"'
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  # And case: Windows resolves a command on PATH without regard to it, so a
+  # lockfile that installs on Linux and collides on Windows is refused
+  # everywhere rather than shipped.
+  - name: command names differing only in case are refused on every platform
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo", "FOO"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'bin "foo" and "FOO" would both provide the command "FOO"'
+          changes:
+            created: []
+            modified: []
+            deleted: []

@@ -88,6 +88,36 @@ func (a *App) sourceFor(t manifest.Tool) (recipe.Source, error) {
 	return rec.Source, nil
 }
 
+// manifestCommandConflict reports an ambiguous toolchain from block.toml and
+// the registry alone — no network, no lockfile. It is the same rule
+// [commandConflict] applies to a lockfile, moved to the earliest point it can
+// be answered, so `block lock` refuses before it downloads anything.
+func (a *App) manifestCommandConflict(m *manifest.Manifest) error {
+	type owner struct{ tool, bin string }
+	seen := map[string]owner{}
+	for _, t := range m.Tools {
+		src, err := a.sourceFor(t)
+		if err != nil {
+			return err
+		}
+		for _, b := range src.Bin {
+			key := recipe.CommandKey(b)
+			first, ok := seen[key]
+			switch {
+			case !ok:
+				seen[key] = owner{tool: t.Name, bin: b}
+			case first.tool != t.Name:
+				return fmt.Errorf("tools %q and %q both provide the command %q; remove one from %s",
+					first.tool, t.Name, recipe.CommandName(b), manifest.FileName)
+			default:
+				return fmt.Errorf("tool %q lists %q and %q, which are both the command %q",
+					t.Name, first.bin, b, recipe.CommandName(b))
+			}
+		}
+	}
+	return nil
+}
+
 // lockResult describes what lock decided for one tool.
 type lockResult struct {
 	name   string
@@ -126,10 +156,18 @@ func (a *App) Lock(ctx context.Context, names []string, check bool) error {
 		}
 		only[n] = true
 	}
+	// Before any resolution: the commands a toolchain will provide are known
+	// from the manifest and the registry alone, so an ambiguous one is
+	// refused offline rather than after downloading artifacts for it.
+	if err := a.manifestCommandConflict(m); err != nil {
+		return err
+	}
 	next, results, err := a.plan(ctx, m, old, only, check)
 	if err != nil {
 		return err
 	}
+	// And again on the plan, which is what actually gets written: a
+	// project-local source can change a tool's executables between the two.
 	if err := commandConflict(next); err != nil {
 		return err
 	}
@@ -411,19 +449,31 @@ func droppedTools(old, next *lockfile.Lock) []lockfile.Tool {
 	return out
 }
 
-// commandConflict refuses a toolchain in which two tools provide the same
-// command: which one PATH order happens to pick is not something a project
-// should depend on.
+// commandConflict refuses a toolchain in which one command name could mean
+// two executables. Which one PATH order happens to pick is not something a
+// project should depend on — and it is not even stable, because a shim
+// resolves the command through the lockfile while PATH resolves it by
+// directory order, so the two can disagree inside one toolchain.
+//
+// The comparison is case-insensitive on every platform: see
+// [recipe.CommandKey].
 func commandConflict(l *lockfile.Lock) error {
-	owner := map[string]string{}
+	type owner struct{ tool, bin string }
+	seen := map[string]owner{}
 	for _, t := range l.Tools {
 		for _, b := range t.Bin {
-			cmd := recipe.CommandName(b)
-			if first, ok := owner[cmd]; ok && first != t.Name {
+			key := recipe.CommandKey(b)
+			first, ok := seen[key]
+			switch {
+			case !ok:
+				seen[key] = owner{tool: t.Name, bin: b}
+			case first.tool != t.Name:
 				return fmt.Errorf("tools %q and %q both provide the command %q; remove one from %s",
-					first, t.Name, cmd, manifest.FileName)
+					first.tool, t.Name, recipe.CommandName(b), manifest.FileName)
+			default:
+				return fmt.Errorf("tool %q lists %q and %q, which are both the command %q",
+					t.Name, first.bin, b, recipe.CommandName(b))
 			}
-			owner[cmd] = t.Name
 		}
 	}
 	return nil

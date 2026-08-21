@@ -809,6 +809,92 @@ bin = ["rawbin"]
 	}
 }
 
+// The other half of the same rule: a command name that means two executables
+// inside one tool. block used to allow it, and then disagreed with itself —
+// the toolchain's command map took the last entry, PATH took the first.
+func TestCommandConflictWithinOneTool(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
+	tests := []struct {
+		name string
+		bin  string
+		want string
+	}{
+		{
+			name: "the same command in two directories",
+			bin:  `bin = ["a/foo", "b/foo"]`,
+			want: `bin "a/foo" and "b/foo" would both provide the command "foo"`,
+		},
+		{
+			// Windows resolves a command on PATH without regard to case, so
+			// this toolchain would install on Linux and collide there. block
+			// refuses it on every platform rather than shipping a lockfile
+			// that only works on some of them.
+			name: "the same command in two spellings",
+			bin:  `bin = ["foo", "Foo"]`,
+			want: `bin "foo" and "Foo" would both provide the command "Foo"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, "/t1")
+			// An archive, so the raw-executable rule ("exactly one bare bin
+			// name") is not what refuses this; the ambiguity is.
+			h.manifest(t, `[tools.foo]
+version = "1"
+[tools.foo.source]
+type = "github_release"
+repo = "example/foo"
+asset = "foo_{version}_{os}_{arch}.tar.gz"
+`+tt.bin+"\n")
+			err := h.Lock(context.Background(), nil, false)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Lock() error = %v, want it to contain %q", err, tt.want)
+			}
+			if _, statErr := os.Stat(h.LockPath()); statErr == nil {
+				t.Error("an ambiguous toolchain was written to block.lock")
+			}
+		})
+	}
+}
+
+// And a lockfile that already carries the ambiguity — hand-edited, or merged
+// from a branch — is refused by lock, sync and exec alike.
+func TestAmbiguousLockfileIsRefusedEverywhere(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools]\nfoundry = \"1.7\"\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	l, err := lockfile.Load(h.LockPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// foundry ships forge; add a second path that is the same command.
+	l.Tools[0].Bin = append(l.Tools[0].Bin, "extra/FORGE")
+	if err := lockfile.Write(h.LockPath(), l); err != nil {
+		t.Fatal(err)
+	}
+	const want = `are both the command "FORGE"`
+	if err := h.Sync(ctx); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Sync() error = %v, want it to contain %q", err, want)
+	}
+	if _, err := h.Exec(ctx, []string{"forge"}, nil); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Exec() error = %v, want it to contain %q", err, want)
+	}
+	if err := h.Lock(ctx, nil, false); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Lock() error = %v, want it to contain %q", err, want)
+	}
+}
+
 // TestSyncAndExecRejectDamagedInstalls: a restored CI cache can be truncated
 // or partial, and a directory that merely exists proves nothing.
 func TestSyncAndExecRejectDamagedInstalls(t *testing.T) {
