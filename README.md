@@ -90,7 +90,8 @@ own download server — is the registry's business, not yours. block is not a
 package manager: it manages blockchain CLIs, not language runtimes or your OS.
 
 The [cookbook](./doc/cookbook.md) is the practical reference — 23 recipes from
-"pin a toolchain in five lines" to "read a refusal" — and
+"pin a toolchain in five lines" to "read a refusal" — [examples/](./examples)
+holds ready-made `block.toml` files for eight kinds of repository, and
 [doc/tools.md](./doc/tools.md) lists every CLI block can install.
 
 ## Supported OS (unit testing with GitHub Actions)
@@ -809,12 +810,14 @@ If a feature would turn block into mise or aqua, it does not belong here.
 ## Development
 
 ```shell
-make test       # unit tests with -race
-make e2e        # offline end-to-end suite (needs atago)
-make lint       # golangci-lint v2
-make coverage   # unit + e2e coverage combined into cover.out
-make doc        # regenerate doc/tools.md from the registry recipes
-make website    # build the documentation site into website/public (needs hugo)
+make test            # unit tests with -race
+make e2e             # offline end-to-end suite (needs atago)
+make lint            # golangci-lint v2
+make coverage        # unit + e2e coverage combined into cover.out
+make doc             # regenerate doc/tools.md from the registry recipes
+make website         # build the documentation site into website/public (needs hugo)
+make registry-live   # check every recipe against the real upstreams (network)
+make examples-live   # check that examples/*.toml still resolve (network)
 ```
 
 The E2E suite ([e2e/atago](./e2e/atago)) is the CLI contract: every
@@ -826,6 +829,7 @@ is pinned there against the real binary and an offline fake GitHub. See
 
 - [Documentation website](https://nao1215.github.io/block/)
 - [Cookbook](./doc/cookbook.md) — recipes indexed by task
+- [examples/](./examples) — ready-made `block.toml` files, checked on every push
 - [Tools](./doc/tools.md) — every CLI block can install, by blockchain system
 - [block-registry](https://github.com/nao1215/block-registry) — the canonical source of the recipes block embeds
 - [setup-block](https://github.com/nao1215/setup-block) — GitHub Action that installs block and caches its toolchain

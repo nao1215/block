@@ -90,7 +90,9 @@ block lock --check               # has upstream published anything newer?
 
 The [cookbook](/cookbook/) has the rest: locking for a platform you are not on,
 running tools by their own names, caching the toolchain in CI, bringing your own
-tool, and reading a refusal.
+tool, and reading a refusal. To start from something rather than a blank file,
+[examples/](https://github.com/nao1215/block/tree/main/examples) holds a
+`block.toml` for each of eight kinds of repository.
 
 ## Install
 

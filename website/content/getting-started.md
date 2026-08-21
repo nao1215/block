@@ -111,6 +111,12 @@ The full set of fields is in [Bring your own tool](/cookbook/#bring-your-own-too
 
 ## Where to go next
 
+[examples/](https://github.com/nao1215/block/tree/main/examples) has a
+ready-made manifest for eight kinds of repository — EVM contracts, an Ethereum
+node pair, a Cosmos appchain, a Solana program, Bitcoin, Starknet, a
+multi-chain tree, and one that brings its own tool. Each is checked on every
+push and re-resolved against the real upstreams weekly.
+
 The [cookbook](/cookbook/) is the practical reference: locking for a platform
 you are not on, moving one pin forward, caching the toolchain in CI, running an
 `anvil` devnet, and reading a refusal when block says no. [Commands](/commands/)

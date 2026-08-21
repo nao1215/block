@@ -38,6 +38,14 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      # The example manifests pin real version lines, so they age the same way
+      # a recipe does. Checking them in the same weekly run means an example
+      # that stopped installing is found by CI rather than by a reader.
+      - name: Check that the example manifests still resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make examples-live
+
       - name: Validate the registry against upstream
         env:
           # Raises the API rate limit; the recipes themselves are public.

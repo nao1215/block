@@ -71,7 +71,11 @@ block exec forge test
 ```
 
 There is no `block init`: the manifest is four lines, and a command that writes
-it for you is a command that has to guess what your project needs.
+it for you is a command that has to guess what your project needs. If you would
+rather start from something, [examples/](../examples) has a manifest for each of
+eight kinds of repository — EVM contracts, an Ethereum node pair, a Cosmos
+appchain, a Solana program, Bitcoin, Starknet, a multi-chain tree, and one that
+brings its own tool.
 
 ## Find the tool for a chain
 
