@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -269,7 +270,7 @@ func (a *App) platformsFor(m *manifest.Manifest, prev *lockfile.Tool, src recipe
 		for _, art := range prev.Artifacts {
 			p, err := platform.Parse(art.Platform)
 			switch {
-			case err != nil, containsPlatform(out, p):
+			case err != nil, slices.Contains(out, p):
 				continue
 			case !src.Supports(p):
 				fmt.Fprintf(a.Stderr, "%s: dropping %s: the source no longer ships it\n", prev.Name, p)
@@ -280,15 +281,6 @@ func (a *App) platformsFor(m *manifest.Manifest, prev *lockfile.Tool, src recipe
 	}
 	platform.Sort(out)
 	return out
-}
-
-func containsPlatform(ps []platform.Platform, p platform.Platform) bool {
-	for _, x := range ps {
-		if x == p {
-			return true
-		}
-	}
-	return false
 }
 
 // lockTool pins one tool. With resolve set, the tool is re-resolved against

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -21,6 +20,7 @@ import (
 	"github.com/nao1215/block/internal/github"
 	"github.com/nao1215/block/internal/manifest"
 	"github.com/nao1215/block/internal/platform"
+	"github.com/nao1215/block/internal/recipe"
 	"github.com/nao1215/block/internal/shim"
 	"github.com/nao1215/block/internal/store"
 	"github.com/nao1215/block/registry"
@@ -311,11 +311,12 @@ a project's own toolchain is its block.toml and block.lock.`,
 }
 
 // commandNames reduces archive-relative executable paths to the command
-// names a user types.
+// names a user types. What "the command name" is belongs to the recipe
+// package, which is where every other caller asks.
 func commandNames(bins []string) []string {
 	out := make([]string, len(bins))
 	for i, b := range bins {
-		out[i] = path.Base(b)
+		out[i] = recipe.CommandName(b)
 	}
 	return out
 }

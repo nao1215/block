@@ -10,9 +10,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -434,42 +435,21 @@ func (s Source) AssetName(v version.Version, p platform.Platform) (string, error
 }
 
 // Equal reports whether two sources resolve artifacts identically.
+//
+// Platforms is compared as a set and Bin as a sequence, because that is what
+// each one means: the order platforms are listed in changes nothing, while
+// the order of Bin is the order a lockfile records them in.
 func (s Source) Equal(o Source) bool {
 	return s.Type == o.Type && s.Repo == o.Repo && s.EffectiveTagPrefix() == o.EffectiveTagPrefix() &&
 		s.Asset == o.Asset && s.URL == o.URL && s.StripComponents == o.StripComponents &&
-		mapsEqual(s.OS, o.OS) && mapsEqual(s.Arch, o.Arch) && mapsEqual(s.Target, o.Target) &&
-		sliceSetEqual(s.Platforms, o.Platforms) && sliceEqual(s.Bin, o.Bin)
+		maps.Equal(s.OS, o.OS) && maps.Equal(s.Arch, o.Arch) && maps.Equal(s.Target, o.Target) &&
+		sameSet(s.Platforms, o.Platforms) && slices.Equal(s.Bin, o.Bin)
 }
 
-func mapsEqual(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
-}
-
-func sliceEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func sliceSetEqual(a, b []string) bool {
-	a, b = append([]string(nil), a...), append([]string(nil), b...)
-	sort.Strings(a)
-	sort.Strings(b)
-	return sliceEqual(a, b)
+// sameSet compares two lists without regard to order, leaving the originals
+// untouched.
+func sameSet(a, b []string) bool {
+	return slices.Equal(slices.Sorted(slices.Values(a)), slices.Sorted(slices.Values(b)))
 }
 
 // UnsupportedPlatformError reports that a source ships nothing for a platform.
@@ -494,12 +474,7 @@ func (s Source) Hash() string {
 	b.WriteString(s.Type + "\n" + s.Repo + "\n" + s.EffectiveTagPrefix() + "\n" + s.Asset + "\n" + s.URL + "\n")
 	b.WriteString(strconv.Itoa(s.StripComponents) + "\n")
 	writeMap := func(m map[string]string) {
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
+		for _, k := range slices.Sorted(maps.Keys(m)) {
 			b.WriteString(k + "=" + m[k] + "\n")
 		}
 		b.WriteString("--\n")
