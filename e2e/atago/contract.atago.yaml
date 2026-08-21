@@ -20,8 +20,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       # lock at t1: 1.7.4 is the newest 1.7.x.
       - run:
           command: block lock
@@ -135,9 +141,32 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
-            hermes = "1.13"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
       - run:
           command: block lock
           env:

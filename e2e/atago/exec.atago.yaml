@@ -15,8 +15,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -41,9 +47,32 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
-            hermes = "1.13"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
       - run:
           shell: true
           command: block lock && block sync
@@ -69,8 +98,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -87,8 +122,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -105,9 +146,93 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
-            hermes = "1.13"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - fixture:
+          file: scripts/integration-test.sh
+          content: |
+            #!/bin/sh
+            set -e
+            forge test
+            hermes start
+      - run:
+          shell: true
+          command: chmod +x scripts/integration-test.sh && block lock && block sync
+      # Handed to an interpreter, which is what a task runner does and what
+      # works the same on every platform block supports. What is being
+      # asserted is that a process block did not start itself — the script's
+      # own child — still resolves the locked tools, because they are on the
+      # PATH block exported.
+      - run:
+          command: block exec sh scripts/integration-test.sh
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "forge 1.7.4 (fake)"
+              - "hermes 1.13.0 (fake)"
+
+  # The same script run directly rather than through an interpreter. That
+  # needs an executable bit and a kernel that honours "#!", so it is the one
+  # half of the behaviour that is Unix only; the portable half is above.
+  - name: an executable script is run directly and sees the toolchain
+    skip:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
       - fixture:
           file: scripts/integration-test.sh
           content: |
@@ -115,7 +240,6 @@ scenarios:
             set -e
             command -v forge
             forge test
-            hermes start
       - run:
           shell: true
           command: chmod +x scripts/integration-test.sh && block lock && block sync
@@ -127,16 +251,20 @@ scenarios:
             contains:
               - "/home/tools/foundry/1.7.4-"
               - "forge 1.7.4 (fake)"
-              - "hermes 1.13.0 (fake)"
-
   - name: exec works from a subdirectory of the project
     env: *t1
     steps:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - fixture:
           file: contracts/.keep
           content: ""
@@ -157,8 +285,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block exec forge --version
       - assert:
@@ -190,8 +324,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -210,8 +350,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -224,9 +370,32 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
-            hermes = "1.13"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
       - run:
           command: block exec forge --version
       - assert:
@@ -245,8 +414,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.6"
+            [tools.foundry]
+            version = "1.6"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block exec forge --version
       - assert:
@@ -260,8 +435,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -295,8 +476,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
