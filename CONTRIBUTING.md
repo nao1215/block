@@ -111,8 +111,34 @@ The E2E specs are the CLI contract, so a user-visible change lands there in
 the same pull request too.
 
 ## Releasing
-Maintainers cut releases by pushing a `v*` tag. GoReleaser builds the
-archives, signs them with cosign and attaches an SBOM and build provenance.
+A release is a tag. Everything else is automated, which is why the preparation
+is worth doing in order:
+
+1. Run the two checks that talk to the real world, because nothing on a pull
+   request does. Dispatch **Registry (live)** and **Documentation smoke** on
+   `main` (or `make registry-live` and `make docs-smoke` locally): the first
+   proves every recipe still resolves, downloads and runs on every platform
+   block claims; the second proves a reader following the front page from a
+   clean machine gets to a working tool.
+2. Open a release pull request that moves the `Unreleased` heading in
+   [CHANGELOG.md](./CHANGELOG.md) to the new version with today's date, and
+   updates the link references at the bottom of that file.
+3. Merge it, then tag the merge commit and push the tag:
+
+   ```shell
+   git switch main && git pull
+   git tag v0.1.0 && git push origin v0.1.0
+   ```
+
+The **Release** workflow then builds every artifact, smoke-tests them before
+publishing anything, signs `checksums.txt` with cosign keylessly, attaches an
+SPDX SBOM per artifact and GitHub build provenance, publishes the release, and
+updates the Homebrew cask and the Scoop bucket.
+
+It needs one secret beyond the workflow's own `GITHUB_TOKEN`:
+`TAP_GITHUB_TOKEN`, a token that can write to
+[nao1215/homebrew-tap](https://github.com/nao1215/homebrew-tap). Without it the
+release publishes but the cask is not updated.
 
 ## Contributing Outside of Coding
 - Give block a GitHub Star
