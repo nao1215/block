@@ -8,7 +8,7 @@ more team.
 - Bug report: include `block version`, your OS/arch, the `block.toml` and
   `block.lock` involved, the command you ran and what happened.
 - New feature: open an issue first so we can agree on direction. block is
-  deliberately small — see [Non-goals](./README.md#non-goals) before proposing
+  deliberately small — see [Non-goals](https://nao1215.github.io/block/reference/#non-goals) before proposing
   a package manager feature.
 - New or broken registry recipe: it does not belong in this repository.
   `registry/` here is a vendored copy of
@@ -26,6 +26,13 @@ more team.
 - Add or update atago E2E scenarios for anything a user can observe: output,
   exit codes, files written, errors. The E2E suite is block's CLI contract.
 - Keep error messages actionable: say what is wrong and which command fixes it.
+- Give a new refusal a diagnostic code. Codes live in
+  [internal/diag](./internal/diag), and `register` is the only way to make one:
+  it refuses an entry that does not say what block observed, what to do about
+  it, and which release it appeared in. `make doc` regenerates
+  [doc/errors.md](./doc/errors.md) from them, and a drift test fails if you
+  forget. Reuse an existing code when the fix is the same; add one when it is
+  not.
 
 ### 3. Run checks before opening a PR
 ```shell
@@ -34,7 +41,7 @@ make vet
 make fmt
 make lint             # golangci-lint v2
 make registry-verify  # registry/ is still the snapshot it records (offline)
-make doc-check        # doc/tools.md still matches the recipes (offline)
+make doc-check        # doc/tools.md and doc/errors.md still match the source
 ```
 
 Both offline checks also run as unit tests, so `make test` catches them too;
@@ -66,8 +73,23 @@ behaviour no existing fixture has.
 coverage of the real binary into one `cover.out`. CI publishes it through
 octocov.
 
+### 6. Documentation that runs
+Two scheduled workflows keep the documentation honest against the real world,
+and they are worth running by hand before a release:
+
+```shell
+make docs-smoke      # the quickstarts on the front pages, executed for real
+make registry-live   # every recipe against its real upstream
+```
+
+`make docs-smoke` reads the quickstart out of `README.md` and the website's
+front page and runs it in an empty directory. It is the check that a reader
+following the page from a clean machine gets to a working tool, so a page
+that starts promising something that does not work fails there rather than in
+front of them.
+
 ## Documentation
-Four things are user-facing, and a change to a command's output or flags
+Five things are user-facing, and a change to a command's output or flags
 updates the ones it touches in the same pull request as the code:
 
 - `README.md` — what block is, and the reference for every command.
@@ -76,6 +98,8 @@ updates the ones it touches in the same pull request as the code:
 - `examples/*.toml` — ready-made manifests. `go test ./examples/` checks them
   offline on every push, and `make examples-live` re-resolves them against the
   real upstreams weekly.
+- `doc/errors.md` — every `BLK` code, generated from `internal/diag` by
+  `make doc` and published as the site's Error codes page. Do not edit it.
 - `website/` — the published site, built from `website/content` plus the files
   under `doc/` that `content/_content.gotmpl` mounts. `make website` builds it
   and `make website-serve` serves it with live reload.

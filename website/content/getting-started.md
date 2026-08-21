@@ -88,7 +88,7 @@ $ forge test     # the version this project locked
 ```
 
 There is no shell hook and nothing is written to your startup files. See
-[Commands](../commands/#shims-the-tools-by-their-own-names).
+[Commands](/commands/#shims-the-tools-by-their-own-names).
 
 ## Tools the registry does not have yet
 
