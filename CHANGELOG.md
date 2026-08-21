@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a generated reference page (`doc/errors.md`, published at
   https://nao1215.github.io/block/errors/). The thousands digit says where the
   fix lives; every coded error exits 1.
+- `block --version` prints the same two lines as `block version`.
 - `block --help` carries the documentation, error-code, bug-report and
   GitHub Sponsors addresses.
 - Three lifecycle commands: `block lock [tool...]` (resolve; `--check` reports without
