@@ -15,6 +15,7 @@ import (
 const (
 	osLinux   = "linux"
 	osDarwin  = "darwin"
+	osWindows = "windows"
 	archAMD64 = "amd64"
 	archARM64 = "arm64"
 )
@@ -25,15 +26,17 @@ type Platform struct {
 	Arch string
 }
 
-// Supported is the closed set of platforms block knows how to install for.
-// Windows is intentionally absent from v0.1: none of the targeted toolchains
-// are developed or run in CI there, and supporting it well means more than
-// swapping the archive format.
+// supported is the closed set of platforms block knows how to install for.
+// A recipe still says which of them its upstream actually ships: most
+// blockchain CLIs are Unix-only, and block reports that rather than
+// substituting something else.
 var supported = []Platform{ //nolint:gochecknoglobals // immutable table
 	{OS: osLinux, Arch: archAMD64},
 	{OS: osLinux, Arch: archARM64},
 	{OS: osDarwin, Arch: archAMD64},
 	{OS: osDarwin, Arch: archARM64},
+	{OS: osWindows, Arch: archAMD64},
+	{OS: osWindows, Arch: archARM64},
 }
 
 // Supported returns a copy of the supported platform list, sorted.

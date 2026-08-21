@@ -4,7 +4,9 @@
 # Releases are tagged vX.Y.Z on GitHub, but the prebuilt archives are not
 # release assets: they live on the project's download server, named with the
 # first 8 digits of the tagged commit, and wrap the binary in a directory of
-# the same name. macOS builds stopped after 1.15, so only Linux is listed.
+# the same name. macOS builds stopped after 1.15, and the Windows builds are
+# published as .zip rather than .tar.gz — which one url template cannot
+# express — so only Linux is listed.
 name = "geth"
 ecosystems = ["ethereum"]
 description = "go-ethereum, the Go implementation of an Ethereum execution client"

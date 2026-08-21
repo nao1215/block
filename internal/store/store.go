@@ -41,19 +41,17 @@ type Store struct {
 	Root string
 }
 
-// Open resolves BLOCK_HOME, then $XDG_DATA_HOME/block, then ~/.local/share/block.
+// Open resolves BLOCK_HOME, and otherwise the platform's own place for
+// user-local application data.
 func Open() (*Store, error) {
 	if root := os.Getenv(EnvHome); root != "" {
 		return &Store{Root: root}, nil
 	}
-	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-		return &Store{Root: filepath.Join(xdg, "block")}, nil
-	}
-	home, err := os.UserHomeDir()
+	root, err := defaultRoot()
 	if err != nil {
 		return nil, fmt.Errorf("cannot determine the block home directory (set %s): %w", EnvHome, err)
 	}
-	return &Store{Root: filepath.Join(home, ".local", "share", "block")}, nil
+	return &Store{Root: root}, nil
 }
 
 // CacheDir holds downloaded archives.
@@ -82,7 +80,7 @@ func (s *Store) IsInstalled(dir string, bins []string) bool {
 // be run.
 func verifyBins(dir string, bins []string) error {
 	for _, b := range bins {
-		target, err := binPath(dir, b)
+		target, err := BinPath(dir, b)
 		if err != nil {
 			return err
 		}
@@ -90,21 +88,22 @@ func verifyBins(dir string, bins []string) error {
 		if err != nil {
 			return fmt.Errorf("executable %q is missing", b)
 		}
-		if !st.Mode().IsRegular() || st.Mode()&0o100 == 0 {
+		if !isExecutable(st) {
 			return fmt.Errorf("%q is not an executable file", b)
 		}
 	}
 	return nil
 }
 
-// binPath resolves an executable path inside dir, refusing anything that
-// could leave it. A lockfile is untrusted input, so this is checked again
-// here even though parsing already validated it.
-func binPath(dir, bin string) (string, error) {
+// BinPath resolves an executable path inside dir, refusing anything that
+// could leave it, and adds the platform's executable suffix. A lockfile is
+// untrusted input, so this is checked again here even though parsing already
+// validated it.
+func BinPath(dir, bin string) (string, error) {
 	if err := recipe.ValidateBin(bin); err != nil {
 		return "", err
 	}
-	target := filepath.Join(dir, filepath.FromSlash(bin))
+	target := filepath.Join(dir, filepath.FromSlash(bin)) + ExeSuffix
 	rel, err := filepath.Rel(dir, target)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("invalid bin entry %q: path escapes the install directory", bin)
@@ -152,7 +151,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 			return fmt.Errorf("extract %s: %w", assetName, err)
 		}
 	case len(bins) == 1:
-		target, err := binPath(tmp, bins[0])
+		target, err := BinPath(tmp, bins[0])
 		if err != nil {
 			return err
 		}

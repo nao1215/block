@@ -2,8 +2,8 @@
 # https://github.com/argotorg/solidity (moved from ethereum/solidity)
 #
 # Releases ship single static executables rather than archives: one for
-# Linux x86_64 and one universal macOS binary. Assets carry no GitHub digest,
-# so the checksum is recorded on first download.
+# Linux x86_64, one universal macOS binary, and one Windows build whose name
+# carries the .exe the others do not.
 name = "solc"
 ecosystems = ["ethereum"]
 description = "The Solidity smart-contract compiler"
@@ -12,9 +12,10 @@ description = "The Solidity smart-contract compiler"
 type = "github_release"
 repo = "argotorg/solidity"
 asset = "solc-{os}"
-platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64", "windows/amd64"]
 bin = ["solc"]
 
 [source.os]
 linux = "static-linux"
 darwin = "macos"
+windows = "windows.exe"

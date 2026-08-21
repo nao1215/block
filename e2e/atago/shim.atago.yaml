@@ -1,0 +1,249 @@
+# Shims: the locked tools of whichever project the working directory belongs
+# to, runnable by their own names. "block sync" puts one file per command in
+# $BLOCK_HOME/shims; the user adds that directory to PATH once, and from then
+# on "forge" means the version this project pinned.
+#
+# The shim is the block binary under another name, so these scenarios drive
+# the real thing rather than a wrapper script. Run with: make e2e
+version: "1"
+
+suite:
+  name: block shims
+
+scenarios:
+  - name: the same command runs each project's pinned version
+    skip:
+      os: windows
+    env: &shimmed
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      # The one setup step a user does, once.
+      PATH: "${workdir}/home/shims:${env:PATH}"
+    steps:
+      - fixture:
+          file: project-a/block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: project-b/block.toml
+          content: |
+            [tools]
+            foundry = "1.6"
+      - run:
+          shell: true
+          command: cd project-a && block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "shims: anvil, cast, chisel, forge"
+      # The second project needs no new shims: which version "forge" runs is
+      # decided per invocation, not baked into the file.
+      - run:
+          shell: true
+          command: cd project-b && block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "shims:"
+      - run:
+          shell: true
+          command: cd project-a && forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.7.4 (fake)"
+      - run:
+          shell: true
+          command: cd project-b && forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.6.0 (fake)"
+      # Every command the tool provides, not just the one named after it.
+      - run:
+          shell: true
+          command: cd project-a && cast --version && anvil && chisel
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "cast 1.7.4 (fake)"
+              - "anvil 1.7.4 (fake)"
+              - "chisel 1.7.4 (fake)"
+      # "block exec" keeps working: CI and scripts do not need PATH set up.
+      - run:
+          shell: true
+          command: cd project-b && block exec forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.6.0 (fake)"
+
+  - name: a nested directory belongs to the project above it
+    skip:
+      os: windows
+    env: *shimmed
+    steps:
+      - fixture:
+          file: repo/block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: repo/contracts/test/.keep
+          content: ""
+      - run:
+          shell: true
+          command: cd repo && block lock && block sync
+      - run:
+          shell: true
+          command: cd repo/contracts/test && forge test -vvv
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "forge 1.7.4 (fake)"
+              - "args: test -vvv"
+
+  - name: the tool's exit status is the shim's exit status
+    skip:
+      os: windows
+    env: *shimmed
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync
+      - run:
+          shell: true
+          command: forge --exit 3
+      - assert:
+          exit_code: 3
+          stderr:
+            equals: ""
+
+  - name: a shim never installs, resolves or writes
+    skip:
+      os: windows
+    env: *shimmed
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      # Sync once so the shims exist, then lock a project that was never
+      # synced: the shim says what to run instead of running it.
+      - run:
+          shell: true
+          command: block lock && block sync
+      - fixture:
+          file: fresh/block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: cd fresh && block lock
+      - run:
+          shell: true
+          command: cd fresh && forge --version
+          env:
+            # A different store: the tool is locked, and installed nowhere.
+            BLOCK_HOME: "${workdir}/empty"
+            PATH: "${workdir}/home/shims:${env:PATH}"
+      - assert:
+          exit_code: 1
+          stdout:
+            equals: ""
+          stderr:
+            equals: 'block: foundry 1.7.4 is not installed; run "block sync"
+
+'
+      - assert:
+          dir:
+            path: empty/tools
+            exists: false
+      # A manifest that moved on is reported, not resolved.
+      - fixture:
+          file: fresh/block.toml
+          content: |
+            [tools]
+            foundry = "1.6"
+      - run:
+          shell: true
+          command: cd fresh && forge --version
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block.lock is stale; run "block lock"'
+      - assert:
+          file:
+            path: fresh/block.lock
+            contains: 'version = "1.7.4"'
+
+  - name: outside a project the shim steps aside
+    skip:
+      os: windows
+    env: *shimmed
+    steps:
+      # The project is a subdirectory, so "elsewhere" is genuinely outside
+      # one: a directory under a project belongs to it, however deep.
+      - fixture:
+          file: proj/block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: cd proj && block lock && block sync
+      # Nothing else provides the command: an explanation, not a crash.
+      - run:
+          shell: true
+          command: mkdir -p elsewhere && cd elsewhere && forge --version
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: forge: no block project here and no forge elsewhere on PATH\n"
+      # A forge installed some other way keeps working: putting the shim
+      # directory on PATH does not take the command away from the system.
+      - fixture:
+          file: sysbin/forge
+          content: |
+            #!/bin/sh
+            echo "system forge"
+      - run:
+          shell: true
+          command: chmod +x sysbin/forge
+      - run:
+          shell: true
+          command: cd elsewhere && forge --version
+          env:
+            PATH: "${workdir}/home/shims:${workdir}/sysbin:${env:PATH}"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "system forge"
+      # Same inside a project that does not lock that command.
+      - fixture:
+          file: hermes-only/block.toml
+          content: |
+            [tools]
+            hermes = "1.13"
+      - run:
+          shell: true
+          command: cd hermes-only && block lock && block sync
+      - run:
+          shell: true
+          command: cd hermes-only && forge --version
+          env:
+            PATH: "${workdir}/home/shims:${workdir}/sysbin:${env:PATH}"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "system forge"

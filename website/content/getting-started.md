@@ -67,6 +67,28 @@ $ block exec forge test
 Commit both `block.toml` and `block.lock`. Everyone else — and CI — runs
 `block sync` and gets the same tools, byte for byte.
 
+## Skip the prefix
+
+`block sync` puts one file per command in `$BLOCK_HOME/shims`. Add it to
+`PATH` once and the tools are just tools, switching with the directory you are
+in:
+
+```shell
+export PATH="$HOME/.local/share/block/shims:$PATH"   # Unix
+```
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+  "Path", "$env:LOCALAPPDATA\block\shims;$env:Path", "User")   # Windows
+```
+
+```console
+$ forge test     # the version this project locked
+```
+
+There is no shell hook and nothing is written to your startup files. See
+[Commands](../commands/#shims-the-tools-by-their-own-names).
+
 ## Tools the registry does not have yet
 
 Define the source in your own project and use it today; nothing waits on a

@@ -12,12 +12,13 @@ type = "github_release"
 repo = "anza-xyz/agave"
 asset = "solana-release-{arch}-{os}.tar.bz2"
 strip_components = 1
-platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64", "windows/amd64"]
 bin = ["bin/solana", "bin/solana-keygen", "bin/solana-test-validator", "bin/agave-ledger-tool"]
 
 [source.os]
 linux = "unknown-linux-gnu"
 darwin = "apple-darwin"
+windows = "pc-windows-msvc"
 
 [source.arch]
 amd64 = "x86_64"

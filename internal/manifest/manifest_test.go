@@ -93,7 +93,7 @@ func TestParseErrors(t *testing.T) {
 		{"table bad constraint", "[tools.foo]\nversion = \"x\"\n[tools.foo.source]\ntype = \"github_release\"\n", `tool "foo": invalid version constraint`},
 		{"bad source", "[tools.foo]\nversion = \"1\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"x/y\"\nasset = \"a_{version}.tar.gz\"\n", `tool "foo": bin must list`},
 		{"unknown source key", "[tools.foo]\nversion = \"1\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"x/y\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\nmirror = \"x\"\n", `unknown key "tools.foo.source.mirror"`},
-		{"bad platform", "platforms = [\"windows/amd64\"]\n[tools]\nfoundry = \"1\"\n", `unsupported platform "windows/amd64"`},
+		{"bad platform", "platforms = [\"plan9/amd64\"]\n[tools]\nfoundry = \"1\"\n", `unsupported platform "plan9/amd64"`},
 		{"dup platform", "platforms = [\"linux/amd64\", \"linux/amd64\"]\n[tools]\nfoundry = \"1\"\n", "listed twice"},
 	}
 	for _, tt := range tests {

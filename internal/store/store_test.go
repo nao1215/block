@@ -44,19 +44,32 @@ func TestOpen(t *testing.T) {
 		t.Errorf("Open() = %v, %v", s, err)
 	}
 	t.Setenv(EnvHome, "")
-	t.Setenv("XDG_DATA_HOME", "/xdg")
-	s, err = Open()
-	if err != nil || s.Root != filepath.Join("/xdg", "block") {
-		t.Errorf("Open() = %v, %v", s, err)
+	if runtime.GOOS != "windows" {
+		// The XDG base directory specification, where Unix keeps user-local
+		// application data.
+		t.Setenv("XDG_DATA_HOME", "/xdg")
+		s, err = Open()
+		if err != nil || s.Root != filepath.Join("/xdg", "block") {
+			t.Errorf("Open() = %v, %v", s, err)
+		}
+		t.Setenv("XDG_DATA_HOME", "")
 	}
-	t.Setenv("XDG_DATA_HOME", "")
 	s, err = Open()
 	if err != nil {
 		t.Fatal(err)
 	}
-	home, _ := os.UserHomeDir()
-	if s.Root != filepath.Join(home, ".local", "share", "block") {
-		t.Errorf("Open() = %s", s.Root)
+	want, err := defaultRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Root != want {
+		t.Errorf("Open() = %s, want %s", s.Root, want)
+	}
+	if runtime.GOOS != "windows" {
+		home, _ := os.UserHomeDir()
+		if want != filepath.Join(home, ".local", "share", "block") {
+			t.Errorf("the Unix default moved: %s", want)
+		}
 	}
 	if s.CacheDir() != filepath.Join(s.Root, "cache") {
 		t.Errorf("CacheDir() = %s", s.CacheDir())

@@ -153,7 +153,7 @@ func TestWorkflow(t *testing.T) {
 		t.Errorf("exec before sync = %d, %q", code, errOut)
 	}
 	code, out, _ = run(t, dir, "sync")
-	if code != 0 || out != "foundry  1.7.4  installed\n" {
+	if code != 0 || out != "foundry  1.7.4  installed\nshims: anvil, cast, chisel, forge\n" {
 		t.Errorf("sync = %d, %q", code, out)
 	}
 	code, out, errOut := run(t, dir, "exec", "--", "forge", "--version")

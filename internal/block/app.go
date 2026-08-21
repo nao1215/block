@@ -27,6 +27,7 @@ import (
 	"github.com/nao1215/block/internal/platform"
 	"github.com/nao1215/block/internal/recipe"
 	"github.com/nao1215/block/internal/resolver"
+	"github.com/nao1215/block/internal/shim"
 	"github.com/nao1215/block/internal/store"
 	"github.com/nao1215/block/registry"
 )
@@ -43,8 +44,11 @@ type App struct {
 	Releases resolver.Releases
 	Fetcher  *fetch.Fetcher
 	Store    *store.Store
-	Stdout   io.Writer
-	Stderr   io.Writer
+	// Self is the block binary the shims point at. Empty means "ask the
+	// operating system", which is what every real run does.
+	Self   string
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
 // ManifestPath is the project's block.toml.
@@ -534,7 +538,44 @@ func (a *App) Sync(ctx context.Context) error {
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", t.Name, t.Version, state)
 	}
-	return tw.Flush()
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	return a.ensureShims(l)
+}
+
+// ensureShims makes the commands this project locks runnable by their own
+// names. The shims are global and version-free — which version each one runs
+// is decided per invocation from the working directory — so this only ever
+// adds names that have never been synced before.
+func (a *App) ensureShims(l *lockfile.Lock) error {
+	self := a.Self
+	if self == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("locating the block binary for the shims: %w", err)
+		}
+		self = exe
+	}
+	var commands []string
+	for _, t := range l.Tools {
+		for _, b := range t.Bin {
+			commands = append(commands, recipe.CommandName(b))
+		}
+	}
+	sort.Strings(commands)
+	created, err := shim.Ensure(a.Store, self, commands)
+	if err != nil {
+		return err
+	}
+	if len(created) == 0 {
+		return nil
+	}
+	fmt.Fprintf(a.Stdout, "shims: %s\n", strings.Join(created, ", "))
+	if !shim.OnPath(a.Store) {
+		fmt.Fprintf(a.Stderr, "note: add %s to PATH to run these directly, or keep using \"block exec\"\n", shim.Dir(a.Store))
+	}
+	return nil
 }
 
 // install makes one locked tool available and reports "installed" or "cached".
@@ -567,39 +608,23 @@ func assetName(rawURL string) string {
 	return path.Base(u.Path)
 }
 
+// Toolchain loads the project's installed toolchain: the same offline view of
+// block.toml, block.lock and the store that a shim uses.
+func (a *App) Toolchain() (*Toolchain, error) {
+	if _, err := os.Stat(a.ManifestPath()); err != nil {
+		return nil, fmt.Errorf("%s not found", manifest.FileName)
+	}
+	return OpenToolchain(a.Dir, a.Platform, a.Store)
+}
+
 // Env returns the PATH entries that expose every locked tool for the current
 // platform, after checking offline that the toolchain is the one block.toml
 // asks for and that it is actually installed. It resolves nothing, downloads
 // nothing and writes nothing.
 func (a *App) Env() ([]string, error) {
-	m, err := a.loadManifest()
+	t, err := a.Toolchain()
 	if err != nil {
 		return nil, err
 	}
-	l, err := a.loadLock()
-	if err != nil {
-		return nil, err
-	}
-	if l == nil {
-		return nil, fmt.Errorf("%s not found; run \"block lock\" and \"block sync\"", lockfile.FileName)
-	}
-	if reasons := Check(m, l, []platform.Platform{a.Platform}); len(reasons) > 0 {
-		return nil, staleError(reasons)
-	}
-	if err := commandConflict(l); err != nil {
-		return nil, err
-	}
-	var dirs []string
-	for _, t := range l.Tools {
-		art, ok := t.Artifact(a.Platform)
-		if !ok {
-			return nil, fmt.Errorf("%s: %s has no artifact for %s; run \"block lock\" and \"block sync\"", t.Name, lockfile.FileName, a.Platform)
-		}
-		dir := a.Store.InstallDir(t.Name, t.Version, art.SHA256)
-		if err := a.Store.Verify(dir, t.Bin); err != nil {
-			return nil, fmt.Errorf("%s %s %w; run \"block sync\"", t.Name, t.Version, err)
-		}
-		dirs = append(dirs, store.BinDirs(dir, t.Bin)...)
-	}
-	return dirs, nil
+	return t.PathDirs(), nil
 }

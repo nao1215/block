@@ -45,12 +45,13 @@ type Source struct {
 	TagPrefix *string `toml:"tag_prefix,omitempty"`
 	// Asset is the release asset file name template (github_release).
 	// {version}, {os} and {arch} are substituted; {os}/{arch} go through the
-	// OS/Arch maps first. A name without an archive extension is a single
-	// raw executable installed under the one name in Bin.
+	// OS/Arch maps first. Upstreams that stamp the build commit into the
+	// asset name (vyper, Nethermind, Nimbus) may also use {commit}. A name
+	// without an archive extension is a single raw executable installed
+	// under the one name in Bin.
 	Asset string `toml:"asset,omitempty"`
-	// URL is the HTTPS download URL template (http). Besides the asset
-	// placeholders it accepts {commit}, the first 8 hex digits of the commit
-	// the version tag points at.
+	// URL is the HTTPS download URL template (http). It accepts the same
+	// placeholders as Asset, including {commit}.
 	URL string `toml:"url,omitempty"`
 	// StripComponents drops this many leading path components when
 	// extracting, for archives that wrap everything in a versioned directory.
@@ -168,9 +169,6 @@ func (s Source) validateAsset() error {
 	// and some upstreams (solc) name their assets without it.
 	if strings.ContainsAny(s.Asset, "/\\") {
 		return fmt.Errorf("asset template %q must be a bare file name", s.Asset)
-	}
-	if strings.Contains(s.Asset, "{commit}") {
-		return errors.New("{commit} is only valid in an http url")
 	}
 	return nil
 }

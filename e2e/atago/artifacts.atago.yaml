@@ -273,7 +273,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "quirky  29.4  installed\n"
+            equals: |
+              quirky  29.4  installed
+              shims: quirkyd
       - run:
           command: block exec quirkyd -version
       - assert:

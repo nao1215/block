@@ -66,7 +66,7 @@ func TestSourceValidate(t *testing.T) {
 		{"bin abs", mutate(func(s *Source) { s.Bin = []string{"/usr/bin/forge"} }), "invalid bin entry"},
 		{"bin traversal", mutate(func(s *Source) { s.Bin = []string{"../forge"} }), "invalid bin entry"},
 		{"bin unclean", mutate(func(s *Source) { s.Bin = []string{"bin/./forge"} }), "invalid bin entry"},
-		{"platform", mutate(func(s *Source) { s.Platforms = []string{"windows/amd64"} }), "unsupported platform"},
+		{"platform", mutate(func(s *Source) { s.Platforms = []string{"plan9/amd64"} }), "unsupported platform"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -359,7 +359,7 @@ func TestTargetMap(t *testing.T) {
 		t.Error("target must be part of identity")
 	}
 	bad := src
-	bad.Target = map[string]string{"windows/amd64": "x"}
+	bad.Target = map[string]string{"plan9/amd64": "x"}
 	if err := bad.Validate(); err == nil {
 		t.Error("an unsupported platform key was accepted")
 	}

@@ -52,6 +52,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two-component (`29.0`) with a bare pre-release suffix (`29.1rc1`), as
   Bitcoin Core tags them. Drafts, pre-releases and unparsable tags are
   skipped.
+- Shims: `block sync` puts one file per command in `$BLOCK_HOME/shims`, so
+  that adding that directory to `PATH` once makes `forge`, `cast`, `geth` and
+  the rest run the version the working directory's project locked. Each shim
+  is the block binary under another name and resolves the project per
+  invocation, so there is nothing per-project to generate, no shell hook, and
+  nothing written to startup files. A shim resolves, downloads and installs
+  exactly as much as `block exec` does: nothing. Outside a project, or for a
+  command a project does not lock, it runs the next command of that name on
+  `PATH`.
+- Windows is a supported platform: `windows/amd64` and `windows/arm64` join
+  the platform model, block itself ships Windows builds, and the shims are
+  placed with hard links or copies rather than symlinks so no Developer Mode
+  or elevation is needed. `$BLOCK_HOME` defaults to `%LOCALAPPDATA%\block`
+  there. Which tools are installable is still the upstream's decision:
+  `cometbft`, `solc`, `agave`, `anchor` and `surfpool` publish Windows builds.
 - Content-addressed download cache and per-version installs under
   `$BLOCK_HOME`, shared across projects.
 - Security: HTTPS-only transport across redirects, streaming SHA-256

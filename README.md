@@ -184,6 +184,7 @@ re-locking on a laptop does not drop the artifact CI needs.)
 | `block sync` | **no** | **no** | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | **no** | **no** | **no** | **no** | yes |
 | `block list [ecosystem]` | **no** | **no** | **no** | **no** | no |
+| `forge`, `cast`, … (a shim) | **no** | **no** | **no** | **no** | yes |
 
 ### `block lock`
 
@@ -334,31 +335,65 @@ no `block.lock`. Its output is deterministic for a given block version, works
 when GitHub is down, and needs no token. Project-local tools are not listed;
 a project's own toolchain is its `block.toml` and `block.lock`.
 
-### Interactive use
+### Run the tools by their own names
 
-There is no shell activation, no shims and nothing written to your shell's
-startup files — block only sets `PATH` for the process it starts. Two
-projects can therefore pin different versions and neither leaks into the
-other:
+Typing `block exec` in front of every command gets old. `block sync` also
+puts one small file per command in `$BLOCK_HOME/shims`, and adding that
+directory to `PATH` — once, by hand — is all the setup there is:
+
+```shell
+# Unix, in your shell's startup file
+export PATH="$HOME/.local/share/block/shims:$PATH"
+```
+
+```powershell
+# Windows, once
+[Environment]::SetEnvironmentVariable(
+  "Path", "$env:LOCALAPPDATA\block\shims;$env:Path", "User")
+```
+
+After that the commands are just commands, and they follow the project you
+are standing in:
 
 ```console
-$ cd defi && block exec forge --version
+$ cd defi && forge --version
 forge Version: 1.5.1-v1.5.1
-$ cd bridge && block exec forge --version
+
+$ cd ../bridge && forge --version
 forge Version: 1.7.1
 ```
 
-Both versions live side by side in the store, so switching projects costs
-nothing and there is no "current version" to get out of sync.
+Each shim is the block binary under another name. Run as `forge`, it looks
+for the `block.toml` above the working directory, reads that project's
+`block.lock`, and executes the version pinned there. Nothing is stored in the
+shim itself, so there is one `forge` for every project and nothing to
+regenerate when you switch branches — and no shell hook, no `eval`, no
+`direnv`, and nothing appended to your startup files by block.
 
-The price is typing `block exec`. For a session of hand-run commands, start a
-shell inside the toolchain instead — `exec` runs any command, including your
-shell:
+A shim does exactly what `block exec` does, and no more:
 
 ```console
-$ block exec $SHELL
-$ forge test          # the pinned forge, for the rest of this shell
+$ forge test
+block: foundry 1.7.4 is not installed; run "block sync"
+
+$ forge test
+block: block.lock is stale; run "block lock"
+  hermes is declared in block.toml but missing from block.lock
 ```
+
+It never resolves a version, never downloads, never installs and never writes
+— those stay with `lock` and `sync`, where you can see them happen.
+
+Outside a block project, or for a command the current project does not lock,
+the shim steps aside and runs the next command of that name on `PATH`. Putting
+the directory on `PATH` cannot take a tool away from the rest of your system:
+
+```console
+$ cd /tmp && forge --version    # a forge installed some other way still runs
+```
+
+`block exec` is still there, and CI should keep using it: it needs no `PATH`
+setup and says exactly what is happening.
 
 All commands find `block.toml` in the current directory or any parent, so
 they work from a sub-package of a monorepo.
@@ -406,7 +441,10 @@ define the tool in your project, use it, and promote it to the registry once
 it is useful to more than one project. Nobody waits for a registry merge.
 
 Supported platforms: `linux/amd64`, `linux/arm64`, `darwin/amd64`,
-`darwin/arm64`.
+`darwin/arm64`, `windows/amd64`, `windows/arm64`. Which of them a tool can be
+installed for is the upstream's decision, and the registry records it: most
+blockchain CLIs publish Unix builds only, and block says so rather than
+substituting something else.
 
 ## block.lock
 
@@ -480,14 +518,19 @@ is only relevant to `block lock`, which calls the GitHub API; `sync` and
 Downloads and installs live under one directory shared by every project:
 
 ```text
-$BLOCK_HOME/                               default: ~/.local/share/block
-  cache/sha256/<digest>                    downloaded archives, content-addressed
+$BLOCK_HOME/                               Unix: ~/.local/share/block
+  cache/sha256/<digest>                    Windows: %LOCALAPPDATA%\block
   tools/<name>/<version>-<digest12>/       extracted installs
+  shims/<command>                          one per command, for running tools by name
 ```
 
 Two projects that pin the same artifact share one download and one install.
 Caching this directory in CI, keyed by `block.lock`, makes `sync` an offline
 operation. `XDG_DATA_HOME` is honored when `BLOCK_HOME` is unset.
+
+The store also holds the `shims` directory — one file per command, so that
+`forge` and friends can be run by name. It is the only directory you put on
+`PATH`, and it is the same one for every project.
 
 ## How versions are resolved
 
@@ -570,9 +613,11 @@ Every tool below is installed today with those two types alone (`block list
 | ibc | `hermes` |
 
 Platform coverage follows the upstream: `geth` ships Linux only, `reth` and
-`lighthouse` have no macOS x86-64 build, `gaia` builds amd64 only. block
-reports that as an unsupported platform rather than substituting something
-else. See [registry/README.md](./registry/README.md) for the recipe schema.
+`lighthouse` have no macOS x86-64 build, `gaia` builds amd64 only. Windows
+builds exist for `cometbft`, `solc`, `agave`, `anchor` and `surfpool`, which
+is enough for Solana and Cosmos work there. block reports anything else as an
+unsupported platform rather than substituting something else. See
+[registry/README.md](./registry/README.md) for the recipe schema.
 
 The registry will move to its own repository, `block-registry`, as the
 canonical source of recipes. block will still embed a tested snapshot of it

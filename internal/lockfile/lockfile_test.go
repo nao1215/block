@@ -109,7 +109,7 @@ func TestParseErrors(t *testing.T) {
 		{"no bin", valid(func(s string) string { return strings.Replace(s, `bin = ["hermes"]`, `bin = []`, 1) }), `tool "hermes": bin is empty`},
 		{"negative strip", "version = 1\n[[tools]]\nname = \"hermes\"\nconstraint = \"1\"\nversion = \"1.0.0\"\nbin = [\"hermes\"]\nstrip_components = -1\n", `tool "hermes": strip_components must not be negative`},
 		{"bad platform", valid(func(s string) string {
-			return strings.Replace(s, `platform = "darwin/arm64"`, `platform = "windows/arm64"`, 1)
+			return strings.Replace(s, `platform = "darwin/arm64"`, `platform = "plan9/arm64"`, 1)
 		}), `tool "foundry": unsupported platform`},
 		{"dup platform", valid(func(s string) string {
 			return strings.Replace(s, `platform = "darwin/arm64"`, `platform = "linux/amd64"`, 1)

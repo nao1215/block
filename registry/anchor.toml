@@ -1,7 +1,8 @@
 # Anchor: the Solana smart-contract framework CLI.
 # https://github.com/coral-xyz/anchor
 #
-# Releases ship one raw executable per platform, not archives.
+# Releases ship one raw executable per platform, not archives. The Windows
+# build is the only one whose name carries an extension.
 name = "anchor"
 ecosystems = ["solana"]
 description = "Framework and CLI for writing, testing and deploying Solana programs"
@@ -10,12 +11,13 @@ description = "Framework and CLI for writing, testing and deploying Solana progr
 type = "github_release"
 repo = "coral-xyz/anchor"
 asset = "anchor-{version}-{arch}-{os}"
-platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64", "windows/amd64"]
 bin = ["anchor"]
 
 [source.os]
 linux = "unknown-linux-gnu"
 darwin = "apple-darwin"
+windows = "pc-windows-msvc.exe"
 
 [source.arch]
 amd64 = "x86_64"

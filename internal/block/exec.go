@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
-	"strings"
 	"syscall"
 )
 
@@ -23,31 +23,42 @@ func (a *App) Exec(ctx context.Context, args []string, stdin *os.File) (int, err
 	if len(args) == 0 {
 		return 0, errors.New("exec needs a command to run, e.g. block exec forge --version")
 	}
-	dirs, err := a.Env()
+	t, err := a.Toolchain()
 	if err != nil {
 		return 0, err
 	}
-	path := strings.Join(append(dirs, os.Getenv("PATH")), string(os.PathListSeparator))
-	bin, err := lookPath(args[0], path)
+	return t.Run(ctx, args[0], args[1:], stdin, a.Stdout, a.Stderr)
+}
+
+// Run executes one command inside the toolchain and returns its exit status.
+// It is what both "block exec" and a shim end in, so the two cannot drift.
+func (t *Toolchain) Run(ctx context.Context, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	cmd, err := t.Command(ctx, name, args)
 	if err != nil {
-		return 0, fmt.Errorf("command %q not found in the locked toolchain or on PATH", args[0])
+		return 0, err
 	}
-	cmd := exec.CommandContext(ctx, bin, args[1:]...) //nolint:gosec // running the user's command is the point
+	return RunCommand(cmd, name, stdin, stdout, stderr)
+}
+
+// RunCommand starts a prepared command, hands it the standard streams and the
+// signals block receives, and reports its exit status.
+func RunCommand(cmd *exec.Cmd, name string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	// A cancelled context asks the child to stop the way a SIGTERM would,
 	// instead of the default SIGKILL: the tools block runs are nodes and
 	// test networks that have shutdown work to do. Without a WaitDelay,
 	// block waits for as long as the child needs.
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
-	cmd.Env = append(os.Environ(), "PATH="+path)
 	cmd.Stdin = stdin
-	cmd.Stdout = a.Stdout
-	cmd.Stderr = a.Stderr
-	cmd.Dir, _ = os.Getwd()
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if cmd.Dir == "" {
+		cmd.Dir, _ = os.Getwd()
+	}
 	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("exec %s: %w", args[0], err)
+		return 0, fmt.Errorf("exec %s: %w", name, err)
 	}
 	stop := forwardSignals(cmd)
-	err = cmd.Wait()
+	err := cmd.Wait()
 	stop()
 	var exitErr *exec.ExitError
 	switch {
@@ -61,7 +72,7 @@ func (a *App) Exec(ctx context.Context, args []string, stdin *os.File) (int, err
 		}
 		return exitErr.ExitCode(), nil
 	default:
-		return 0, fmt.Errorf("exec %s: %w", args[0], err)
+		return 0, fmt.Errorf("exec %s: %w", name, err)
 	}
 }
 
@@ -86,22 +97,4 @@ func forwardSignals(cmd *exec.Cmd) func() {
 		signal.Stop(sigs)
 		close(done)
 	}
-}
-
-// lookPath resolves name against an explicit PATH value instead of the
-// process environment.
-func lookPath(name, path string) (string, error) {
-	if strings.Contains(name, string(os.PathSeparator)) {
-		return exec.LookPath(name)
-	}
-	for _, dir := range strings.Split(path, string(os.PathListSeparator)) {
-		if dir == "" {
-			continue
-		}
-		candidate := dir + string(os.PathSeparator) + name
-		if st, err := os.Stat(candidate); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 { //nolint:gosec // PATH lookup by design
-			return candidate, nil
-		}
-	}
-	return "", exec.ErrNotFound
 }

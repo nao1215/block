@@ -28,10 +28,13 @@ scenarios:
             equals: |
               foundry  1.7.4   installed
               hermes   1.13.0  installed
+              shims: anvil, cast, chisel, forge, hermes
           changes:
             created:
               - home/cache/sha256/*
               - home/tools/**
+              # One file per command, so the tools can be run by name.
+              - home/shims/**
             modified: []
             deleted: []
       - assert:
@@ -121,7 +124,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "foundry  1.7.4  installed\n"
+            equals: |
+              foundry  1.7.4  installed
+              shims: anvil, cast, chisel, forge
       - assert:
           dir:
             path: fresh/cache/sha256

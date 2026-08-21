@@ -8,7 +8,7 @@ description = "Local Solana network that streams mainnet state for pre-deploymen
 type = "github_release"
 repo = "txtx/surfpool"
 asset = "surfpool-{os}-{arch}.tar.gz"
-platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64", "windows/amd64"]
 bin = ["surfpool"]
 
 [source.arch]

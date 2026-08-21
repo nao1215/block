@@ -652,7 +652,7 @@ func TestSyncAndExecContract(t *testing.T) {
 	if err := h.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.stdout.String() != "foundry  1.7.4  installed\n" {
+	if h.stdout.String() != "foundry  1.7.4  installed\nshims: anvil, cast, chisel, forge\n" {
 		t.Errorf("Sync() stdout = %q", h.stdout)
 	}
 	if h.lockText(t) != before {
@@ -893,9 +893,9 @@ func TestSyncPlatformHandling(t *testing.T) {
 	if h.lockText(t) != before {
 		t.Error("sync added a platform on its own")
 	}
-	h.Platform = platform.Platform{OS: "windows", Arch: "amd64"}
-	if err := h.Sync(ctx); err == nil || err.Error() != "unsupported platform windows/amd64" {
-		t.Errorf("Sync(windows) error = %v", err)
+	h.Platform = platform.Platform{OS: "plan9", Arch: "amd64"}
+	if err := h.Sync(ctx); err == nil || err.Error() != "unsupported platform plan9/amd64" {
+		t.Errorf("Sync(plan9) error = %v", err)
 	}
 }
 

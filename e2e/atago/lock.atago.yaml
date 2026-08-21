@@ -431,7 +431,9 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "geth  1.17.4  installed\n"
+            equals: |
+              geth  1.17.4  installed
+              shims: geth
       - run:
           command: block exec geth version
       - assert:
@@ -642,7 +644,7 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            platforms = ["windows/amd64"]
+            platforms = ["plan9/amd64"]
             [tools]
             foundry = "1.7"
       - run:
@@ -650,7 +652,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: block.toml: unsupported platform "windows/amd64": supported platforms are linux/amd64, linux/arm64, darwin/amd64, darwin/arm64'
+            contains: 'block: block.toml: unsupported platform "plan9/amd64": supported platforms are linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, windows/arm64'
       - fixture:
           file: block.toml
           content: |

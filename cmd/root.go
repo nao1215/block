@@ -20,6 +20,7 @@ import (
 	"github.com/nao1215/block/internal/github"
 	"github.com/nao1215/block/internal/manifest"
 	"github.com/nao1215/block/internal/platform"
+	"github.com/nao1215/block/internal/shim"
 	"github.com/nao1215/block/internal/store"
 	"github.com/nao1215/block/registry"
 )
@@ -38,6 +39,21 @@ type ExitError struct {
 }
 
 func (e *ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code) }
+
+// Main is the process entry point: it decides whether this invocation is
+// block itself or one of its shims. A shim is the same binary under a
+// command's name — forge, cast, geth — and runs that command from the
+// toolchain the working directory's project locked.
+func Main(ctx context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(argv) > 0 && shim.IsShim(argv[0]) {
+		return runShim(ctx, argv[0], argv[1:], stdin, stdout, stderr)
+	}
+	var args []string
+	if len(argv) > 1 {
+		args = argv[1:]
+	}
+	return Execute(ctx, args, stdout, stderr)
+}
 
 // Execute runs the CLI and returns the process exit code.
 func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {

@@ -8,4 +8,5 @@ description = "Osmosis appchain node (osmosisd), the Cosmos AMM"
 type = "github_release"
 repo = "osmosis-labs/osmosis"
 asset = "osmosisd-{version}-{os}-{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
 bin = ["osmosisd"]

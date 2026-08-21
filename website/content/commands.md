@@ -68,20 +68,40 @@ the toolchain is the one `block.toml` asks for and that the install is intact.
 `SIGINT` and `SIGTERM` reach the child, so a node or a local test network
 shuts down the way it would outside block.
 
-### Interactive use
+## Shims: the tools by their own names
 
-There is no shell activation, no shims, and nothing written to your shell's
-startup files: block sets `PATH` only for the process it starts. Two projects
-can pin different versions without either leaking into the other, and there is
-no "current version" to switch.
-
-The price is typing `block exec`. For a session of hand-run commands, start a
-shell inside the toolchain — `exec` runs any command, including your shell:
+`block sync` also puts one small file per command in `$BLOCK_HOME/shims`.
+Add that directory to `PATH` once — by hand; block never edits your startup
+files — and the commands are just commands:
 
 ```console
-$ block exec $SHELL
-$ forge test          # the pinned forge, for the rest of this shell
+$ cd defi && forge --version
+forge Version: 1.5.1-v1.5.1
+
+$ cd ../bridge && forge --version
+forge Version: 1.7.1
 ```
+
+Each shim is the block binary under another name. Run as `forge`, it finds the
+`block.toml` above the working directory, reads that project's `block.lock`,
+and runs the version pinned there. Nothing is stored in the shim, so there is
+one `forge` for every project, nothing to regenerate when you switch branches,
+and no shell hook or `eval` anywhere.
+
+A shim does what `block exec` does and no more — it never resolves, downloads,
+installs or writes:
+
+```console
+$ forge test
+block: foundry 1.7.4 is not installed; run "block sync"
+```
+
+Outside a project, or for a command the current project does not lock, it runs
+the next command of that name on `PATH` instead, so the directory being on
+`PATH` cannot take a tool away from the rest of your system.
+
+CI should keep using `block exec`: it needs no `PATH` setup and says what is
+happening.
 
 ## `block list`
 

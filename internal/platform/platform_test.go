@@ -8,7 +8,7 @@ import (
 
 func TestParse(t *testing.T) {
 	t.Parallel()
-	for _, ok := range []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"} {
+	for _, ok := range []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64", "windows/arm64"} {
 		p, err := Parse(ok)
 		if err != nil {
 			t.Errorf("Parse(%q) error = %v", ok, err)
@@ -17,7 +17,7 @@ func TestParse(t *testing.T) {
 			t.Errorf("Parse(%q) = %v", ok, p)
 		}
 	}
-	for _, bad := range []string{"", "linux", "linux/", "/amd64", "windows/amd64", "linux/386", "Linux/amd64", "linux-amd64"} {
+	for _, bad := range []string{"", "linux", "linux/", "/amd64", "plan9/amd64", "linux/386", "Linux/amd64", "linux-amd64"} {
 		_, err := Parse(bad)
 		if err == nil {
 			t.Errorf("Parse(%q) accepted", bad)

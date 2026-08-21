@@ -22,11 +22,18 @@ note() { echo "smoke: $*"; }
 
 shopt -s nullglob
 tarballs=("$DIST"/*.tar.gz)
+zips=("$DIST"/*.zip)
 shopt -u nullglob
 [ ${#tarballs[@]} -gt 0 ] || fail "no archives (*.tar.gz) found in $DIST"
+[ ${#zips[@]} -gt 0 ] || fail "no Windows archives (*.zip) found in $DIST"
 
 for a in "${tarballs[@]}"; do
 	tar -tzf "$a" | grep -Eq '(^|/)block$' || fail "$a is missing the block binary"
+	note "archive contents OK: $(basename "$a")"
+done
+
+for a in "${zips[@]}"; do
+	unzip -Z1 "$a" | grep -Eq '(^|/)block\.exe$' || fail "$a is missing block.exe"
 	note "archive contents OK: $(basename "$a")"
 done
 
