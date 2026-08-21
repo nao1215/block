@@ -6,10 +6,13 @@ description: "What each block command does, and the boundaries none of them cros
 | Command | Resolves versions | Writes `block.lock` | Downloads | Installs | Runs your command |
 | --- | :-: | :-: | :-: | :-: | :-: |
 | `block lock [tool...]` | yes | yes | artifacts with no upstream digest | no | no |
-| `block lock --check` | yes | **no** | **no** | no | no |
-| `block sync` | **no** | **no** | locked URLs, when not cached | yes | no |
-| `block exec <cmd>` | **no** | **no** | **no** | **no** | yes |
-| `block list [ecosystem]` | **no** | **no** | **no** | **no** | no |
+| `block lock --check` | yes | never | never | no | no |
+| `block sync` | never | never | locked URLs, when not cached | yes | no |
+| `block exec <cmd>` | never | never | never | never | yes |
+| `block list [ecosystem]` | never | never | never | never | no |
+
+"never" is a guarantee, not a default: there is no flag that turns any of those
+cells into a yes.
 
 ## `block lock`
 
@@ -32,7 +35,7 @@ narrowed constraint, a renamed executable, a moved artifact — is reported too:
 
 ```console
 $ block lock --check
-foundry  1.7.4 -> 1.7.5
+foundry  1.7.1 -> 1.7.2
 hermes   1.13.3 (up-to-date)
 $ echo $?
 2
@@ -93,7 +96,7 @@ installs or writes:
 
 ```console
 $ forge test
-block: foundry 1.7.4 is not installed; run "block sync"
+block: foundry 1.7.1 is not installed; run "block sync"
 ```
 
 Outside a project, or for a command the current project does not lock, it runs

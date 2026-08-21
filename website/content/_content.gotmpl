@@ -1,0 +1,34 @@
+{{/* Build the cookbook and the tool list from files committed in this
+     repository and mounted under assets/. The committed files stay the single
+     source of truth; this template only strips the H1 (the layout renders the
+     title) and rewrites repository-relative links to GitHub. */}}
+
+{{ $gh := "https://github.com/nao1215/block/blob/main/" }}
+
+{{ with resources.Get "doc/cookbook.md" }}
+  {{ $md := .Content }}
+  {{ $md = replaceRE `\A# Cookbook\n` "" $md }}
+  {{ $md = replaceRE `\]\(\.\./` (printf "](%s" $gh) $md }}
+  {{ $.AddPage (dict
+      "path" "cookbook"
+      "title" "Cookbook"
+      "params" (dict
+        "description" "Copyable block recipes indexed by task: pin a Foundry version, add a chain, lock for a second platform, run a tool without typing block exec, cache the toolchain in CI, and read a failed sync."
+        "toc" true
+        "filter" true)
+      "content" (dict "mediaType" "text/markdown" "value" $md)) }}
+{{ end }}
+
+{{ with resources.Get "doc/tools.md" }}
+  {{ $md := .Content }}
+  {{ $md = replaceRE `\A# Tools\n` "" $md }}
+  {{ $md = replaceRE `\]\(\.\./` (printf "](%s" $gh) $md }}
+  {{ $.AddPage (dict
+      "path" "tools"
+      "title" "Tools"
+      "params" (dict
+        "description" "Every CLI block can install, by blockchain system: Bitcoin, Ethereum, Solana, Cosmos, Polkadot, Cardano, Aptos, Sui, Starknet, Near, Stellar, Avalanche, Internet Computer, IPFS, Celestia, Hyperledger Fabric and ZKsync."
+        "toc" true
+        "filter" true)
+      "content" (dict "mediaType" "text/markdown" "value" $md)) }}
+{{ end }}

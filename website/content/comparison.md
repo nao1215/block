@@ -24,21 +24,22 @@ a `forge test` loop.
 
 ## Where block wins
 
-- **No per-invocation cost.** The tool is a local process, not a container
-  start.
-- **Native execution on macOS**, where most contract developers work. Docker
-  runs a Linux VM there, and compile-heavy work over a bind mount is where
-  that shows. block runs the same official binaries the image ships,
-  directly on the machine.
-- **Composing tools.** A repository that needs `forge`, `hermes`, `gaiad` and
-  `solana` either gets a hand-maintained kitchen-sink image or four
-  containers with volumes and ports wired together. block puts four binaries
-  on `PATH`.
-- **Local chain state.** `anvil`, a devnet, a validator's data directory —
-  ordinary local processes and ordinary files, with nothing to map.
-- **One artifact, one checksum.** A lockfile pins the exact upstream release
-  and its SHA-256. An image tag pins whatever it pointed at when you pulled
-  it, unless you pin a digest and maintain that yourself.
+No per-invocation cost: the tool is a local process, not a container start.
+
+Native execution on macOS, where most contract developers work. Docker runs a
+Linux VM there, and compile-heavy work over a bind mount is where that shows.
+block runs the same official binaries the image ships, directly on the machine.
+
+Composing tools. A repository that needs `forge`, `hermes`, `gaiad` and
+`solana` either gets a hand-maintained kitchen-sink image or four containers
+with volumes and ports wired together. block puts four binaries on `PATH`.
+
+Local chain state. `anvil`, a devnet, a validator's data directory — ordinary
+local processes and ordinary files, with nothing to map.
+
+One artifact, one checksum. A lockfile pins the exact upstream release and its
+SHA-256. An image tag pins whatever it pointed at when you pulled it, unless
+you pin a digest and maintain that yourself.
 
 ## Where Docker wins
 
@@ -55,8 +56,12 @@ block does not compete here, and says so on purpose:
 checksum rather than by whatever a base image tag pointed at that day:
 
 ```dockerfile
-FROM debian:stable-slim
-COPY --from=ghcr.io/nao1215/block /block /usr/local/bin/block
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -sSfL https://github.com/nao1215/block/releases/download/v0.1.0/block_0.1.0_linux_amd64.tar.gz \
+  | tar xz -C /usr/local/bin block
+
 WORKDIR /src
 COPY block.toml block.lock ./
 RUN block sync

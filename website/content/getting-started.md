@@ -1,23 +1,11 @@
 ---
 title: Getting started
-description: "Install block, declare a toolchain in block.toml, lock it, and run it."
+description: "Declare a toolchain in block.toml, lock it, install it, and run your tools with it."
 ---
 
-## Install
-
-```shell
-go install github.com/nao1215/block@latest
-```
-
-Or download an archive from the
-[releases page](https://github.com/nao1215/block/releases), or use Homebrew:
-
-```shell
-brew install nao1215/tap/block
-```
-
-In GitHub Actions, use
-[setup-block](https://nao1215.github.io/setup-block/).
+This page takes a repository from nothing to a pinned toolchain. It assumes
+block is [installed](/install/); the whole path is four steps and two committed
+files.
 
 ## Declare a toolchain
 
@@ -34,8 +22,9 @@ hermes = "1.13"
 ```
 
 A version is a dotted prefix: `"1"` is the newest 1.x.y, `"1.7"` the newest
-1.7.y, `"1.7.4"` exactly that release. There are no operators or ranges, and
-pre-releases are never selected.
+1.7.y, `"1.7.1"` exactly that release. There are no operators or ranges, and
+pre-releases are never selected. How tightly to pin, and why, is in the
+[cookbook](/cookbook/#choose-how-tightly-to-pin).
 
 Do not know what to write? Ask:
 
@@ -64,12 +53,12 @@ vyper             vyper                                         The Vyper smart-
 
 ```console
 $ block lock
-foundry  locked 1.7.4
+foundry  locked 1.7.1
 hermes   locked 1.13.3
 wrote block.lock
 
 $ block sync
-foundry  1.7.4   installed
+foundry  1.7.1   installed
 hermes   1.13.3  installed
 
 $ block exec forge test
@@ -117,3 +106,12 @@ bin = ["foo"]
 ```
 
 The format is identical to a registry recipe, so promoting it later is a copy.
+The full set of fields is in [Bring your own tool](/cookbook/#bring-your-own-tool).
+
+## Where to go next
+
+The [cookbook](/cookbook/) is the practical reference: locking for a platform
+you are not on, moving one pin forward, caching the toolchain in CI, running an
+`anvil` devnet, and reading a refusal when block says no. [Commands](/commands/)
+is the per-command reference, and [Tools](/tools/) is everything block can
+install.

@@ -1,7 +1,12 @@
 {{ define "main" }}
-  <section class="hero">
-    <h1>{{ site.Title }}</h1>
-    <p class="tagline">{{ site.Params.tagline }}</p>
-  </section>
-  <article class="prose">{{ .Content }}</article>
+<div class="hero">
+{{- with resources.Get "imgsrc/block-logo.png" }}
+{{- $logo := .Resize "700x q90" }}
+<img class="hero-logo" src="{{ $logo.RelPermalink }}" alt="block" width="{{ $logo.Width }}" height="{{ $logo.Height }}">
+{{- else }}
+<img class="hero-logo" src="{{ relURL "img/block-logo.png" }}" alt="block" width="1800" height="600">
+{{- end }}
+<h1>{{ site.Params.tagline }}</h1>
+</div>
+{{ .Content }}
 {{ end }}
