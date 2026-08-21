@@ -18,13 +18,13 @@ package shim
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/store"
 )
 
@@ -79,7 +79,7 @@ func FileName(command string) string { return command + store.ExeSuffix }
 // every shim is rewritten.
 func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 	if self == "" {
-		return nil, errors.New("the path of the block binary is unknown")
+		return nil, diag.Internal.Errorf("the path of the block binary is unknown")
 	}
 	// One binary can be spelled several ways — macOS reaches the same file
 	// through /var and /private/var — and the marker below compares paths,
@@ -95,11 +95,11 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 	// the binary *is*, not only where it is.
 	digest, err := fileDigest(self)
 	if err != nil {
-		return nil, fmt.Errorf("identifying the block binary at %s: %w", self, err)
+		return nil, diag.StoreUnwritable.Errorf("identifying the block binary at %s: %w", self, err)
 	}
 	dir := Dir(st)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
-		return nil, err
+		return nil, diag.StoreUnwritable.Wrap(err)
 	}
 	stale, err := markerDiffers(dir, self, digest)
 	if err != nil {
@@ -107,7 +107,10 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 	}
 	if stale {
 		if err := removeAll(dir); err != nil {
-			return nil, err
+			// The usual cause is a shim that is running right now: a build
+			// script invoked through "forge" that itself runs "block sync".
+			// Say so, because the file name alone does not.
+			return nil, diag.StoreUnwritable.Errorf("replacing the shims in %s: %w; a shim that is running cannot be replaced while it runs", dir, err)
 		}
 	}
 	var created []string
@@ -117,7 +120,7 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 			continue
 		}
 		if err := link(self, target); err != nil {
-			return created, fmt.Errorf("creating the shim for %q: %w", command, err)
+			return created, diag.StoreUnwritable.Errorf("creating the shim for %q: %w", command, err)
 		}
 		created = append(created, command)
 	}

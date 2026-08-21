@@ -407,3 +407,88 @@ func TestInstallDirStaysUnderTools(t *testing.T) {
 		t.Errorf("InstallDir() = %q, want %q", dir, want)
 	}
 }
+
+// Windows has a 260-character limit on paths that are not spelled with the
+// extended-length prefix, and $BLOCK_HOME can sit deep — inside a runner's
+// workspace, inside a user profile, inside a project. The store has to keep
+// working there, so this installs into a root long enough that a naive path
+// would be refused, and then reads the executable back out of it.
+//
+// It runs everywhere: the limit is Windows's, but the test is the same
+// question on every platform, and a Unix run is what would catch a change
+// that broke the layout for reasons other than length.
+func TestInstallIntoADeeplyNestedStore(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	// Each component is well under any per-name limit; it is the total that
+	// crosses 260.
+	for range 12 {
+		root = filepath.Join(root, strings.Repeat("d", 24))
+	}
+	if len(root) < 260 {
+		t.Fatalf("the test root is only %d characters; it no longer tests what it says", len(root))
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Skipf("this filesystem will not create a %d-character path: %v", len(root), err)
+	}
+
+	s := &Store{Root: root}
+	src := tarGz(t, map[string]string{"bin/deep": "#!/bin/sh\n"}, true)
+	dir, err := s.InstallDir("deep", "1.0.0", "abcdef0123456789")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Install(src, "deep.tar.gz", dir, []string{"bin/deep"}, 0); err != nil {
+		t.Fatalf("installing into a %d-character store: %v", len(dir), err)
+	}
+	if err := s.Verify(dir, []string{"bin/deep"}); err != nil {
+		t.Fatalf("verifying a deeply nested install: %v", err)
+	}
+	bin, err := BinPath(dir, "bin/deep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Errorf("the executable is not readable at %d characters: %v", len(bin), err)
+	}
+}
+
+// Two syncs of the same tool can race — two projects in one CI job, two
+// terminals — and on Windows a rename cannot replace a directory that already
+// exists. Whichever loses must not report a failure for a tool that is, by
+// then, installed and complete.
+func TestInstallLosingTheRaceIsNotAnError(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{Root: t.TempDir()}
+	src := tarGz(t, map[string]string{"bin/deep": "#!/bin/sh\n"}, true)
+	dir, err := s.InstallDir("racer", "1.0.0", "abcdef0123456789")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bins := []string{"bin/deep"}
+	if err := s.Install(src, "racer.tar.gz", dir, bins, 0); err != nil {
+		t.Fatal(err)
+	}
+	// The second install finds a complete directory already there. It has to
+	// leave it alone and say nothing went wrong.
+	before, err := os.ReadFile(filepath.Join(dir, markerName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Install(src, "racer.tar.gz", dir, bins, 0); err != nil {
+		t.Errorf("a second install of a complete directory: %v", err)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, markerName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Error("the second install rewrote the completion marker of the first")
+	}
+	entries, _ := os.ReadDir(filepath.Dir(dir))
+	if len(entries) != 1 {
+		t.Errorf("temporary directories were left behind: %v", entries)
+	}
+}
