@@ -6,11 +6,19 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 )
 
+// signalExit is the shell convention for a process killed by a signal.
+const signalExit = 128
+
 // Exec runs args[0] with the locked toolchain first on PATH and returns its
-// exit status. Signals and standard streams are passed straight through.
+// exit status. Standard streams are passed straight through, and SIGINT and
+// SIGTERM are forwarded to the child rather than acted on here: a node, a
+// validator or a local test network must get the chance to shut down
+// cleanly, and its own exit status is what block reports.
 func (a *App) Exec(ctx context.Context, args []string, stdin *os.File) (int, error) {
 	if len(args) == 0 {
 		return 0, errors.New("exec needs a command to run, e.g. block exec forge --version")
@@ -20,26 +28,63 @@ func (a *App) Exec(ctx context.Context, args []string, stdin *os.File) (int, err
 		return 0, err
 	}
 	path := strings.Join(append(dirs, os.Getenv("PATH")), string(os.PathListSeparator))
-	env := append(os.Environ(), "PATH="+path)
 	bin, err := lookPath(args[0], path)
 	if err != nil {
 		return 0, fmt.Errorf("command %q not found in the locked toolchain or on PATH", args[0])
 	}
 	cmd := exec.CommandContext(ctx, bin, args[1:]...) //nolint:gosec // running the user's command is the point
-	cmd.Env = env
+	// A cancelled context asks the child to stop the way a SIGTERM would,
+	// instead of the default SIGKILL: the tools block runs are nodes and
+	// test networks that have shutdown work to do. Without a WaitDelay,
+	// block waits for as long as the child needs.
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.Env = append(os.Environ(), "PATH="+path)
 	cmd.Stdin = stdin
 	cmd.Stdout = a.Stdout
 	cmd.Stderr = a.Stderr
 	cmd.Dir, _ = os.Getwd()
-	err = cmd.Run()
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("exec %s: %w", args[0], err)
+	}
+	stop := forwardSignals(cmd)
+	err = cmd.Wait()
+	stop()
 	var exitErr *exec.ExitError
 	switch {
 	case err == nil:
 		return 0, nil
 	case errors.As(err, &exitErr):
+		if sig, ok := signalOf(exitErr); ok {
+			// 128+signal, as a shell reports it — not the -1 that ExitCode
+			// returns for a signalled process.
+			return signalExit + int(sig), nil
+		}
 		return exitErr.ExitCode(), nil
 	default:
 		return 0, fmt.Errorf("exec %s: %w", args[0], err)
+	}
+}
+
+// forwardSignals relays the signals block receives to the child until the
+// returned function is called, so that stopping block stops the tool it is
+// running rather than orphaning or killing it outright.
+func forwardSignals(cmd *exec.Cmd) func() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case s := <-sigs:
+				_ = cmd.Process.Signal(s)
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() {
+		signal.Stop(sigs)
+		close(done)
 	}
 }
 

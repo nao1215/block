@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -88,14 +89,23 @@ type lockResult struct {
 	name   string
 	before string // "" when the tool had no pin
 	after  string
+	// changes lists the differences from the previous pin other than the
+	// version: a changed constraint, executables, or artifacts. They matter
+	// because block.lock is rewritten for any of them, not only for a new
+	// version.
+	changes []string
 }
 
-func (r lockResult) changed() bool { return r.before != r.after }
+func (r lockResult) moved() bool { return r.before != "" && r.before != r.after }
+
+// differs reports whether writing the plan would change this tool's pin.
+func (r lockResult) differs() bool { return r.before == "" || r.moved() || len(r.changes) > 0 }
 
 // Lock resolves block.toml against upstream and writes block.lock. Every
 // tool is re-resolved to the newest release its constraint allows; names
 // limits re-resolution to those tools and keeps the other pins. In check
-// mode nothing is written and ErrOutdated reports that the lock would change.
+// mode nothing is written and nothing is downloaded, and ErrOutdated reports
+// that block.lock would change.
 func (a *App) Lock(ctx context.Context, names []string, check bool) error {
 	m, err := a.loadManifest()
 	if err != nil {
@@ -112,34 +122,34 @@ func (a *App) Lock(ctx context.Context, names []string, check bool) error {
 		}
 		only[n] = true
 	}
-	next := &lockfile.Lock{Version: lockfile.FormatVersion}
-	plats := m.EffectivePlatforms(a.Platform)
-	var results []lockResult
-	for _, t := range m.Tools {
-		src, err := a.sourceFor(t)
-		if err != nil {
-			return err
-		}
-		var prev *lockfile.Tool
-		if old != nil {
-			prev, _ = old.Tool(t.Name)
-		}
-		resolve := len(only) == 0 || only[t.Name]
-		entry, res, err := a.lockTool(ctx, t, src, prev, plats, resolve, check)
-		if err != nil {
-			return fmt.Errorf("%s: %w", t.Name, err)
-		}
-		next.Tools = append(next.Tools, *entry)
-		results = append(results, res)
+	next, results, err := a.plan(ctx, m, old, only, check)
+	if err != nil {
+		return err
 	}
+	if err := commandConflict(next); err != nil {
+		return err
+	}
+	dropped := droppedTools(old, next)
 	if check {
-		return a.report(results, old, next)
+		a.printResults(results, "missing", true)
+		for _, t := range dropped {
+			fmt.Fprintf(a.Stdout, "%s  %s (no longer in %s)\n", t.Name, t.Version, manifest.FileName)
+		}
+		for _, r := range results {
+			if r.differs() {
+				return ErrOutdated
+			}
+		}
+		if len(dropped) > 0 || old == nil {
+			return ErrOutdated
+		}
+		return nil
 	}
 	changed, err := a.writeLock(old, next)
 	if err != nil {
 		return err
 	}
-	a.printResults(results, "locked", "")
+	a.printResults(results, "locked", false)
 	if changed {
 		fmt.Fprintf(a.Stdout, "wrote %s\n", lockfile.FileName)
 	} else {
@@ -148,74 +158,111 @@ func (a *App) Lock(ctx context.Context, names []string, check bool) error {
 	return nil
 }
 
-// report prints the check-mode summary and returns ErrOutdated when the
-// lockfile would change: a moved pin, a new tool, a dropped tool, or a
-// platform that still needs an artifact.
-func (a *App) report(results []lockResult, old, next *lockfile.Lock) error {
-	a.printResults(results, "missing", " (up-to-date)")
-	outdated := false
-	for _, r := range results {
-		if r.changed() {
-			outdated = true
+// plan builds the lockfile block lock would write. In check mode nothing is
+// downloaded: an artifact whose digest could only be learned by downloading
+// is left empty, which the comparison reports as a change — it is one, since
+// such an artifact is always a new or moved URL.
+func (a *App) plan(ctx context.Context, m *manifest.Manifest, old *lockfile.Lock, only map[string]bool, check bool) (*lockfile.Lock, []lockResult, error) {
+	next := &lockfile.Lock{Version: lockfile.FormatVersion}
+	var results []lockResult
+	for _, t := range m.Tools {
+		src, err := a.sourceFor(t)
+		if err != nil {
+			return nil, nil, err
 		}
-	}
-	if old == nil {
-		outdated = true
-	} else {
-		for _, e := range old.Tools {
-			if _, ok := next.Tool(e.Name); !ok {
-				fmt.Fprintf(a.Stdout, "%s  %s (no longer in %s)\n", e.Name, e.Version, manifest.FileName)
-				outdated = true
-			}
+		var prev *lockfile.Tool
+		if old != nil {
+			prev, _ = old.Tool(t.Name)
 		}
-		for _, e := range next.Tools {
-			if p, ok := old.Tool(e.Name); ok && p.Version == e.Version && len(p.Artifacts) < len(e.Artifacts) {
-				outdated = true
-			}
+		entry, err := a.lockTool(ctx, t, src, prev, a.platformsFor(m, prev, src), len(only) == 0 || only[t.Name], check)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", t.Name, err)
 		}
+		next.Tools = append(next.Tools, *entry)
+		results = append(results, result(prev, entry))
 	}
-	if outdated {
-		return ErrOutdated
-	}
-	return nil
+	next.Sort()
+	return next, results, nil
 }
 
-// lockTool pins one tool. When resolve is false the previous pin is kept as
-// is. In check mode no artifact is downloaded: missing platforms are noted by
-// comparing artifact counts in report.
-func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, prev *lockfile.Tool, plats []platform.Platform, resolve, check bool) (*lockfile.Tool, lockResult, error) {
-	res := lockResult{name: t.Name}
-	entry := &lockfile.Tool{Name: t.Name, Constraint: t.Constraint.String(), Bin: append([]string(nil), src.Bin...), StripComponents: src.StripComponents}
+// platformsFor decides which platforms a tool is locked for.
+//
+// What block.toml asks for is required: an explicit platforms list, or this
+// machine when there is none. A tool that does not ship for one of those is
+// an error, not something to quietly skip.
+//
+// Without an explicit list the manifest only says "this machine", so the
+// platforms an existing pin already covers are carried along as well —
+// locking on a laptop must not drop the artifact CI needs. Those inherited
+// platforms are optional: when the upstream stops shipping one, it is
+// dropped with a notice instead of failing the lock.
+func (a *App) platformsFor(m *manifest.Manifest, prev *lockfile.Tool, src recipe.Source) []platform.Platform {
+	out := m.EffectivePlatforms(a.Platform)
+	if len(m.Platforms) == 0 && prev != nil {
+		for _, art := range prev.Artifacts {
+			p, err := platform.Parse(art.Platform)
+			switch {
+			case err != nil, containsPlatform(out, p):
+				continue
+			case !src.Supports(p):
+				fmt.Fprintf(a.Stderr, "%s: dropping %s: the source no longer ships it\n", prev.Name, p)
+				continue
+			}
+			out = append(out, p)
+		}
+	}
+	platform.Sort(out)
+	return out
+}
+
+func containsPlatform(ps []platform.Platform, p platform.Platform) bool {
+	for _, x := range ps {
+		if x == p {
+			return true
+		}
+	}
+	return false
+}
+
+// lockTool pins one tool. With resolve set, the tool is re-resolved against
+// upstream and every artifact is re-rendered from the current recipe, so a
+// recipe that renamed an asset takes effect even when the version is
+// unchanged. Without it the previous pin is kept verbatim — that is what
+// naming other tools on the command line means — except that a platform it
+// does not cover yet is resolved at the pinned version.
+func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, prev *lockfile.Tool, plats []platform.Platform, resolve, check bool) (*lockfile.Tool, error) {
+	entry := &lockfile.Tool{
+		Name:            t.Name,
+		Constraint:      t.Constraint.String(),
+		Bin:             append([]string(nil), src.Bin...),
+		StripComponents: src.StripComponents,
+	}
 	if t.Source != nil {
 		entry.Source = src.Hash()
-	}
-	if prev != nil {
-		res.before = prev.Version
-	}
-	// The previous artifacts stay valid only for the same version resolved
-	// through the same recipe.
-	reuse := func() {
-		if prev != nil && prev.Version == entry.Version && prev.Source == entry.Source {
-			entry.Artifacts = append(entry.Artifacts, prev.Artifacts...)
-		}
 	}
 	var resolution resolver.Resolution
 	// resolved says whether resolution describes entry.Version; a kept pin
 	// leaves it unset until a missing platform forces an exact lookup.
 	resolved := false
-	if !resolve && prev != nil && prev.Constraint == t.Constraint.String() && prev.Source == entry.Source {
+	keep := !resolve && prev != nil && prev.Constraint == entry.Constraint && prev.Source == entry.Source
+	switch {
+	case keep:
 		entry.Version = prev.Version
-		reuse()
-	} else {
+		entry.Bin = append([]string(nil), prev.Bin...)
+		entry.StripComponents = prev.StripComponents
+		for _, p := range plats {
+			if art, ok := prev.Artifact(p); ok {
+				entry.SetArtifact(art)
+			}
+		}
+	default:
 		r, err := resolver.Resolve(ctx, a.Releases, src, t.Constraint)
 		if err != nil {
-			return nil, res, err
+			return nil, err
 		}
 		resolution, resolved = r, true
 		entry.Version = r.Version.String()
-		reuse()
 	}
-	res.after = entry.Version
 	for _, p := range plats {
 		if _, ok := entry.Artifact(p); ok {
 			continue
@@ -223,30 +270,47 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 		if !resolved {
 			r, err := a.resolveExact(ctx, src, entry)
 			if err != nil {
-				return nil, res, err
+				return nil, err
 			}
 			resolution, resolved = r, true
 		}
 		art, err := resolver.ArtifactFor(resolution, src, p)
 		if err != nil {
-			return nil, res, err
+			return nil, err
 		}
-		switch {
-		case check:
-			// Placeholder: check mode compares versions and platforms only.
-			art.SHA256 = strings.Repeat("0", 64) //nolint:mnd // sha256 hex length
-		case art.SHA256 == "":
-			// The upstream publishes no digest: trust the first download.
-			fmt.Fprintf(a.Stderr, "downloading %s\n", art.URL)
-			_, sha, _, err := a.Fetcher.Fetch(ctx, art.URL, "")
-			if err != nil {
-				return nil, res, err
-			}
-			art.SHA256 = sha
+		sha, err := a.digestFor(ctx, prev, p, art, check)
+		if err != nil {
+			return nil, err
 		}
-		entry.SetArtifact(lockfile.Artifact{Platform: p.String(), URL: art.URL, SHA256: art.SHA256})
+		entry.SetArtifact(lockfile.Artifact{Platform: p.String(), URL: art.URL, SHA256: sha})
 	}
-	return entry, res, nil
+	return entry, nil
+}
+
+// digestFor settles an artifact's checksum without downloading more than it
+// must: the upstream's own digest when it publishes one, else the digest
+// already locked for the very same URL, else — outside check mode — the
+// digest of one download.
+func (a *App) digestFor(ctx context.Context, prev *lockfile.Tool, p platform.Platform, art resolver.Artifact, check bool) (string, error) {
+	if art.SHA256 != "" {
+		return art.SHA256, nil
+	}
+	if prev != nil {
+		if old, ok := prev.Artifact(p); ok && old.URL == art.URL {
+			return old.SHA256, nil
+		}
+	}
+	if check {
+		// Unknown without downloading, and only ever unknown for an artifact
+		// that is new or has moved: reported as a change either way.
+		return "", nil
+	}
+	fmt.Fprintf(a.Stderr, "downloading %s\n", art.URL)
+	_, sha, _, err := a.Fetcher.Fetch(ctx, art.URL, "")
+	if err != nil {
+		return "", err
+	}
+	return sha, nil
 }
 
 // resolveExact re-resolves an already pinned version, needed when a new
@@ -257,6 +321,108 @@ func (a *App) resolveExact(ctx context.Context, src recipe.Source, entry *lockfi
 		return resolver.Resolution{}, err
 	}
 	return resolver.Exact(ctx, a.Releases, src, v)
+}
+
+// result compares a planned pin with the previous one. Everything block.lock
+// records is compared, not just the version: a lock that would be rewritten
+// must be reported as such.
+func result(prev, next *lockfile.Tool) lockResult {
+	res := lockResult{name: next.Name, after: next.Version}
+	if prev == nil {
+		return res
+	}
+	res.before = prev.Version
+	// A constraint that moved the version has already said so on the version
+	// line; one that did not is exactly the change a version comparison
+	// misses.
+	if prev.Constraint != next.Constraint && prev.Version == next.Version {
+		res.changes = append(res.changes, "constraint")
+	}
+	if strings.Join(prev.Bin, "\x00") != strings.Join(next.Bin, "\x00") {
+		res.changes = append(res.changes, "bin")
+	}
+	if prev.StripComponents != next.StripComponents {
+		res.changes = append(res.changes, "strip_components")
+	}
+	if prev.Source != next.Source {
+		res.changes = append(res.changes, "source")
+	}
+	for _, c := range artifactChanges(prev, next) {
+		// A new version moves every artifact; saying so adds nothing to the
+		// version line. A platform appearing or disappearing does.
+		if res.moved() && !strings.HasSuffix(c, " added") && !strings.HasSuffix(c, " removed") {
+			continue
+		}
+		res.changes = append(res.changes, c)
+	}
+	return res
+}
+
+// artifactChanges lists the per-platform artifact differences between two
+// pins. An empty planned digest means "only a download could tell", which
+// happens exactly when the URL is new or has moved.
+func artifactChanges(prev, next *lockfile.Tool) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, a := range next.Artifacts {
+		seen[a.Platform] = true
+		before, ok := prevArtifact(prev, a.Platform)
+		switch {
+		case !ok:
+			out = append(out, "artifact for "+a.Platform+" added")
+		case before.URL != a.URL, a.SHA256 == "", before.SHA256 != a.SHA256:
+			out = append(out, "artifact for "+a.Platform)
+		}
+	}
+	for _, a := range prev.Artifacts {
+		if !seen[a.Platform] {
+			out = append(out, "artifact for "+a.Platform+" removed")
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func prevArtifact(prev *lockfile.Tool, platformName string) (lockfile.Artifact, bool) {
+	for _, a := range prev.Artifacts {
+		if a.Platform == platformName {
+			return a, true
+		}
+	}
+	return lockfile.Artifact{}, false
+}
+
+// droppedTools lists the pins that are in the lockfile but no longer in the
+// manifest.
+func droppedTools(old, next *lockfile.Lock) []lockfile.Tool {
+	if old == nil {
+		return nil
+	}
+	var out []lockfile.Tool
+	for _, t := range old.Tools {
+		if _, ok := next.Tool(t.Name); !ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// commandConflict refuses a toolchain in which two tools provide the same
+// command: which one PATH order happens to pick is not something a project
+// should depend on.
+func commandConflict(l *lockfile.Lock) error {
+	owner := map[string]string{}
+	for _, t := range l.Tools {
+		for _, b := range t.Bin {
+			cmd := recipe.CommandName(b)
+			if first, ok := owner[cmd]; ok && first != t.Name {
+				return fmt.Errorf("tools %q and %q both provide the command %q; remove one from %s",
+					first, t.Name, cmd, manifest.FileName)
+			}
+			owner[cmd] = t.Name
+		}
+	}
+	return nil
 }
 
 // writeLock persists next when it differs from old and reports whether it did.
@@ -274,19 +440,25 @@ func (a *App) writeLock(old, next *lockfile.Lock) (bool, error) {
 	return true, lockfile.Write(a.LockPath(), next)
 }
 
-// printResults prints one line per tool: "name  old -> new", "name  <verb>
-// new" for tools without a previous pin, or "name  new<same>" when unchanged.
-func (a *App) printResults(results []lockResult, verb, same string) {
+// printResults prints one line per tool: the version it resolved to, how it
+// moved, and what else about the pin would change.
+func (a *App) printResults(results []lockResult, verb string, check bool) {
 	tw := tabwriter.NewWriter(a.Stdout, 0, 0, 2, ' ', 0) //nolint:mnd // column padding
 	for _, r := range results {
 		var state string
 		switch {
 		case r.before == "":
 			state = verb + " " + r.after
-		case r.changed():
+		case r.moved():
 			state = r.before + " -> " + r.after
 		default:
-			state = r.after + same
+			state = r.after
+		}
+		switch {
+		case len(r.changes) > 0:
+			state += " (" + strings.Join(r.changes, ", ") + ")"
+		case check && !r.differs():
+			state += " (up-to-date)"
 		}
 		fmt.Fprintf(tw, "%s\t%s\n", r.name, state)
 	}
@@ -351,6 +523,9 @@ func (a *App) Sync(ctx context.Context) error {
 	if reasons := Check(m, l, []platform.Platform{a.Platform}); len(reasons) > 0 {
 		return staleError(reasons)
 	}
+	if err := commandConflict(l); err != nil {
+		return err
+	}
 	tw := tabwriter.NewWriter(a.Stdout, 0, 0, 2, ' ', 0) //nolint:mnd // column padding
 	for _, t := range l.Tools {
 		state, err := a.install(ctx, &t)
@@ -369,7 +544,7 @@ func (a *App) install(ctx context.Context, t *lockfile.Tool) (string, error) {
 		return "", fmt.Errorf("%s has no artifact for %s", lockfile.FileName, a.Platform)
 	}
 	dir := a.Store.InstallDir(t.Name, t.Version, art.SHA256)
-	if a.Store.IsInstalled(dir) {
+	if a.Store.IsInstalled(dir, t.Bin) {
 		return "cached", nil
 	}
 	blob, _, _, err := a.Fetcher.Fetch(ctx, art.URL, art.SHA256)
@@ -393,14 +568,26 @@ func assetName(rawURL string) string {
 }
 
 // Env returns the PATH entries that expose every locked tool for the current
-// platform. It fails when a tool has not been synced.
+// platform, after checking offline that the toolchain is the one block.toml
+// asks for and that it is actually installed. It resolves nothing, downloads
+// nothing and writes nothing.
 func (a *App) Env() ([]string, error) {
+	m, err := a.loadManifest()
+	if err != nil {
+		return nil, err
+	}
 	l, err := a.loadLock()
 	if err != nil {
 		return nil, err
 	}
 	if l == nil {
 		return nil, fmt.Errorf("%s not found; run \"block lock\" and \"block sync\"", lockfile.FileName)
+	}
+	if reasons := Check(m, l, []platform.Platform{a.Platform}); len(reasons) > 0 {
+		return nil, staleError(reasons)
+	}
+	if err := commandConflict(l); err != nil {
+		return nil, err
 	}
 	var dirs []string
 	for _, t := range l.Tools {
@@ -409,8 +596,8 @@ func (a *App) Env() ([]string, error) {
 			return nil, fmt.Errorf("%s: %s has no artifact for %s; run \"block lock\" and \"block sync\"", t.Name, lockfile.FileName, a.Platform)
 		}
 		dir := a.Store.InstallDir(t.Name, t.Version, art.SHA256)
-		if !a.Store.IsInstalled(dir) {
-			return nil, fmt.Errorf("%s %s is not installed; run \"block sync\"", t.Name, t.Version)
+		if err := a.Store.Verify(dir, t.Bin); err != nil {
+			return nil, fmt.Errorf("%s %s %w; run \"block sync\"", t.Name, t.Version, err)
 		}
 		dirs = append(dirs, store.BinDirs(dir, t.Bin)...)
 	}

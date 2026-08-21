@@ -448,8 +448,14 @@ func script(bin, ver string) string {
 	return fmt.Sprintf(`#!/bin/sh
 case "$1" in
   --exit) exit "$2" ;;
+  # A long-running process that shuts down cleanly, like a node or a local
+  # test network: "sleep & wait" keeps the shell interruptible so the trap
+  # runs.
+  --serve) trap 'echo "%[1]s stopping"; exit 7' TERM INT; echo "%[1]s ready"; sleep 30 & wait ;;
+  # The same, with no handler at all: the signal itself ends it.
+  --hang) echo "%[1]s ready"; sleep 30 & wait ;;
 esac
-echo "%s %s (fake)"
+echo "%[1]s %[2]s (fake)"
 [ $# -gt 0 ] && echo "args: $*"
 exit 0
 `, name, ver)

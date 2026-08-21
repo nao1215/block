@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -130,10 +131,18 @@ func (s Source) Validate() error {
 			return errors.New("strip_components is only valid for archives")
 		}
 	}
+	seen := map[string]bool{}
 	for _, b := range s.Bin {
-		if err := validateBin(b); err != nil {
+		if err := ValidateBin(b); err != nil {
 			return err
 		}
+		// A duplicate would be written to a lockfile that then refuses to
+		// parse, so it is refused here where the message can point at the
+		// recipe.
+		if seen[b] {
+			return fmt.Errorf("bin %q is listed twice", b)
+		}
+		seen[b] = true
 	}
 	for _, p := range s.Platforms {
 		if _, err := platform.Parse(p); err != nil {
@@ -210,9 +219,22 @@ func (s Source) NeedsCommit() bool {
 	return strings.Contains(s.ArtifactTemplate(), "{commit}")
 }
 
-func validateBin(b string) error {
+// ValidateBin checks one executable path from a recipe or a lockfile. A
+// lockfile is untrusted input — it arrives through pull requests and hand
+// edits — so both go through this same check, and an entry that could point
+// outside the install directory is refused.
+func ValidateBin(b string) error {
 	if b == "" {
 		return errors.New("bin entry is empty")
+	}
+	if strings.ContainsRune(b, 0) {
+		return errors.New("bin entry contains a NUL byte")
+	}
+	// Backslashes, drive letters and colons are rejected wherever block
+	// runs: an entry that means one thing on Linux and another on Windows is
+	// not a path a recipe or a lockfile may carry.
+	if strings.ContainsAny(b, "\\:") || filepath.VolumeName(b) != "" {
+		return fmt.Errorf("invalid bin entry %q: want a relative slash-separated path inside the archive", b)
 	}
 	clean := path.Clean(b)
 	if clean != b || path.IsAbs(b) || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
@@ -220,6 +242,9 @@ func validateBin(b string) error {
 	}
 	return nil
 }
+
+// CommandName is the command a user types for an executable path.
+func CommandName(bin string) string { return path.Base(bin) }
 
 // Validate checks the recipe name, its metadata and its source.
 func (r Recipe) Validate() error {

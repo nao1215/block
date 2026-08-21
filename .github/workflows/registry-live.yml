@@ -1,0 +1,51 @@
+name: Registry (live)
+
+# Checks every recipe against the real upstreams: newest stable version,
+# artifact for each declared platform, checksum, unpack, and a probe of the
+# executables the recipe promises. This is what keeps recipes current without
+# a human watching releases — routine upstream versions need no change here,
+# and a failure means a recipe stopped matching reality.
+#
+# It downloads real artifacts and calls the GitHub API, so it is scheduled
+# rather than run on every push, and never mixed into the unit or E2E suites.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tools:
+        description: "Recipe names to check (a Go test regexp, e.g. foundry|geth). Empty means all."
+        required: false
+        default: ""
+  schedule:
+    # Mondays, 03:17 UTC.
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Validate recipes against upstream
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Validate the registry against upstream
+        env:
+          # Raises the API rate limit; the recipes themselves are public.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOLS: ${{ inputs.tools }}
+        run: |
+          if [ -n "$TOOLS" ]; then
+            make registry-live RECIPE="$TOOLS"
+          else
+            make registry-live
+          fi

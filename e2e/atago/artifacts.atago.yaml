@@ -178,7 +178,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: nobin: archive nobin_1.0.0_linux_amd64.tar.gz does not contain executable "nobin"'
+            contains: 'block: nobin: archive nobin_1.0.0_linux_amd64.tar.gz: executable "nobin" is missing'
       - assert:
           dir:
             path: home/tools/nobin

@@ -468,11 +468,12 @@ scenarios:
           exit_code: 0
           stdout:
             contains: "rawbin  1.0.0  installed"
+      # The executable is installed under its bin name, next to the marker
+      # that says the install completed.
       - assert:
           dir:
             path: home/tools/rawbin
             recursive: true
-            count: 1
             glob: "rawbin"
       - run:
           command: block exec rawbin --flag

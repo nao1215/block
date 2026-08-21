@@ -158,6 +158,16 @@ func validateTool(t *Tool) error {
 	if len(t.Bin) == 0 {
 		return fmt.Errorf("tool %q: bin is empty", t.Name)
 	}
+	seenBin := map[string]bool{}
+	for _, b := range t.Bin {
+		if err := recipe.ValidateBin(b); err != nil {
+			return fmt.Errorf("tool %q: %w", t.Name, err)
+		}
+		if seenBin[b] {
+			return fmt.Errorf("tool %q: bin %q is listed twice", t.Name, b)
+		}
+		seenBin[b] = true
+	}
 	if t.StripComponents < 0 {
 		return fmt.Errorf("tool %q: strip_components must not be negative", t.Name)
 	}

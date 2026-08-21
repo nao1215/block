@@ -36,12 +36,12 @@ And one question answered offline — *which tools can I use for this chain?*:
 
 ```console
 $ block list ethereum
-NAME         SOURCE           BINARIES
-foundry      github_release   forge, cast, anvil, chisel
-geth         http             geth
-lighthouse   github_release   lighthouse
-reth         github_release   reth
-solc         github_release   solc
+NAME         COMMANDS                     DESCRIPTION
+foundry      forge, cast, anvil, chisel   Fast Ethereum application toolkit: build, test, deploy and inspect contracts
+geth         geth                         go-ethereum, the Go implementation of an Ethereum execution client
+lighthouse   lighthouse                   Ethereum consensus (beacon chain) client written in Rust
+reth         reth                         Modular Ethereum execution client written in Rust
+solc         solc                         The Solidity smart-contract compiler
 ```
 
 block resolves the tools a project needs, fetches and verifies them, pins
@@ -116,12 +116,29 @@ forge Version: 1.7.4-stable
 
 Commit both `block.toml` and `block.lock`.
 
+`block lock` resolves artifacts for the platforms `block.toml` lists, and for
+the machine it runs on when it lists none. So a team on macOS whose CI runs
+Linux declares both, once:
+
+```toml
+platforms = ["darwin/arm64", "linux/amd64"]
+
+[tools]
+foundry = "1.7"
+```
+
+Otherwise `block sync` on the runner fails with "block.lock has no artifact
+for linux/amd64" — deliberately, since installing something the lockfile does
+not name is the one thing `sync` must never do. (Without a `platforms` list,
+`lock` still keeps the platforms an existing lockfile already covers, so
+re-locking on a laptop does not drop the artifact CI needs.)
+
 ## Commands
 
 | Command | Resolves versions | Writes `block.lock` | Downloads | Installs | Runs your command |
 | --- | :-: | :-: | :-: | :-: | :-: |
 | `block lock [tool...]` | yes | yes | only artifacts whose upstream publishes no digest | no | no |
-| `block lock --check` | yes | **no** | no | no | no |
+| `block lock --check` | yes | **no** | **no** | no | no |
 | `block sync` | **no** | **no** | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | **no** | **no** | **no** | **no** | yes |
 | `block list [ecosystem]` | **no** | **no** | **no** | **no** | no |
@@ -201,12 +218,27 @@ $ block exec make test
 $ block exec ./scripts/integration-test.sh
 ```
 
-`exec` never downloads, installs or resolves. If a tool is not installed:
+`exec` never downloads, installs or resolves — but it does check, offline,
+that the toolchain it is about to run is the one `block.toml` asks for and
+that the install is intact. Running the previous toolchain after the manifest
+changed would defeat the point of locking:
 
 ```console
 $ block exec forge test
+block: block.lock is stale; run "block lock"
+  hermes is declared in block.toml but missing from block.lock
+
+$ block exec forge test
 block: foundry 1.7.4 is not installed; run "block sync"
+
+$ block exec forge test
+block: foundry 1.7.4 is damaged: executable "cast" is missing; run "block sync"
 ```
+
+Signals reach the tool, not just block: `SIGINT` and `SIGTERM` are forwarded
+to the child, so a node or a local test network shuts down the way it would
+outside block, and block exits with the child's status (or `128+signal` when
+a signal ended it).
 
 ### `block list [ecosystem]`
 
@@ -214,28 +246,28 @@ Answers *what can block install?* — and, with an argument, *which tools exist
 for this blockchain system?*
 
 ```console
-$ block list                     # every supported tool
-NAME           ECOSYSTEM     SOURCE           BINARIES
-agave          solana        github_release   solana, solana-keygen, solana-test-validator, agave-ledger-tool
-anchor         solana        github_release   anchor
-bitcoin-core   bitcoin       http             bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet
-cometbft       cosmos        github_release   cometbft
-foundry        ethereum      github_release   forge, cast, anvil, chisel
-gaia           cosmos        github_release   gaiad
-geth           ethereum      http             geth
-hermes         cosmos, ibc   github_release   hermes
-lighthouse     ethereum      github_release   lighthouse
-osmosis        cosmos        github_release   osmosisd
-reth           ethereum      github_release   reth
-solc           ethereum      github_release   solc
-surfpool       solana        github_release   surfpool
+$ block list                     # every supported tool, and what it is
+NAME           ECOSYSTEM     DESCRIPTION
+agave          solana        Solana validator client and CLI suite, including a local test validator
+anchor         solana        Framework and CLI for writing, testing and deploying Solana programs
+bitcoin-core   bitcoin       Bitcoin reference implementation: full node, wallet and transaction tools
+cometbft       cosmos        Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains
+foundry        ethereum      Fast Ethereum application toolkit: build, test, deploy and inspect contracts
+gaia           cosmos        Cosmos Hub node (gaiad)
+geth           ethereum      go-ethereum, the Go implementation of an Ethereum execution client
+hermes         cosmos, ibc   IBC relayer connecting Cosmos SDK chains, written in Rust
+lighthouse     ethereum      Ethereum consensus (beacon chain) client written in Rust
+osmosis        cosmos        Osmosis appchain node (osmosisd), the Cosmos AMM
+reth           ethereum      Modular Ethereum execution client written in Rust
+solc           ethereum      The Solidity smart-contract compiler
+surfpool       solana        Local Solana network that streams mainnet state for pre-deployment testing
 
-$ block list cosmos              # only that blockchain system
-NAME       SOURCE           BINARIES
-cometbft   github_release   cometbft
-gaia       github_release   gaiad
-hermes     github_release   hermes
-osmosis    github_release   osmosisd
+$ block list cosmos              # one system, with the commands each tool gives you
+NAME       COMMANDS   DESCRIPTION
+cometbft   cometbft   Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains
+gaia       gaiad      Cosmos Hub node (gaiad)
+hermes     hermes     IBC relayer connecting Cosmos SDK chains, written in Rust
+osmosis    osmosisd   Osmosis appchain node (osmosisd), the Cosmos AMM
 ```
 
 A tool can serve more than one system — an IBC relayer belongs to both
@@ -346,9 +378,12 @@ definition (`source = "sha256:…"`), so editing it makes the pin stale. A
 registry recipe change never affects an existing lock: `sync` needs only the
 URLs and digests already written down.
 
-Checksums are computed by block when it first downloads an artifact
-(trust-on-first-use at `lock` time); every later download, on every machine,
-must match.
+Where the checksum comes from depends on the upstream. GitHub records a
+sha256 for release assets uploaded since 2025, and `lock` writes that down
+without downloading anything. Otherwise `lock` downloads the artifact once
+and records what it got — trust on first use — and every later download, on
+every machine, must match. Re-locking reuses the recorded digest whenever the
+URL is unchanged, so an unchanged artifact is never fetched twice.
 
 ## CI
 
@@ -408,6 +443,8 @@ into the binary:
 ```toml
 # registry/hermes.toml
 name = "hermes"
+ecosystems = ["cosmos", "ibc"]
+description = "IBC relayer connecting Cosmos SDK chains, written in Rust"
 
 [source]
 type = "github_release"
@@ -477,21 +514,34 @@ registry it was tested against.
 
 ## Security
 
-- Artifacts are fetched over HTTPS only. Plain HTTP is accepted only for
-  loopback addresses so offline test servers can stand in for GitHub.
+- Artifacts are fetched over HTTPS only, and every redirect is checked the
+  same way: an `https` URL that redirects to plain `http` is refused rather
+  than followed. Plain HTTP is accepted only for loopback addresses, so
+  offline test servers can stand in for GitHub.
 - Every download is hashed while streaming and must match the SHA-256 in
   `block.lock` before extraction. The digest comes from the upstream when it
   publishes one (GitHub's per-asset sha256) and from the first download
-  otherwise. The cache stores blobs under their digest, so a cached file can
-  never be the wrong bytes for its name.
-- Archives (`.tar.gz`, `.tgz`, `.zip`) are extracted defensively: absolute
-  paths, `..` components, symlinks and hard links are refused — also after
-  `strip_components` — and only the executable bit is preserved from archive
-  permissions. A raw executable is copied under its one `bin` name.
-- Installs are atomic: extraction happens in a temporary directory that is
-  renamed into place only after every entry succeeded and every declared
-  executable exists.
-- `sync` never resolves and `exec` never installs. Nothing falls back to an
+  otherwise.
+- The cache is content-addressed, and the name is not taken as proof: a
+  cache hit is re-hashed before it is used, so a truncated download or a
+  half-restored CI cache is discarded and fetched again instead of installed.
+- Archives (`.tar.gz`, `.tgz`, `.tar.bz2`, `.zip`) are extracted defensively:
+  absolute paths, `..` components, symlinks and hard links are refused — also
+  after `strip_components` — and only the executable bit is preserved from
+  archive permissions. A raw executable is copied under its one `bin` name.
+- Executable paths are validated the same way in a recipe and in a lockfile,
+  because a lockfile arrives through pull requests and hand edits too: an
+  absolute path, a `..` component or anything that could write outside the
+  install directory is refused.
+- Installs are atomic and self-attesting: everything is unpacked into a
+  temporary directory, every declared executable is confirmed to be there and
+  runnable, a completion marker is written, and only then is the directory
+  renamed into place. An install without that marker — or missing one of its
+  executables — is replaced, never run.
+- Two tools that provide the same command name are a conflict block reports,
+  not something it resolves by PATH order.
+- `sync` never resolves and `exec` never installs. `exec` re-checks offline
+  that `block.lock` still matches `block.toml`. Nothing falls back to an
   artifact the lockfile does not name.
 
 See [SECURITY.md](./SECURITY.md) for the reporting policy.

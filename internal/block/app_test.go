@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/nao1215/block/internal/fakegh"
 	"github.com/nao1215/block/internal/fetch"
@@ -242,8 +243,8 @@ func TestLockNamesOnlyThoseTools(t *testing.T) {
 	if err := h.Lock(ctx, []string{"hermes"}, false); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(h.stdout.String(), "foundry  1.7.4\n") {
-		t.Errorf("stdout = %q (foundry must keep its pin)", h.stdout)
+	if !strings.Contains(h.stdout.String(), "foundry  1.7.4 (artifact for darwin/arm64 added)") {
+		t.Errorf("stdout = %q (foundry must keep its pin and gain the platform)", h.stdout)
 	}
 	l, err := lockfile.Load(h.LockPath())
 	if err != nil {
@@ -319,6 +320,215 @@ func TestLockCheck(t *testing.T) {
 	}
 	if h.lockText(t) != before {
 		t.Error("check modified block.lock")
+	}
+}
+
+// setRegistry replaces the built-in registry with one recipe, so that a test
+// can change what the registry says about a tool the way a registry update
+// would.
+func (h *harness) setRegistry(t *testing.T, body string) {
+	t.Helper()
+	reg, err := registry.Load(fstest.MapFS{"foundry.toml": {Data: []byte(body)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Registry = reg
+}
+
+const foundryRecipe = `name = "foundry"
+ecosystems = ["ethereum"]
+description = "Fast Ethereum application toolkit"
+[source]
+type = "github_release"
+repo = "foundry-rs/foundry"
+asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+bin = ["forge", "cast", "anvil", "chisel"]
+`
+
+// TestLockCheckDetectsMetadataChanges covers what a version comparison alone
+// misses: block lock would rewrite block.lock for any of these, so
+// lock --check has to say so.
+func TestLockCheckDetectsMetadataChanges(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// change is applied after the initial lock; none of them moves the
+		// resolved version.
+		change func(t *testing.T, h *harness)
+		want   string
+	}{
+		{
+			name: "constraint narrowed to the version it already resolved",
+			change: func(t *testing.T, h *harness) {
+				h.manifest(t, "[tools]\nfoundry = \"1.7.4\"\n")
+			},
+			want: "foundry  1.7.4 (constraint)",
+		},
+		{
+			name: "registry recipe renamed the executables",
+			change: func(t *testing.T, h *harness) {
+				h.setRegistry(t, strings.Replace(foundryRecipe, `bin = ["forge", "cast", "anvil", "chisel"]`, `bin = ["forge"]`, 1))
+			},
+			want: "foundry  1.7.4 (bin)",
+		},
+		{
+			name: "registry recipe changed how the archive is unpacked",
+			change: func(t *testing.T, h *harness) {
+				h.setRegistry(t, foundryRecipe+"strip_components = 1\n")
+			},
+			want: "foundry  1.7.4 (strip_components)",
+		},
+		{
+			name: "registry recipe selects a different asset",
+			change: func(t *testing.T, h *harness) {
+				// The upstream renamed what it calls this architecture.
+				h.setRegistry(t, foundryRecipe+"[source.arch]\namd64 = \"arm64\"\n")
+			},
+			want: "foundry  1.7.4 (artifact for linux/amd64)",
+		},
+		{
+			name: "the tool moved to a project-local source",
+			change: func(t *testing.T, h *harness) {
+				h.manifest(t, "[tools.foundry]\nversion = \"1.7\"\n[tools.foundry.source]\ntype = \"github_release\"\nrepo = \"foundry-rs/foundry\"\nasset = \"foundry_v{version}_{os}_{arch}.tar.gz\"\nbin = [\"forge\"]\n")
+			},
+			want: "foundry  1.7.4 (bin, source)",
+		},
+		{
+			name: "a platform was added",
+			change: func(t *testing.T, h *harness) {
+				h.manifest(t, "platforms = [\"linux/amd64\", \"darwin/arm64\"]\n[tools]\nfoundry = \"1.7\"\n")
+			},
+			want: "foundry  1.7.4 (artifact for darwin/arm64 added)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, "/t1")
+			h.manifest(t, "[tools]\nfoundry = \"1.7\"\n")
+			ctx := context.Background()
+			if err := h.Lock(ctx, nil, false); err != nil {
+				t.Fatal(err)
+			}
+			before := h.lockText(t)
+			h.reset()
+			// Nothing has changed yet: check must be quiet.
+			if err := h.Lock(ctx, nil, true); err != nil {
+				t.Fatalf("check before the change = %v, %q", err, h.stdout)
+			}
+
+			tt.change(t, h)
+			h.reset()
+			err := h.Lock(ctx, nil, true)
+			if !errors.Is(err, ErrOutdated) {
+				t.Fatalf("check = %v, want ErrOutdated; stdout %q", err, h.stdout)
+			}
+			if got := strings.TrimRight(h.stdout.String(), "\n"); got != tt.want {
+				t.Errorf("check stdout = %q, want %q", got, tt.want)
+			}
+			if h.lockText(t) != before {
+				t.Error("check rewrote block.lock")
+			}
+			if h.stderr.Len() != 0 {
+				t.Errorf("check downloaded something: %q", h.stderr)
+			}
+
+			// And the change really does land when lock runs for real.
+			h.reset()
+			if err := h.Lock(ctx, nil, false); err != nil {
+				t.Fatal(err)
+			}
+			if h.lockText(t) == before {
+				t.Error("lock did not apply the change check reported")
+			}
+			h.reset()
+			if err := h.Lock(ctx, nil, true); err != nil {
+				t.Errorf("check after lock = %v, %q", err, h.stdout)
+			}
+		})
+	}
+}
+
+// TestLockAppliesRegistryRecipeChangesAtTheSameVersion is the other half of
+// that contract: a recipe fix has to reach the lockfile even when the
+// upstream version is unchanged, and sync must keep working from the old
+// lockfile until it does.
+func TestLockAppliesRegistryRecipeChangesAtTheSameVersion(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools]\nfoundry = \"1.7\"\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before := h.lockText(t)
+
+	// The registry now names a different asset for this architecture, and
+	// says the release ships only forge.
+	h.setRegistry(t, strings.Replace(foundryRecipe,
+		`bin = ["forge", "cast", "anvil", "chisel"]`, `bin = ["forge"]`, 1)+"[source.arch]\namd64 = \"arm64\"\n")
+
+	// sync is unaffected: it installs the artifacts the lockfile records.
+	h.reset()
+	if err := h.Sync(ctx); err != nil {
+		t.Fatalf("a registry change must not stale an existing lock: %v", err)
+	}
+	if h.stdout.String() != "foundry  1.7.4  cached\n" || h.lockText(t) != before {
+		t.Errorf("sync = %q, lock changed = %v", h.stdout, h.lockText(t) != before)
+	}
+
+	// lock picks the new recipe up, at the same version.
+	h.reset()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.stdout.String(), "foundry  1.7.4 (bin, artifact for linux/amd64)") {
+		t.Errorf("lock stdout = %q", h.stdout)
+	}
+	l, err := lockfile.Load(h.LockPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool, _ := l.Tool("foundry")
+	art, _ := tool.Artifact(h.Platform)
+	if !strings.HasSuffix(art.URL, "foundry_v1.7.4_linux_arm64.tar.gz") || strings.Join(tool.Bin, ",") != "forge" {
+		t.Errorf("lock = %+v", tool)
+	}
+	h.reset()
+	if err := h.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.stdout.String() != "foundry  1.7.4  installed\n" {
+		t.Errorf("sync = %q", h.stdout)
+	}
+}
+
+// TestLockReusesDigestForAnUnchangedURL keeps the download budget honest: a
+// re-lock that resolves the same artifact must not fetch it again.
+func TestLockReusesDigestForAnUnchangedURL(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	// example/foo publishes no digest, so the first lock has to download.
+	h.manifest(t, "[tools.foo]\nversion = \"1.2\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"example/foo\"\nasset = \"foo_{version}_{os}_{arch}.tar.gz\"\nbin = [\"foo\"]\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(h.stderr.String(), "downloading ") != 1 {
+		t.Fatalf("first lock stderr = %q", h.stderr)
+	}
+	h.reset()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if h.stderr.Len() != 0 {
+		t.Errorf("re-locking downloaded again: %q", h.stderr)
 	}
 }
 
@@ -489,6 +699,181 @@ func TestSyncAndExecContract(t *testing.T) {
 	}
 }
 
+// TestExecRefusesAStaleLock: running the previous toolchain after block.toml
+// changed is exactly the reproducibility hole block exists to close.
+func TestExecRefusesAStaleLock(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools]\nfoundry = \"1.7\"\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before := h.lockText(t)
+
+	// The subtests share one project on purpose: each edits the manifest of
+	// the toolchain the previous one left installed.
+	for _, tt := range []struct { //nolint:paralleltest // shared project state
+		name, manifest, want string
+	}{
+		{"a tool was added", "[tools]\nfoundry = \"1.7\"\nhermes = \"1.13\"\n", "hermes is declared in block.toml but missing from block.lock"},
+		{"a constraint changed", "[tools]\nfoundry = \"1.6\"\n", `foundry: block.toml wants "1.6" but block.lock was resolved from "1.7"`},
+		{"a tool was removed", "[tools]\nhermes = \"1.13\"\n", "foundry is in block.lock but not declared in block.toml"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h.manifest(t, tt.manifest)
+			h.reset()
+			_, err := h.Exec(ctx, []string{"forge"}, nil)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Exec() error = %v, want containing %q", err, tt.want)
+			}
+			if !strings.Contains(err.Error(), `block.lock is stale; run "block lock"`) {
+				t.Errorf("the error should say how to fix it: %v", err)
+			}
+			if h.stdout.Len() != 0 {
+				t.Errorf("the tool ran anyway: %q", h.stdout)
+			}
+			// Refusing must stay a read-only, offline verdict.
+			if h.lockText(t) != before || h.stderr.Len() != 0 {
+				t.Error("exec wrote the lockfile or reached the network")
+			}
+		})
+	}
+}
+
+// TestCommandConflict: two tools providing the same command would leave the
+// choice to PATH order, which is not something a project can depend on.
+func TestCommandConflict(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
+	// example/rawbin ships a "rawbin" executable; declare a second tool that
+	// claims the same command name.
+	const twoTools = `[tools.rawbin]
+version = "1"
+[tools.rawbin.source]
+type = "github_release"
+repo = "example/rawbin"
+asset = "rawbin-{os}-{arch}"
+bin = ["rawbin"]
+
+[tools.clash]
+version = "1"
+[tools.clash.source]
+type = "github_release"
+repo = "example/rawbin"
+asset = "rawbin-{os}-{arch}"
+bin = ["rawbin"]
+`
+	h := newHarness(t, "/t1")
+	h.manifest(t, twoTools)
+	ctx := context.Background()
+	const want = `tools "clash" and "rawbin" both provide the command "rawbin"; remove one from block.toml`
+	err := h.Lock(ctx, nil, false)
+	if err == nil || err.Error() != want {
+		t.Fatalf("Lock() error = %v, want %q", err, want)
+	}
+	if _, statErr := os.Stat(h.LockPath()); statErr == nil {
+		t.Error("a conflicting toolchain was written to block.lock")
+	}
+
+	// A lockfile that already contains the conflict — hand-written, or
+	// merged from a branch — is refused by sync and exec too.
+	h.manifest(t, "[tools.rawbin]\nversion = \"1\"\n[tools.rawbin.source]\ntype = \"github_release\"\nrepo = \"example/rawbin\"\nasset = \"rawbin-{os}-{arch}\"\nbin = [\"rawbin\"]\n")
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	l, err := lockfile.Load(h.LockPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	clash := l.Tools[0]
+	clash.Name = "clash"
+	l.Tools = append(l.Tools, clash)
+	if err := lockfile.Write(h.LockPath(), l); err != nil {
+		t.Fatal(err)
+	}
+	h.manifest(t, twoTools)
+	if err := h.Sync(ctx); err == nil || err.Error() != want {
+		t.Errorf("Sync() error = %v, want %q", err, want)
+	}
+	if _, err := h.Exec(ctx, []string{"rawbin"}, nil); err == nil || err.Error() != want {
+		t.Errorf("Exec() error = %v, want %q", err, want)
+	}
+}
+
+// TestSyncAndExecRejectDamagedInstalls: a restored CI cache can be truncated
+// or partial, and a directory that merely exists proves nothing.
+func TestSyncAndExecRejectDamagedInstalls(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools]\nfoundry = \"1.7\"\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dirs, err := h.Env()
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed := dirs[0]
+
+	// Damage it the way a half-restored cache would.
+	if err := os.Remove(filepath.Join(installed, "cast")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Env(); err == nil || !strings.Contains(err.Error(), `run "block sync"`) {
+		t.Errorf("Env() error = %v, want it to point at sync", err)
+	}
+	if _, err := h.Exec(ctx, []string{"forge"}, nil); err == nil {
+		t.Error("exec ran from a damaged install")
+	}
+	// sync repairs it rather than calling it cached.
+	h.reset()
+	if err := h.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.stdout.String() != "foundry  1.7.4  installed\n" {
+		t.Errorf("sync = %q, want a reinstall", h.stdout)
+	}
+	if _, err := h.Env(); err != nil {
+		t.Errorf("Env() after repair = %v", err)
+	}
+
+	// A corrupt cached blob is re-downloaded rather than trusted.
+	blobs, err := os.ReadDir(filepath.Join(h.Store.CacheDir(), "sha256"))
+	if err != nil || len(blobs) == 0 {
+		t.Fatalf("cache = %v, %v", blobs, err)
+	}
+	blob := filepath.Join(h.Store.CacheDir(), "sha256", blobs[0].Name())
+	if err := os.WriteFile(blob, []byte("truncated"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(installed); err != nil {
+		t.Fatal(err)
+	}
+	h.reset()
+	if err := h.Sync(ctx); err != nil {
+		t.Fatalf("sync with a corrupt cache = %v", err)
+	}
+	if _, err := h.Env(); err != nil {
+		t.Errorf("Env() = %v", err)
+	}
+}
+
 func TestSyncPlatformHandling(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "/t1")
@@ -547,7 +932,7 @@ func TestSyncRefusesBadArchives(t *testing.T) {
 	}{
 		{"traversal", "example/evil", "evil", `refusing to extract "../escape": path escapes the destination`},
 		{"symlink", "example/linky", "linky", `refusing to extract link "etc-passwd"`},
-		{"missing bin", "example/nobin", "nobin", `does not contain executable "nobin"`},
+		{"missing bin", "example/nobin", "nobin", `executable "nobin" is missing`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

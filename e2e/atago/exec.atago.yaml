@@ -204,6 +204,91 @@ scenarios:
           stdout:
             contains: "forge 1.7.4 (fake)"
 
+  - name: exec refuses a toolchain block.toml no longer asks for
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 0
+      # A tool is added to block.toml but nobody locked: the old toolchain
+      # must not keep running as if it were the current one.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+            hermes = "1.13"
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 1
+          stdout:
+            equals: ""
+          stderr:
+            equals: |
+              block: block.lock is stale; run "block lock"
+                hermes is declared in block.toml but missing from block.lock
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      # A changed constraint is just as stale.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.6"
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'foundry: block.toml wants "1.6" but block.lock was resolved from "1.7"'
+
+  - name: exec refuses an install that is not intact
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync
+      # What a half-restored CI cache looks like.
+      - run:
+          shell: true
+          command: rm home/tools/foundry/*/cast
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 1
+          stderr:
+            matches: 'block: foundry 1\.7\.4 is damaged: executable "cast" is missing; run "block sync"'
+      # sync repairs it instead of trusting the directory.
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.4  installed\n"
+      - run:
+          command: block exec cast --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "cast 1.7.4 (fake)"
+
   - name: exec of a command that exists nowhere fails with exit 1
     env: *t1
     steps:

@@ -1,0 +1,132 @@
+# `block exec` runs the long-lived processes of a blockchain toolchain — a
+# node, a validator, a local test network — so a signal sent to block has to
+# reach the child, and the child's own exit status has to survive.
+# Run with: make e2e
+version: "1"
+
+suite:
+  name: block exec signals
+
+scenarios:
+  - name: SIGTERM reaches the child, which shuts down and sets the exit status
+    skip:
+      os: windows
+    env: &t1
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync
+      # anvil --serve traps TERM, prints and exits 7. Signalling block's own
+      # pid (not the process group) proves block forwards it rather than
+      # dying and taking the child with it.
+      - run:
+          shell: true
+          command: >-
+            block exec anvil --serve > out.txt 2>&1 &
+            pid=$!;
+            for i in $(seq 1 100); do grep -q ready out.txt && break; sleep 0.1; done;
+            kill -TERM $pid;
+            wait $pid;
+            echo "block exited $?"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "block exited 7"
+      - assert:
+          file:
+            path: out.txt
+            contains: "anvil stopping"
+
+  - name: SIGINT reaches the child too
+    skip:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync
+      - run:
+          shell: true
+          command: >-
+            block exec anvil --serve > out.txt 2>&1 &
+            pid=$!;
+            for i in $(seq 1 100); do grep -q ready out.txt && break; sleep 0.1; done;
+            kill -INT $pid;
+            wait $pid;
+            echo "block exited $?"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "block exited 7"
+      - assert:
+          file:
+            path: out.txt
+            contains: "anvil stopping"
+
+  - name: a child killed by a signal reports 128+signal, not 255
+    skip:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync
+      # --hang installs no handler, so SIGTERM ends it. A shell reports that
+      # as 143; block must not turn it into 255.
+      - run:
+          shell: true
+          command: >-
+            block exec anvil --hang > out.txt 2>&1 &
+            pid=$!;
+            for i in $(seq 1 100); do grep -q ready out.txt && break; sleep 0.1; done;
+            kill -TERM $pid;
+            wait $pid;
+            echo "block exited $?"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "block exited 143"
+
+  - name: stdin, stdout and stderr stay connected to the child
+    skip:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync
+      # The fake tools echo their arguments on stdout; a shell pipeline
+      # through block proves stdin and stdout are the real streams.
+      - run:
+          shell: true
+          command: printf 'hello\n' | block exec sh -c 'cat; echo done >&2' 2> err.txt
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "hello\n"
+      - assert:
+          file:
+            path: err.txt
+            contains: "done"

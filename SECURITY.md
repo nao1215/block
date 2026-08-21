@@ -35,16 +35,23 @@ a new release. You will be credited in the release notes unless you prefer to
 stay anonymous.
 
 ## What block does to protect you
-- Artifacts are fetched over HTTPS only (plain HTTP is accepted for loopback
-  addresses so offline test servers can stand in for GitHub).
+- Artifacts are fetched over HTTPS only, including across redirects — a
+  redirect to plain HTTP is refused, not followed. (Plain HTTP is accepted
+  for loopback addresses so offline test servers can stand in for GitHub.)
 - Every download is hashed while streaming and compared with the SHA-256 in
-  `block.lock` before anything is extracted.
+  `block.lock` before anything is extracted, and a cache hit is re-hashed
+  rather than trusted for its name.
 - Artifacts are unpacked into a temporary directory that is renamed into
-  place only after every entry succeeded and every declared executable
-  exists. Absolute paths, `..` components, symlinks and hard links are
-  refused, including after `strip_components`.
+  place only after every entry succeeded, every declared executable is there
+  and runnable, and a completion marker is written; an install without that
+  marker is replaced rather than used. Absolute paths, `..` components,
+  symlinks and hard links are refused, including after `strip_components`,
+  and executable paths from a lockfile go through the same validation as
+  those from a recipe.
 - `block sync` never resolves versions, never rewrites `block.lock`, and
   fails on any disagreement between `block.toml` and `block.lock`.
+  `block exec` makes the same offline check before running anything, so a
+  toolchain that no longer matches the manifest cannot be run by accident.
 - Registry recipes are data (TOML), never shell commands.
 
 ## Verifying releases

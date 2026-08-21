@@ -109,10 +109,106 @@ scenarios:
           exit_code: 2
           stdout:
             equals: |
-              foundry  1.7.4 -> 1.6.0
+              foundry  1.7.4 -> 1.6.0 (artifact for darwin/arm64 added)
               hermes  1.13.0 (no longer in block.toml)
           changes:
             modified: []
+
+  - name: check exits 2 when only metadata would change
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      # The resolved version does not move, but block.lock would still be
+      # rewritten: a version comparison alone would call this up to date.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7.4"
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: "foundry  1.7.4 (constraint)\n"
+          stderr:
+            equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foundry  1.7.4 (constraint)"
+          changes:
+            modified: [block.lock]
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "foundry  1.7.4 (up-to-date)\n"
+
+  - name: check exits 2 when a project-local source changed
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block lock
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            strip_components = 0
+            bin = ["foo", "foo"]
+      - run:
+          command: block lock --check
+      # An invalid edit is reported as an error, not as "up to date".
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'tool "foo": bin "foo" is listed twice'
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["bin/foo"]
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: "foo  1.2.0 (bin, source)\n"
+          stderr:
+            equals: ""
 
   - name: check exits 1 on a resolution error
     env:

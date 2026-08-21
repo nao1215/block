@@ -1,7 +1,8 @@
 // Package fetch downloads artifacts into a content-addressed cache and
 // verifies their SHA-256 digests. A blob is stored under its own digest, so
-// the same artifact pulled by two projects lands in one file, and a cached
-// file can never be "the wrong bytes" for the digest it is named after.
+// the same artifact pulled by two projects lands in one file. The name alone
+// is not taken as proof: a cache hit is re-hashed before it is used, because
+// a restored CI cache can be truncated or corrupt.
 package fetch
 
 import (
@@ -37,10 +38,25 @@ type Fetcher struct {
 	UserAgent string
 }
 
-// New returns a Fetcher storing blobs under dir.
+// New returns a Fetcher storing blobs under dir. Its client enforces the
+// transport policy on every redirect hop, so an https artifact cannot be
+// answered by a plain-http location.
 func New(dir, userAgent string) *Fetcher {
 	const timeout = 10 * time.Minute
-	return &Fetcher{Dir: dir, HTTP: &http.Client{Timeout: timeout}, UserAgent: userAgent}
+	return &Fetcher{
+		Dir: dir,
+		HTTP: &http.Client{
+			Timeout: timeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				const maxRedirects = 10
+				if len(via) >= maxRedirects {
+					return fmt.Errorf("stopped after %d redirects", maxRedirects)
+				}
+				return CheckURL(req.URL.String())
+			},
+		},
+		UserAgent: userAgent,
+	}
 }
 
 // Path returns where a blob with the given digest lives in the cache.
@@ -49,12 +65,17 @@ func (f *Fetcher) Path(sha string) string {
 }
 
 // Fetch returns the cached path of rawURL's content. When want is non-empty
-// the cache is consulted first and the download must hash to want; when want
-// is empty the artifact is downloaded and its digest reported. Fetch returns
-// the blob path, its digest and whether the cache served it.
+// the cache is consulted first — and re-hashed, so a corrupt blob is discarded
+// rather than used — and the download must hash to want; when want is empty
+// the artifact is downloaded and its digest reported. Fetch returns the blob
+// path, its digest and whether the cache served it.
 func (f *Fetcher) Fetch(ctx context.Context, rawURL, want string) (path, sha string, cached bool, err error) {
 	if want != "" {
-		if st, statErr := os.Stat(f.Path(want)); statErr == nil && st.Mode().IsRegular() {
+		ok, err := f.verifyCached(want)
+		if err != nil {
+			return "", "", false, err
+		}
+		if ok {
 			return f.Path(want), want, true, nil
 		}
 	}
@@ -70,6 +91,29 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL, want string) (path, sha str
 		return "", "", false, &ChecksumError{URL: rawURL, Want: want, Got: sha}
 	}
 	return f.Path(sha), sha, false, nil
+}
+
+// verifyCached reports whether the cache holds a blob that really hashes to
+// want. A blob whose bytes do not match its name is deleted: it is either a
+// truncated download or a damaged cache restore, and either way the artifact
+// must be fetched again.
+func (f *Fetcher) verifyCached(want string) (bool, error) {
+	path := f.Path(want)
+	st, err := os.Stat(path)
+	if err != nil || !st.Mode().IsRegular() {
+		return false, nil //nolint:nilerr // a missing blob is a normal cache miss
+	}
+	got, err := SHA256File(path)
+	if err != nil {
+		return false, err
+	}
+	if got == want {
+		return true, nil
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("cached artifact %s is corrupt and could not be removed: %w", path, err)
+	}
+	return false, nil
 }
 
 func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {

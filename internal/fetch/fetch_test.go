@@ -131,3 +131,85 @@ func TestSHA256File(t *testing.T) {
 		t.Error("missing file hashed")
 	}
 }
+
+func TestFetchRejectsCorruptCache(t *testing.T) {
+	t.Parallel()
+	body := []byte("archive bytes")
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+	f := New(t.TempDir(), "block/test")
+	ctx := context.Background()
+	path, sha, _, err := f.Fetch(ctx, srv.URL+"/a.tar.gz", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A cache restored half-way, or a blob damaged on disk: the name still
+	// says sha, the bytes no longer do.
+	if err := os.WriteFile(path, []byte("truncated"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, _, cached, err := f.Fetch(ctx, srv.URL+"/a.tar.gz", sha)
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if cached {
+		t.Error("a corrupt blob was served from the cache")
+	}
+	if hits.Load() != 2 {
+		t.Errorf("server hits = %d, want a re-download", hits.Load())
+	}
+	if data, _ := os.ReadFile(got); string(data) != string(body) {
+		t.Errorf("cached bytes = %q", data)
+	}
+	// And a healthy cache is still served without touching the network.
+	if _, _, cached, err = f.Fetch(ctx, srv.URL+"/a.tar.gz", sha); err != nil || !cached || hits.Load() != 2 {
+		t.Errorf("Fetch(healthy cache) = %v, %v, hits %d", cached, err, hits.Load())
+	}
+}
+
+func TestFetchRefusesInsecureRedirect(t *testing.T) {
+	t.Parallel()
+	// A plain-http destination that must never be reached.
+	var reached atomic.Bool
+	insecure := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached.Store(true)
+		_, _ = w.Write([]byte("payload"))
+	}))
+	defer insecure.Close()
+	// httptest serves on 127.0.0.1, which the transport policy allows so
+	// that offline tests can stand in for GitHub; rewrite the redirect to a
+	// routable host to model the real downgrade.
+	target := strings.Replace(insecure.URL, "127.0.0.1", "mirror.example.com", 1)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	_, _, _, err := New(t.TempDir(), "block/test").Fetch(context.Background(), redirector.URL+"/a.tar.gz", "")
+	if err == nil || !strings.Contains(err.Error(), "only https is allowed") {
+		t.Fatalf("Fetch() error = %v, want the redirect refused", err)
+	}
+	if reached.Load() {
+		t.Error("the insecure destination was contacted")
+	}
+}
+
+func TestFetchFollowsAllowedRedirect(t *testing.T) {
+	t.Parallel()
+	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("payload"))
+	}))
+	defer final.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, final.URL+"/real.tar.gz", http.StatusFound)
+	}))
+	defer redirector.Close()
+	path, sha, _, err := New(t.TempDir(), "block/test").Fetch(context.Background(), redirector.URL+"/a.tar.gz", "")
+	if err != nil || sha != digest([]byte("payload")) {
+		t.Fatalf("Fetch() = %q, %q, %v", path, sha, err)
+	}
+}

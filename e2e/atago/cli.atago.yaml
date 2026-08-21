@@ -53,12 +53,12 @@ scenarios:
           exit_code: 0
           stdout:
             contains:
-              - "NAME           ECOSYSTEM     SOURCE           BINARIES"
-              - "bitcoin-core   bitcoin       http             bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet"
-              - "foundry        ethereum      github_release   forge, cast, anvil, chisel"
-              - "geth           ethereum      http             geth"
+              - "NAME           ECOSYSTEM     DESCRIPTION"
+              - "bitcoin-core   bitcoin       Bitcoin reference implementation: full node, wallet and transaction tools"
+              - "foundry        ethereum      Fast Ethereum application toolkit: build, test, deploy and inspect contracts"
+              - "geth           ethereum      go-ethereum, the Go implementation of an Ethereum execution client"
               # A tool serving two blockchain systems shows both.
-              - "hermes         cosmos, ibc   github_release   hermes"
+              - "hermes         cosmos, ibc   IBC relayer connecting Cosmos SDK chains, written in Rust"
           stderr:
             equals: ""
           changes:
@@ -82,12 +82,12 @@ scenarios:
           exit_code: 0
           stdout:
             equals: |
-              NAME         SOURCE           BINARIES
-              foundry      github_release   forge, cast, anvil, chisel
-              geth         http             geth
-              lighthouse   github_release   lighthouse
-              reth         github_release   reth
-              solc         github_release   solc
+              NAME         COMMANDS                     DESCRIPTION
+              foundry      forge, cast, anvil, chisel   Fast Ethereum application toolkit: build, test, deploy and inspect contracts
+              geth         geth                         go-ethereum, the Go implementation of an Ethereum execution client
+              lighthouse   lighthouse                   Ethereum consensus (beacon chain) client written in Rust
+              reth         reth                         Modular Ethereum execution client written in Rust
+              solc         solc                         The Solidity smart-contract compiler
           stderr:
             equals: ""
           changes:
@@ -100,18 +100,18 @@ scenarios:
           exit_code: 0
           stdout:
             equals: |
-              NAME           SOURCE   BINARIES
-              bitcoin-core   http     bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet
+              NAME           COMMANDS                                                          DESCRIPTION
+              bitcoin-core   bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet   Bitcoin reference implementation: full node, wallet and transaction tools
       - run:
           command: block list solana
       - assert:
           exit_code: 0
           stdout:
             equals: |
-              NAME       SOURCE           BINARIES
-              agave      github_release   solana, solana-keygen, solana-test-validator, agave-ledger-tool
-              anchor     github_release   anchor
-              surfpool   github_release   surfpool
+              NAME       COMMANDS                                                          DESCRIPTION
+              agave      solana, solana-keygen, solana-test-validator, agave-ledger-tool   Solana validator client and CLI suite, including a local test validator
+              anchor     anchor                                                            Framework and CLI for writing, testing and deploying Solana programs
+              surfpool   surfpool                                                          Local Solana network that streams mainnet state for pre-deployment testing
 
   - name: a tool serving two blockchain systems is listed under each
     env: *offline
@@ -122,19 +122,19 @@ scenarios:
           exit_code: 0
           stdout:
             equals: |
-              NAME       SOURCE           BINARIES
-              cometbft   github_release   cometbft
-              gaia       github_release   gaiad
-              hermes     github_release   hermes
-              osmosis    github_release   osmosisd
+              NAME       COMMANDS   DESCRIPTION
+              cometbft   cometbft   Byzantine fault-tolerant consensus engine and node behind Cosmos SDK chains
+              gaia       gaiad      Cosmos Hub node (gaiad)
+              hermes     hermes     IBC relayer connecting Cosmos SDK chains, written in Rust
+              osmosis    osmosisd   Osmosis appchain node (osmosisd), the Cosmos AMM
       - run:
           command: block list ibc
       - assert:
           exit_code: 0
           stdout:
             equals: |
-              NAME     SOURCE           BINARIES
-              hermes   github_release   hermes
+              NAME     COMMANDS   DESCRIPTION
+              hermes   hermes     IBC relayer connecting Cosmos SDK chains, written in Rust
 
   - name: an unknown ecosystem names the ones that exist
     env: *offline

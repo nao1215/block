@@ -402,3 +402,30 @@ func TestHTTPAndRawSources(t *testing.T) {
 		t.Error("url must be part of identity")
 	}
 }
+
+func TestValidateBinRejectsUnsafeEntries(t *testing.T) {
+	t.Parallel()
+	for _, ok := range []string{"forge", "bin/forge", "a/b/c"} {
+		if err := ValidateBin(ok); err != nil {
+			t.Errorf("ValidateBin(%q) = %v", ok, err)
+		}
+	}
+	// A lockfile is untrusted input: none of these may be accepted, because
+	// each one could place a file outside the install directory.
+	for _, bad := range []string{
+		"", "/usr/bin/forge", "../forge", "a/../../forge", "./forge", "bin/./forge",
+		"bin//forge", "bin/", ".", "..", "a\\b", "C:/forge", "forge\x00",
+	} {
+		if err := ValidateBin(bad); err == nil {
+			t.Errorf("ValidateBin(%q) accepted", bad)
+		}
+	}
+	if CommandName("bin/solana") != "solana" || CommandName("forge") != "forge" {
+		t.Error("CommandName is wrong")
+	}
+	dup := foundry()
+	dup.Bin = []string{"forge", "forge"}
+	if err := dup.Validate(); err == nil || !strings.Contains(err.Error(), `bin "forge" is listed twice`) {
+		t.Errorf("Validate() error = %v", err)
+	}
+}

@@ -55,31 +55,36 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 	}
 	code, out, _ = run(t, dir, "list")
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if code != 0 || !strings.HasPrefix(lines[0], "NAME") || !strings.Contains(lines[0], "ECOSYSTEM") || !strings.Contains(lines[0], "BINARIES") {
+	if code != 0 || !strings.HasPrefix(lines[0], "NAME") || !strings.Contains(lines[0], "ECOSYSTEM") || !strings.Contains(lines[0], "DESCRIPTION") {
 		t.Fatalf("list = %d, %q", code, out)
 	}
 	if len(lines)-1 != len(reg.Recipes()) {
 		t.Errorf("list printed %d rows for %d recipes", len(lines)-1, len(reg.Recipes()))
 	}
 	for _, row := range []string{
-		"bitcoin-core   bitcoin       http             bitcoind, bitcoin-cli",
-		"foundry        ethereum      github_release   forge, cast, anvil, chisel",
-		"hermes         cosmos, ibc   github_release   hermes",
+		"bitcoin-core   bitcoin       Bitcoin reference implementation",
+		"foundry        ethereum      Fast Ethereum application toolkit",
+		"hermes         cosmos, ibc   IBC relayer",
 	} {
 		if !strings.Contains(out, row) {
 			t.Errorf("list is missing %q:\n%s", row, out)
 		}
 	}
+	// How a tool is fetched is a registry concern, not something the
+	// listing puts in front of a reader.
+	if strings.Contains(out, "github_release") {
+		t.Errorf("list still shows the source type:\n%s", out)
+	}
 
 	// Filtering by ecosystem drops the now-constant column and keeps the
 	// rows sorted by tool name.
 	code, out, _ = run(t, dir, "list", "ethereum")
-	if code != 0 || out != "NAME         SOURCE           BINARIES\n"+
-		"foundry      github_release   forge, cast, anvil, chisel\n"+
-		"geth         http             geth\n"+
-		"lighthouse   github_release   lighthouse\n"+
-		"reth         github_release   reth\n"+
-		"solc         github_release   solc\n" {
+	if code != 0 || out != "NAME         COMMANDS                     DESCRIPTION\n"+
+		"foundry      forge, cast, anvil, chisel   Fast Ethereum application toolkit: build, test, deploy and inspect contracts\n"+
+		"geth         geth                         go-ethereum, the Go implementation of an Ethereum execution client\n"+
+		"lighthouse   lighthouse                   Ethereum consensus (beacon chain) client written in Rust\n"+
+		"reth         reth                         Modular Ethereum execution client written in Rust\n"+
+		"solc         solc                         The Solidity smart-contract compiler\n" {
 		t.Errorf("list ethereum = %d, %q", code, out)
 	}
 	// A tool serving two ecosystems is listed under each of them. Column

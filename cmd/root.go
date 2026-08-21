@@ -209,8 +209,8 @@ func newListCmd(stdout io.Writer) *cobra.Command {
 		Short: "List the tools block supports",
 		Long: `List tools supported by block.
 
-Without an argument, lists all tools. With an ecosystem, lists the tools for
-that blockchain system:
+Without an argument, lists every tool with the blockchain systems it serves.
+With an ecosystem, lists that system's tools and the commands each provides:
 
   block list
   block list ethereum
@@ -235,20 +235,21 @@ a project's own toolchain is its block.toml and block.lock.`,
 				recipes = reg.ByEcosystem(args[0])
 			}
 			tw := tabwriter.NewWriter(stdout, 0, 0, 3, ' ', 0) //nolint:mnd // column padding
-			// The ecosystem column is dropped when every row would repeat the
-			// ecosystem that was asked for.
+			// How a tool is obtained is a registry concern, so the columns
+			// answer the two questions a reader has instead: what is this,
+			// and what do I get. Narrowing to one ecosystem trades that
+			// column — every row would repeat it — for the commands.
 			if byEcosystem {
-				fmt.Fprintln(tw, "NAME\tSOURCE\tBINARIES")
+				fmt.Fprintln(tw, "NAME\tCOMMANDS\tDESCRIPTION")
 			} else {
-				fmt.Fprintln(tw, "NAME\tECOSYSTEM\tSOURCE\tBINARIES")
+				fmt.Fprintln(tw, "NAME\tECOSYSTEM\tDESCRIPTION")
 			}
 			for _, rec := range recipes {
-				bins := strings.Join(commandNames(rec.Source.Bin), ", ")
 				if byEcosystem {
-					fmt.Fprintf(tw, "%s\t%s\t%s\n", rec.Name, rec.Source.Type, bins)
+					fmt.Fprintf(tw, "%s\t%s\t%s\n", rec.Name, strings.Join(commandNames(rec.Source.Bin), ", "), rec.Description)
 					continue
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", rec.Name, strings.Join(rec.Ecosystems, ", "), rec.Source.Type, bins)
+				fmt.Fprintf(tw, "%s\t%s\t%s\n", rec.Name, strings.Join(rec.Ecosystems, ", "), rec.Description)
 			}
 			return tw.Flush()
 		},
