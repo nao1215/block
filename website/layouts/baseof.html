@@ -10,24 +10,22 @@
 {{- $desc := or .Params.description site.Params.description }}
 <meta name="description" content="{{ $desc }}">
 <link rel="canonical" href="{{ .Permalink }}">
-{{- /* A right-ratio (1.91:1) social card and a square favicon, both derived at
-       build time from the committed images, so replacing doc/img/block-logo.png
-       with a different drawing — of any aspect ratio — is the whole job: the
-       wordmark is fit to 1000px wide and centred on a 1200x630 brand-dark
-       canvas, with the padding computed from the resized height rather than
-       assumed, so X/Slack/Discord render a full card instead of cropping. The
-       square mark becomes the tab icon, because a wordmark shrunk to 64px is an
-       unreadable smudge. Both fall back to the raw files if the processable
-       assets are ever unavailable. */ -}}
-{{- $ogImage := absURL "img/block-logo.png" }}{{ $ogW := "1200" }}{{ $ogH := "630" }}
-{{- $favicon := relURL "img/block-mark.png" }}
-{{- with resources.Get "imgsrc/block-logo.png" }}
-  {{- $fit := cond (gt (div (float .Width) (float .Height)) 1.5873) (.Resize "1000x q90") (.Resize "x630 q90") }}
+{{- /* The social card is the still frame doc/img/social.png, the last screen
+       of the hero recording, fit and centred on a 1200x630 brand-dark canvas
+       so X/Slack/Discord render a full 1.91:1 card instead of cropping. The
+       padding is computed from the resized size rather than assumed, so
+       replacing the image with one of any shape is the whole job. The favicon
+       is the one place a terminal screenshot cannot work — a 64px tab icon has
+       to be a shape, not text — so it keeps its own square mark. */ -}}
+{{- $ogImage := absURL "img/social.png" }}{{ $ogW := "1200" }}{{ $ogH := "630" }}
+{{- $favicon := relURL "img/favicon.png" }}
+{{- with resources.Get "imgsrc/social.png" }}
+  {{- $fit := cond (gt (div (float .Width) (float .Height)) 1.5873) (.Resize "1160x q90") (.Resize "x610 q90") }}
   {{- $x := div (sub 1200 $fit.Width) 2 }}{{ $y := div (sub 630 $fit.Height) 2 }}
   {{- $card := $fit.Filter (images.Padding $y (sub (sub 1200 $fit.Width) $x) (sub (sub 630 $fit.Height) $y) $x "#0d1117") }}
   {{- $ogImage = $card.Permalink }}{{ $ogW = string $card.Width }}{{ $ogH = string $card.Height }}
 {{- end }}
-{{- with resources.Get "imgsrc/block-mark.png" }}
+{{- with resources.Get "imgsrc/favicon.png" }}
   {{- $favicon = (.Resize "64x64 png").RelPermalink }}
 {{- end }}
 <meta property="og:title" content="{{ $title }}">

@@ -1,4 +1,4 @@
-.PHONY: build test e2e doc doc-check logo registry-verify registry-sync registry-live examples-live coverage clean vet fmt lint website website-serve changelog help
+.PHONY: build test e2e doc doc-check demo favicon registry-verify registry-sync registry-live examples-live coverage clean vet fmt lint website website-serve changelog help
 
 APP         = block
 VERSION     = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -35,8 +35,20 @@ doc: ## Regenerate the docs derived from the registry (doc/tools.md)
 doc-check: ## Fail if a generated doc is stale (offline; run by CI)
 	$(GO) run ./scripts/gen-tools-doc -check
 
-logo: ## Redraw doc/img from scripts/gen-logo.py (requires Python and Pillow)
-	python3 ./scripts/gen-logo.py
+demo: build ## Re-record the README GIFs (requires vhs and ffmpeg; needs network and GITHUB_TOKEN)
+	mkdir -p dist && cp $(APP) dist/$(APP)
+	env BLOCK_HOME=/tmp/block-demo sh -c 'for d in doc/demo/project doc/demo/defi doc/demo/bridge; do \
+	  (cd "$$d" && rm -f block.lock && ../../../dist/$(APP) lock >/dev/null && ../../../dist/$(APP) sync >/dev/null); \
+	done'
+	vhs doc/vhs/demo.tape
+	vhs doc/vhs/shims.tape
+	vhs doc/vhs/list.tape
+	# The social card is the last frame of the hero GIF: -update rewrites the
+	# same file for every frame, so the one left behind is the final screen.
+	ffmpeg -v error -y -i doc/img/demo.gif -update 1 doc/img/social.png
+
+favicon: ## Redraw doc/img/favicon.png, the one image a recording cannot be
+	python3 ./scripts/gen-favicon.py
 
 registry-verify: ## Check that registry/ is still the block-registry snapshot it records (offline)
 	$(GO) run ./scripts/registry-snapshot -verify

@@ -1,0 +1,5 @@
+platforms = ["darwin/arm64", "linux/amd64"]
+
+[tools]
+foundry = "1.7"
+hermes = "1.13"

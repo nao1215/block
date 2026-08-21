@@ -1,11 +1,5 @@
 {{ define "main" }}
 <div class="hero">
-{{- with resources.Get "imgsrc/block-logo.png" }}
-{{- $logo := .Resize "700x q90" }}
-<img class="hero-logo" src="{{ $logo.RelPermalink }}" alt="block" width="{{ $logo.Width }}" height="{{ $logo.Height }}">
-{{- else }}
-<img class="hero-logo" src="{{ relURL "img/block-logo.png" }}" alt="block" width="1800" height="600">
-{{- end }}
 <h1>{{ site.Params.tagline }}</h1>
 </div>
 {{ .Content }}
