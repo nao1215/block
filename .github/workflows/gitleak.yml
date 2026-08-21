@@ -1,5 +1,13 @@
 name: gitleaks
-on: [pull_request]
+
+# Secrets reach a repository through pull requests and through direct pushes
+# alike, and the history is what a reader of a newly public repository sees
+# first. Scanning only pull requests would leave both uncovered.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -8,9 +16,12 @@ jobs:
   scan:
     name: gitleaks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The whole history, not the tip: a secret committed once and
+          # removed later is still in the objects a clone receives.
           fetch-depth: 0
           persist-credentials: false
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0

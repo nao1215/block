@@ -308,7 +308,20 @@ jobs:
       - uses: actions/checkout@v6
       - uses: nao1215/setup-block@v0
       - id: check
-        run: block lock --check || echo "stale=${?}" >> "$GITHUB_OUTPUT"
+        # `cmd || echo ...` treats every failure as staleness, including exit 1
+        # — a network error or a broken manifest — and would open a pull
+        # request from a resolution that never finished. Only 2 means "the
+        # lockfile would change"; 1 is an error and has to fail the job.
+        run: |
+          set +e
+          block lock --check
+          status=$?
+          set -e
+          case "$status" in
+            0) ;;
+            2) echo "stale=2" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
       - if: steps.check.outputs.stale == '2'
         run: block lock
       - if: steps.check.outputs.stale == '2'

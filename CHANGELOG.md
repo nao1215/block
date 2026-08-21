@@ -32,9 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and that the install is intact before running anything, and forwards
   `SIGINT` and `SIGTERM` to the child, reporting the child's exit status
   (`128+signal` when a signal ended it).
-- Built-in registry recipes across five ecosystems, all served by the two
-  implemented source types: Bitcoin Core; Foundry, solc, geth, reth and
-  Lighthouse; Agave, Anchor and Surfpool; Gaia, CometBFT and Osmosis; Hermes.
+- A built-in registry of recipes covering the blockchain systems a project is
+  likely to need — Bitcoin, Ethereum, Solana, Cosmos and IBC, Celestia,
+  Cardano, Aptos, NEAR, Starknet, Stellar, Avalanche, the Internet Computer,
+  IPFS, Hyperledger Fabric, ZKsync and zero-knowledge circuits — all served by
+  the two implemented source types. `block list` prints what the binary
+  actually carries, and [doc/tools.md](./doc/tools.md), generated from the
+  recipes, is the same catalogue as a page; neither this file nor the README
+  keeps a second copy that could fall behind.
 - `block list` says what each tool is and which blockchain systems it serves;
   `block list <ecosystem>` narrows to one system and shows the commands each
   tool provides. A tool may serve several systems and is listed under each;
@@ -65,16 +70,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the platform model, block itself ships Windows builds, and the shims are
   placed with hard links or copies rather than symlinks so no Developer Mode
   or elevation is needed. `$BLOCK_HOME` defaults to `%LOCALAPPDATA%\block`
-  there. Which tools are installable is still the upstream's decision:
-  `cometbft`, `solc`, `agave`, `anchor` and `surfpool` publish Windows builds.
+  there. Which tools are installable is still the upstream's decision, and the
+  registry records it per tool — see the Platforms column in
+  [doc/tools.md](./doc/tools.md). block reports a platform an upstream does
+  not ship for rather than substituting something else.
 - Content-addressed download cache and per-version installs under
   `$BLOCK_HOME`, shared across projects.
 - Security: HTTPS-only transport across redirects, streaming SHA-256
   verification, re-hashed cache hits, defensive archive extraction (no
   traversal, no links), executable paths validated identically in recipes and
   lockfiles, atomic installs marked complete only when every declared
-  executable is present and runnable, and a refusal to let two tools provide
-  the same command name.
+  executable is present and runnable, a version alphabet closed tightly enough
+  that a hand-edited `block.lock` cannot name a path outside `$BLOCK_HOME`, a
+  check that a pinned version satisfies the constraint it was resolved from,
+  and a refusal to let one command name mean two executables — across tools or
+  within one, compared without regard to case on every platform.
 - Offline atago end-to-end suite driving the real binary against a fake
   GitHub, plus unit tests for every pure package.
 - `make registry-live` and the scheduled *Registry (live)* workflow check
