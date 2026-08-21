@@ -82,7 +82,7 @@ do. block deliberately covers less:
   toolchains, which is exactly where a general manager belongs.
 - Two install methods, chosen per tool by the registry, with no arbitrary
   scripts and no run-time fallback.
-- Three commands, one direction, and a lockfile that records the URL and the
+- Three lifecycle commands, one direction, and a lockfile that records the URL and the
   digest of every artifact for every platform you declared.
 
 If you already run mise for languages, block sits next to it for the chain

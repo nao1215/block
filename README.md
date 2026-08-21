@@ -24,9 +24,14 @@ If you have Go, paste this into an empty directory:
 
 ```shell
 printf '[tools]\nfoundry = "1.7"\n' > block.toml
-go run github.com/nao1215/block@latest lock
+go run github.com/nao1215/block@latest lock   # resolve: block.toml -> block.lock
+go run github.com/nao1215/block@latest sync   # install what block.lock pins
 go run github.com/nao1215/block@latest exec forge --version
 ```
+
+Each step does one job and no more. `sync` is not optional before `exec`:
+`exec` never installs anything, so it runs the toolchain `sync` put on disk or
+it refuses.
 
 Two files now say what your toolchain is. Commit both; everyone else — and CI —
 runs `block sync` and gets the same binaries, byte for byte.
@@ -39,7 +44,7 @@ hermes   1.13.3  installed
 $ block exec forge test
 ```
 
-## Three commands, one direction
+## Three lifecycle commands, one direction
 
 ```text
 block.toml  ──block lock──▶  block.lock  ──block sync──▶  installed toolchain  ──block exec──▶  command
@@ -73,7 +78,7 @@ the shim steps aside and runs the next command of that name on `PATH`.
 
 ## Which tools can I use for this chain?
 
-45 CLIs across 17 blockchain systems, answered offline from the registry
+45 tools across 17 blockchain systems, answered offline from the registry
 compiled into the binary — no network, no `block.toml`, no token.
 
 ![list](./doc/img/list.gif)

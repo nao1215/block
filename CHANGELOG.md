@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Three commands: `block lock [tool...]` (resolve; `--check` reports without
+- Three lifecycle commands: `block lock [tool...]` (resolve; `--check` reports without
   writing and exits 2 when the lock would change), `block sync` (install,
   never resolves or writes the lock) and `block exec <command>` (run, never
   installs). Plus `block list [ecosystem]` (the embedded registry snapshot —

@@ -16,20 +16,26 @@ If you have Go, paste this into an empty directory:
 
 ```shell
 printf '[tools]\nfoundry = "1.7"\n' > block.toml
-go run github.com/nao1215/block@latest lock
+go run github.com/nao1215/block@latest lock   # resolve: block.toml -> block.lock
+go run github.com/nao1215/block@latest sync   # install what block.lock pins
 go run github.com/nao1215/block@latest exec forge --version
 ```
 
 ```text
 foundry  locked 1.7.1
 wrote block.lock
+foundry  1.7.1  installed
+shims: anvil, cast, chisel, forge
 forge Version: 1.7.1-v1.7.1
 ```
+
+`sync` is a step, not a formality: `exec` never installs anything, so it runs
+what `sync` put on disk or it refuses.
 
 Two files now say what your toolchain is. Commit both, and everyone else runs
 `block sync`.
 
-## Three commands, one direction
+## Three lifecycle commands, one direction
 
 ```text
 block.toml  ──block lock──▶  block.lock  ──block sync──▶  installed toolchain  ──block exec──▶  command
@@ -47,7 +53,7 @@ overnight, and a stale lockfile is an error rather than a guess.
 
 ## What can it install?
 
-45 CLIs across 17 blockchain systems, from Bitcoin Core and Foundry to Agave,
+45 tools across 17 blockchain systems, from Bitcoin Core and Foundry to Agave,
 Gaia, Hermes and Starknet Foundry. Ask the binary — offline, with no
 `block.toml` and no token:
 
