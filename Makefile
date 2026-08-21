@@ -1,4 +1,4 @@
-.PHONY: build test e2e doc doc-check demo favicon registry-verify registry-sync registry-live examples-live coverage clean vet fmt lint website website-serve changelog help
+.PHONY: build test e2e doc doc-check demo favicon registry-verify registry-sync registry-live examples-live docs-smoke coverage clean vet fmt lint website website-serve changelog help
 
 APP         = block
 VERSION     = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -61,6 +61,9 @@ registry-live: ## Check every registry recipe against the real upstreams (downlo
 
 examples-live: ## Check that every examples/*.toml still resolves upstream (network; EXAMPLE=evm-contracts limits it)
 	$(GO) test -tags=live -v -timeout 20m ./examples/ -run 'TestLiveExamples/($(EXAMPLE))'
+
+docs-smoke: ## Run the documented quickstarts for real (network; the front pages are the test input)
+	$(GO) test -tags=docs -v -timeout 25m ./e2e/docs/
 
 coverage: ## Combine unit + E2E coverage into cover.out / cover.html (uses a `go build -cover` block; scratch under .coverage/)
 	bash ./scripts/coverage.sh

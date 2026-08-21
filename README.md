@@ -33,6 +33,19 @@ Each step does one job and no more. `sync` is not optional before `exec`:
 `exec` never installs anything, so it runs the toolchain `sync` put on disk or
 it refuses.
 
+Foundry publishes Linux and macOS builds only, and block says so rather than
+substituting something else. On Windows, the same 30 seconds with a tool that
+does ship there:
+
+```shell
+printf '[tools]\nsolc = "0.8"\n' > block.toml
+go run github.com/nao1215/block@latest lock
+go run github.com/nao1215/block@latest sync
+go run github.com/nao1215/block@latest exec solc --version
+```
+
+What each CLI ships for is in [doc/tools.md](./doc/tools.md).
+
 Two files now say what your toolchain is. Commit both; everyone else — and CI —
 runs `block sync` and gets the same binaries, byte for byte.
 
@@ -165,6 +178,7 @@ make demo            # re-record the README GIFs (needs vhs and ffmpeg)
 make website         # build the documentation site (needs hugo)
 make registry-live   # check every recipe against the real upstreams (network)
 make examples-live   # check that examples/*.toml still resolve (network)
+make docs-smoke      # run the quickstarts this README documents, for real (network)
 ```
 
 The E2E suite ([e2e/atago](./e2e/atago)) is the CLI contract: every

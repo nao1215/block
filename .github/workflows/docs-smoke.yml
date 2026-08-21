@@ -1,0 +1,50 @@
+name: Documentation smoke
+
+# Do the front pages' promises hold on a machine that has never seen block?
+#
+# The steps are not written here. They are read out of README.md and the
+# website's front page and then run for real — an empty directory, a store of
+# its own, real releases from the real internet — so a quickstart that stops
+# working fails here rather than in front of a reader. Each platform runs the
+# quickstart written for it, and a page that offers none a reader on this
+# platform could follow is itself the failure.
+#
+# It downloads real artifacts, so it is scheduled rather than run on every
+# push.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays, 04:11 UTC — after the registry check, so a recipe that broke
+    # over the weekend has already been reported by the job that owns it.
+    - cron: "11 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Quickstart on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Follow the documented quickstart
+        env:
+          # The pages tell a reader nothing about tokens, and the quickstart
+          # must work without one. This only raises the API limit so a shared
+          # runner does not fail for a reason a reader would never see.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make docs-smoke
