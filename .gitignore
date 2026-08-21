@@ -11,9 +11,12 @@
 # Test binary, built with `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts
+# Code coverage profiles and other test artifacts. These patterns are
+# anchored: an unanchored "coverage.*" also swallows scripts/coverage.sh and
+# doc/coverage.svg, which are part of the repository.
 *.out
-coverage.*
+/coverage.html
+/coverage.xml
 *.coverprofile
 profile.cov
 
