@@ -32,6 +32,17 @@ block exec   runs with the installed toolchain.
 > `sync` never resolves. `exec` never installs. `lock` is the only operation
 > that can move a pin.
 
+And one question answered offline — *what tools does block support?*:
+
+```console
+$ block list
+NAME      SOURCE           BINARIES
+foundry   github_release   forge, cast, anvil, chisel
+geth      http             geth
+hermes    github_release   hermes
+solc      github_release   solc
+```
+
 block is not a package manager. It downloads release archives from upstream,
 verifies them, and puts them on `PATH` for the command you run. Nothing more.
 
@@ -105,6 +116,7 @@ Commit both `block.toml` and `block.lock`.
 | `block lock --check` | yes | **no** | no | no | no |
 | `block sync` | **no** | **no** | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | **no** | **no** | **no** | **no** | yes |
+| `block list` | **no** | **no** | **no** | **no** | no |
 
 ### `block lock`
 
@@ -187,6 +199,15 @@ $ block exec ./scripts/integration-test.sh
 $ block exec forge test
 block: foundry 1.7.4 is not installed; run "block sync"
 ```
+
+### `block list`
+
+Prints the tools in the registry snapshot embedded in this binary: name,
+source type and the executables each provides. It is read-only and offline —
+no resolution, no network, no `block.toml` — so its output is deterministic
+for a given block version, works when GitHub is down, and needs no token.
+Project-local tools are not listed; a project's own toolchain is its
+`block.toml` and `block.lock`.
 
 All commands find `block.toml` in the current directory or any parent, so
 they work from a sub-package of a monorepo.
@@ -375,6 +396,12 @@ never will be.
 Currently registered: `foundry` (`forge`, `cast`, `anvil`, `chisel`), `geth`
 (Linux only — upstream stopped shipping macOS builds), `hermes` and `solc`.
 See [registry/README.md](./registry/README.md) for the recipe schema.
+
+The registry will move to its own repository, `block-registry`, as the
+canonical source of recipes. block will still embed a tested snapshot of it
+at build time: `block list` and `block lock` read that snapshot and never
+fetch the registry at run time, so a block version always pairs with a
+registry it was tested against.
 
 ## Security
 

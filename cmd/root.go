@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -64,7 +66,9 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
   block exec    runs a command with the installed toolchain
 
 sync never resolves. exec never installs. lock is the only operation that
-can move a pin.`,
+can move a pin.
+
+  block list    shows the tools the built-in registry knows (offline)`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -74,6 +78,7 @@ can move a pin.`,
 		newLockCmd(stdout, stderr),
 		newSyncCmd(stdout, stderr),
 		newExecCmd(stdout, stderr),
+		newListCmd(stdout),
 		newVersionCmd(stdout),
 	)
 	return root
@@ -192,6 +197,33 @@ exec never downloads, installs or resolves anything; run "block sync" first.`,
 				return &ExitError{Code: code}
 			}
 			return nil
+		},
+	}
+}
+
+func newListCmd(stdout io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List the tools the built-in registry knows",
+		Long: `list prints every tool in the registry snapshot embedded in this binary:
+its name, how it is obtained, and the executables it provides.
+
+list is read-only and offline. It does not resolve, download, install, or
+read block.toml; project-local tools are not listed. To learn what a project
+uses, read its block.toml and block.lock.`,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			reg, err := registry.Builtin()
+			if err != nil {
+				return err
+			}
+			tw := tabwriter.NewWriter(stdout, 0, 0, 3, ' ', 0) //nolint:mnd // column padding
+			fmt.Fprintln(tw, "NAME\tSOURCE\tBINARIES")
+			for _, name := range reg.Names() {
+				rec, _ := reg.Lookup(name)
+				fmt.Fprintf(tw, "%s\t%s\t%s\n", name, rec.Source.Type, strings.Join(rec.Source.Bin, ", "))
+			}
+			return tw.Flush()
 		},
 	}
 }

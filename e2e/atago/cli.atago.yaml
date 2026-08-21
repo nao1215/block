@@ -27,9 +27,11 @@ scenarios:
               - "block sync    installs the toolchain pinned in block.lock"
               - "block exec    runs a command with the installed toolchain"
               - "sync never resolves. exec never installs. lock is the only operation that"
+              - "block list    shows the tools the built-in registry knows (offline)"
               - "  lock "
               - "  sync "
               - "  exec "
+              - "  list "
               - "  version "
       - assert:
           stdout:
@@ -37,6 +39,57 @@ scenarios:
               - "  init "
               - "  update "
               - "  outdated "
+
+  - name: list shows the embedded registry, offline and read-only
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+    steps:
+      # No block.toml, no network: list only reads the binary's registry snapshot.
+      - run:
+          command: block list
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              NAME      SOURCE           BINARIES
+              foundry   github_release   forge, cast, anvil, chisel
+              geth      http             geth
+              hermes    github_release   hermes
+              solc      github_release   solc
+          stderr:
+            equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: list does not show project-local tools
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block list
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "foo"
+      - run:
+          command: block list --installed
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unknown flag: --installed"
 
   - name: removed commands do not exist
     steps:

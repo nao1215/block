@@ -48,7 +48,12 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 	if code != 0 || !strings.Contains(out, "sync never resolves. exec never installs.") {
 		t.Errorf("help = %d, %q", code, out)
 	}
-	for _, gone := range []string{"init", "update", "outdated", "registry"} {
+	code, out, _ = run(t, dir, "list")
+	want := "NAME      SOURCE           BINARIES\nfoundry   github_release   forge, cast, anvil, chisel\ngeth      http             geth\nhermes    github_release   hermes\nsolc      github_release   solc\n"
+	if code != 0 || out != want {
+		t.Errorf("list = %d, %q", code, out)
+	}
+	for _, gone := range []string{"init", "update", "outdated", "registry", "search"} {
 		code, _, errOut := run(t, dir, gone)
 		if code != 1 || !strings.HasPrefix(errOut, `block: unknown command "`+gone+`"`) {
 			t.Errorf("%s = %d, %q (must not exist)", gone, code, errOut)
