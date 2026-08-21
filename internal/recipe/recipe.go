@@ -76,7 +76,7 @@ type Source struct {
 // Recipe is a named Source plus the metadata that describes the tool to a
 // human. block attaches no behaviour to the metadata: it exists so that the
 // registry can answer "what is this tool?" wherever that is asked — a
-// listing, a future block-registry site, a documentation build.
+// listing, the block-registry catalog site, a documentation build.
 type Recipe struct {
 	Name string `toml:"name"`
 	// Ecosystems are the blockchain systems the tool serves (bitcoin,
