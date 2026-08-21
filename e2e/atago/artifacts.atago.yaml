@@ -71,14 +71,14 @@ scenarios:
             type = "github_release"
             repo = "example/maconly"
             asset = "maconly_{version}_{os}_{arch}.tar.gz"
-            platforms = ["darwin/arm64"]
+            platforms = ["${env:BLOCK_OTHER_PLATFORM}"]
             bin = ["maconly"]
       - run:
           command: block lock
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: maconly: unsupported platform linux/amd64 (available: darwin/arm64)\n"
+            equals: "block: maconly: unsupported platform ${env:BLOCK_PLATFORM} (available: ${env:BLOCK_OTHER_PLATFORM})\n"
           changes:
             created: []
 
@@ -101,8 +101,8 @@ scenarios:
           exit_code: 1
           stderr:
             contains:
-              - 'block: foo: release v1.2.0 of example/foo has no asset "foo-1.2.0-linux-amd64.tar.gz" (assets: '
-              - "foo_1.2.0_linux_amd64.tar.gz"
+              - 'block: foo: release v1.2.0 of example/foo has no asset "foo-1.2.0-'
+              - "foo_1.2.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz"
 
   - name: an archive that escapes its directory is refused
     env: *t1
@@ -123,7 +123,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: evil: extract evil_1.0.0_linux_amd64.tar.gz: refusing to extract "../escape": path escapes the destination'
+            contains: 'block: evil: extract evil_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: refusing to extract "../escape": path escapes the destination'
       - assert:
           file:
             path: home/tools/escape
@@ -178,7 +178,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: nobin: archive nobin_1.0.0_linux_amd64.tar.gz: executable "nobin" is missing'
+            contains: 'block: nobin: archive nobin_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: executable "nobin" is missing'
       - assert:
           dir:
             path: home/tools/nobin
@@ -298,12 +298,12 @@ scenarios:
             bin = ["bin/quirkyd"]
 
             [tools.quirky.source.target]
-            "darwin/arm64" = "arm64-apple-darwin"
+            "${env:BLOCK_OTHER_PLATFORM}" = "some-other-platform"
       - run:
           command: block lock
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: quirky: unsupported platform linux/amd64 (available: darwin/arm64)\n"
+            equals: "block: quirky: unsupported platform ${env:BLOCK_PLATFORM} (available: ${env:BLOCK_OTHER_PLATFORM})\n"
           changes:
             created: []

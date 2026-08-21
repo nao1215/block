@@ -240,7 +240,7 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            platforms = ["darwin/arm64"]
+            platforms = ["${env:BLOCK_OTHER_PLATFORM}"]
             [tools]
             foundry = "1.7"
       - run:
@@ -250,7 +250,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: "foundry: block.lock has no artifact for linux/amd64"
+            contains: "foundry: block.lock has no artifact for ${env:BLOCK_PLATFORM}"
           changes:
             modified: []
 
@@ -267,7 +267,7 @@ scenarios:
       # Simulate a tampered artifact (or a hand-edited lock): flip the digest.
       - run:
           shell: true
-          command: sed -i -E 's/^sha256 = "[0-9a-f]{4}/sha256 = "0000/' block.lock
+          command: perl -pi -e 's/^sha256 = "[0-9a-f]{4}/sha256 = "0000/' block.lock
       - run:
           command: block sync
           env:
@@ -275,7 +275,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            matches: 'block: foundry: checksum mismatch for http://[^ ]+/foundry_v1\.7\.4_linux_amd64\.tar\.gz: want sha256 0000[0-9a-f]{60}, got [0-9a-f]{64}'
+            matches: 'block: foundry: checksum mismatch for http://[^ ]+/foundry_v1\.7\.4_${env:BLOCK_ASSET_PLATFORM}\.tar\.gz: want sha256 0000[0-9a-f]{60}, got [0-9a-f]{64}'
       - assert:
           dir:
             path: fresh/tools
@@ -293,7 +293,7 @@ scenarios:
           command: block lock
       - run:
           shell: true
-          command: sed -i -E 's/^sha256 = "[0-9a-f]{4}/sha256 = "0000/' block.lock
+          command: perl -pi -e 's/^sha256 = "[0-9a-f]{4}/sha256 = "0000/' block.lock
       - run:
           command: block sync
       - assert:
@@ -313,7 +313,7 @@ scenarios:
           command: block lock
       - run:
           shell: true
-          command: sed -i -E 's#^url = "http://[^/]+/#url = "http://mirror.example.com/#' block.lock
+          command: perl -pi -e 's#^url = "http://[^/]+/#url = "http://mirror.example.com/#' block.lock
       - run:
           command: block sync
           env:
@@ -321,7 +321,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: "block: foundry: refusing insecure url http://mirror.example.com/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_linux_amd64.tar.gz: only https is allowed"
+            contains: "block: foundry: refusing insecure url http://mirror.example.com/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_${env:BLOCK_ASSET_PLATFORM}.tar.gz: only https is allowed"
 
   - name: a hand-edited lockfile with an invalid digest is rejected before any network access
     env:
@@ -346,7 +346,7 @@ scenarios:
             source = "sha256:x"
 
             [[tools.artifacts]]
-            platform = "linux/amd64"
+            platform = "${env:BLOCK_PLATFORM}"
             url = "https://example.com/x.tar.gz"
             sha256 = "nothex"
       - run:
@@ -354,7 +354,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: block.lock: tool "foundry" (linux/amd64): sha256 "nothex" is not a 64-character hex digest
+            equals: 'block: block.lock: tool "foundry" (${env:BLOCK_PLATFORM}): sha256 "nothex" is not a 64-character hex digest
 
 '
 

@@ -60,6 +60,22 @@ if [ ! -s "$TMP/fakegh.url" ]; then
 	exit 1
 fi
 
+# The suite runs on Linux and macOS, and much of what it asserts names a
+# platform: an asset file name, an artifact's platform key, an "unsupported
+# platform" message. These say which platform this run is, so the specs stay
+# exact everywhere instead of loosening into regexes. BLOCK_OTHER_PLATFORM is
+# a platform this machine is definitely not, for the scenarios about a tool
+# that does not ship for the host.
+BLOCK_PLATFORM="$(go env GOOS)/$(go env GOARCH)"
+BLOCK_ASSET_PLATFORM="$(go env GOOS)_$(go env GOARCH)"
+BLOCK_DASH_PLATFORM="$(go env GOOS)-$(go env GOARCH)"
+if [ "$(go env GOOS)" = "linux" ]; then
+	BLOCK_OTHER_PLATFORM="darwin/arm64"
+else
+	BLOCK_OTHER_PLATFORM="linux/amd64"
+fi
+export BLOCK_PLATFORM BLOCK_ASSET_PLATFORM BLOCK_DASH_PLATFORM BLOCK_OTHER_PLATFORM
+
 # FAKEGH_URL is the root; scenarios derive BLOCK_GITHUB_API_URL from it so
 # they can pick the /t1 snapshot or the failure-mode prefixes.
 export FAKEGH_URL
@@ -71,4 +87,5 @@ unset GITHUB_TOKEN GH_TOKEN BLOCK_HOME XDG_DATA_HOME
 export PATH="$TMP/bin:$PATH"
 
 echo "e2e: BLOCK_GITHUB_API_URL=$BLOCK_GITHUB_API_URL"
+echo "e2e: platform=$BLOCK_PLATFORM (other=$BLOCK_OTHER_PLATFORM)"
 atago run "$@" "$SCRIPT_DIR/atago"

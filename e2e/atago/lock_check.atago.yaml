@@ -100,7 +100,7 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            platforms = ["linux/amd64", "darwin/arm64"]
+            platforms = ["${env:BLOCK_PLATFORM}", "${env:BLOCK_OTHER_PLATFORM}"]
             [tools]
             foundry = "1.6"
       - run:
@@ -109,7 +109,7 @@ scenarios:
           exit_code: 2
           stdout:
             equals: |
-              foundry  1.7.4 -> 1.6.0 (artifact for darwin/arm64 added)
+              foundry  1.7.4 -> 1.6.0 (artifact for ${env:BLOCK_OTHER_PLATFORM} added)
               hermes  1.13.0 (no longer in block.toml)
           changes:
             modified: []

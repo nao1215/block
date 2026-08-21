@@ -43,8 +43,8 @@ scenarios:
               - 'constraint = "1.7"'
               - 'version = "1.7.4"'
               - 'bin = ["forge", "cast", "anvil", "chisel"]'
-              - 'platform = "linux/amd64"'
-              - "/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_linux_amd64.tar.gz"
+              - 'platform = "${env:BLOCK_PLATFORM}"'
+              - "/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_${env:BLOCK_ASSET_PLATFORM}.tar.gz"
       # The lock records facts, not the recipe; a registry tool carries no
       # source fingerprint, so a registry change never stales it.
       - assert:
@@ -379,7 +379,7 @@ scenarios:
               - "foo      locked 1.2.0"
               - "foundry  locked 1.7.4"
           stderr:
-            equals: "downloading ${env:FAKEGH_URL}/download/example/foo/v1.2.0/foo_1.2.0_linux_amd64.tar.gz\n"
+            equals: "downloading ${env:FAKEGH_URL}/download/example/foo/v1.2.0/foo_1.2.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz\n"
           changes:
             created:
               - block.lock
@@ -389,7 +389,7 @@ scenarios:
           file:
             path: block.lock
             contains:
-              - "/download/example/foo/v1.2.0/foo_1.2.0_linux_amd64.tar.gz"
+              - "/download/example/foo/v1.2.0/foo_1.2.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz"
               - 'source = "sha256:'
       - run:
           command: block lock
@@ -423,7 +423,7 @@ scenarios:
             contains: "geth  locked 1.17.4"
       - run:
           shell: true
-          command: grep -E 'url = ".*/blobs/geth-linux-amd64-1\.17\.4-[0-9a-f]{8}\.tar\.gz"' block.lock && grep -q 'strip_components = 1' block.lock
+          command: grep -E 'url = ".*/blobs/geth-${env:BLOCK_DASH_PLATFORM}-1\.17\.4-[0-9a-f]{8}\.tar\.gz"' block.lock && grep -q 'strip_components = 1' block.lock
       - assert:
           exit_code: 0
       - run:
