@@ -123,8 +123,15 @@ func TestEnsureRewritesAfterAnUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(marker)) != upgraded {
-		t.Errorf("marker = %q, want %q", marker, upgraded)
+	// The marker holds the resolved path, so that the same binary reached by
+	// another spelling — /var against /private/var on macOS, an 8.3 short
+	// name on Windows — is recognised as the same binary.
+	want, err := filepath.EvalSymlinks(upgraded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(marker)) != want {
+		t.Errorf("marker = %q, want %q", marker, want)
 	}
 	// A shim directory left without a marker is rebuilt rather than trusted.
 	if err := os.Remove(filepath.Join(Dir(st), markerName)); err != nil {
