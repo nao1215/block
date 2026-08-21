@@ -10,6 +10,13 @@ coverage:
     - "github.com/nao1215/block/internal/fakegh/fakegh.go"
   badge:
     path: doc/coverage.svg
+# When this repository goes public, add "artifact://nao1215/block" to the
+# central list in nao1215/octocovs-central-repo and point the README badge at
+# the badge it generates. It cannot be added while block is private: that
+# workflow reads the artifacts with its own GITHUB_TOKEN, which has no access
+# here, and adding the entry would fail the central run rather than produce a
+# badge. Until then doc/coverage.svg, committed by the Coverage job, is the
+# badge the README shows.
 diff:
   datastores:
     - artifact://${GITHUB_REPOSITORY}
@@ -28,5 +35,6 @@ codeToTestRatio:
   test:
     - "**/*_test.go"
     - "e2e/atago/**"
+    - "examples/*.toml"
   badge:
     path: doc/ratio.svg

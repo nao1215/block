@@ -1,6 +1,6 @@
 # block registry — generated, do not edit
 
-Every `*.toml` beside this file is a **vendored copy** of
+Every `*.toml` beside this file is a vendored copy of
 [block-registry](https://github.com/nao1215/block-registry) at the revision
 [`SNAPSHOT`](./SNAPSHOT) records. Recipes are written and reviewed there.
 A change made here fails CI (`make registry-verify`) and would be undone by
@@ -63,7 +63,7 @@ Add that only when the release cadence makes it worth the credential.
 
 ## What a recipe is
 
-One TOML recipe per tool. A recipe is **how to find and fetch** a tool, not a
+One TOML recipe per tool. A recipe is how to find and fetch a tool, not a
 list of its versions: a new upstream release needs no change to it. Recipes
 change only when the upstream moves repositories, renames assets, changes how
 it distributes builds, or drops a platform.
@@ -187,14 +187,14 @@ Foundry, whose release list is dominated by nightly builds.
 
 Two layers, deliberately separate.
 
-**Static, on every push.** `make registry-verify` recomputes the digest of
+Static, on every push. `make registry-verify` recomputes the digest of
 these files and compares it with `SNAPSHOT`, so a recipe edited in this copy
 fails rather than ships. `go test ./registry/` then validates every recipe
 against a table that pins, for each supported platform, the exact asset name
 or URL it renders, plus its description and executables. A typo fails there
 rather than at a user's first `block lock`. Neither touches the network.
 
-**Live, on a schedule.** `make registry-live` (the
+Live, on a schedule. `make registry-live` (the
 [Registry (live)](../.github/workflows/registry-live.yml) workflow, weekly and
 on demand) takes each recipe to the real upstream: it discovers the newest
 stable version the way block does, resolves the artifact for every declared
