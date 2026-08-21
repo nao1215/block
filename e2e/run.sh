@@ -122,4 +122,18 @@ export PATH="$TMP/bin:$PATH"
 
 echo "e2e: BLOCK_GITHUB_API_URL=$BLOCK_GITHUB_API_URL"
 echo "e2e: platform=$BLOCK_PLATFORM (other=$BLOCK_OTHER_PLATFORM)"
-atago run "$@" "$SCRIPT_DIR/atago"
+
+# On Windows the suite is the Windows spec file, not the whole directory.
+#
+# Most scenarios elsewhere pin registry tools — foundry, hermes — and those
+# upstreams publish no Windows build, which the registry records and block
+# correctly reports as an unsupported platform. Running them there would not
+# test block; it would assert that Foundry ships something it does not.
+# windows.atago.yaml covers what is genuinely different on Windows instead,
+# through fixtures that do publish for it.
+if [ "$(go env GOOS)" = "windows" ]; then
+	SUITE="$SCRIPT_DIR/atago/windows.atago.yaml"
+else
+	SUITE="$SCRIPT_DIR/atago"
+fi
+atago run "$@" "$SUITE"

@@ -1,12 +1,25 @@
-# The Windows-only paths through block, which the rest of the suite cannot
-# reach from Linux or macOS: a .zip artifact, the .exe suffix on every
-# installed executable and every shim, shims placed as hard links or copies
-# rather than symlinks, %LOCALAPPDATA% as the default store, and PATH lookup
-# without regard to case.
+# The Windows-only paths through block: a .zip artifact, the .exe suffix on
+# every installed executable and every shim, shims placed as hard links or
+# copies rather than symlinks, PATH lookup by PATHEXT and without regard to
+# case, and a child's exit status surviving the extra process Windows puts in
+# the way.
 #
-# Every scenario here is gated on `only: os: windows`, so the file is inert
-# on the other two platforms rather than being a second suite someone has to
-# remember to run. Run with: make e2e
+# This file is the whole Windows suite. The rest of e2e/atago pins registry
+# tools — foundry, hermes — and those upstreams publish no Windows build,
+# which the registry records and block correctly reports; running them there
+# would assert that Foundry ships something it does not. The fixtures used
+# here do publish for Windows.
+#
+# Every scenario is gated on `only: os: windows`, so the file is inert on the
+# other two platforms rather than a second suite someone has to remember.
+#
+# What is not here: replacing block.exe at the same path and confirming the
+# shims are rebuilt from the new one. That needs a second build of block
+# mid-scenario, and it is covered exactly — including that the rebuilt shim
+# runs the new contents — by TestEnsureRewritesWhenTheBinaryIsReplacedInPlace
+# in internal/shim, which runs on this platform too.
+#
+# Run with: make e2e
 version: "1"
 
 suite:
@@ -173,16 +186,17 @@ scenarios:
             equals: |
               zipper 3.0.0 (fake)
 
-  # Putting the shim directory on PATH must not take a tool away from the rest
-  # of the system: outside a block project a shim steps aside, and says so
-  # when there is nothing to step aside to.
-  - name: a shim outside a project reports rather than guessing
+  # Putting the shim directory on PATH must not take a command away from the
+  # rest of the system. The project lives in a subdirectory here, so that
+  # running from the workdir root really is outside it: block finds block.toml
+  # by walking up, and a sibling directory would still be inside the project.
+  - name: a shim outside a project steps aside for the system command
     only:
       os: windows
     env: *t1
     steps:
       - fixture:
-          file: block.toml
+          file: proj/block.toml
           content: |
             [tools.zipper]
             version = "3"
@@ -193,15 +207,53 @@ scenarios:
             asset = "zipper_{version}_{os}_{arch}.zip"
             bin = ["zipper"]
       - run:
+          cwd: proj
           command: block lock
       - run:
+          cwd: proj
           command: block sync
-      # An empty directory with no block.toml above it inside the workdir.
+      # Some other zipper, installed the way anything else on the machine is.
+      # Windows decides what is executable by extension, so a .cmd has to be
+      # found as readily as an .exe.
       - fixture:
-          file: elsewhere/marker.txt
-          content: "not a block project\n"
+          file: other/zipper.cmd
+          content: |
+            @echo off
+            echo zipper from PATH
       - run:
-          cwd: elsewhere
+          env:
+            PATH: "${workdir}/other;${env:PATH}"
+          command: "${workdir}/home/shims/zipper.exe"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "zipper from PATH"
+
+  # And when there is nothing to step aside to, it says so rather than
+  # guessing.
+  - name: a shim outside a project with no other command reports it
+    only:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: proj/block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          cwd: proj
+          command: block lock
+      - run:
+          cwd: proj
+          command: block sync
+      - run:
           command: "${workdir}/home/shims/zipper.exe"
       - assert:
           exit_code: 1
@@ -254,3 +306,35 @@ scenarios:
           exit_code: 1
           stderr:
             contains: 'foo is declared in block.toml but missing from block.lock'
+
+  # A long-running tool — a node, a local test network — has to be stoppable,
+  # and block has to report what happened to it rather than its own status.
+  - name: a cancelled run ends the tool and reports it
+    only:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+      - run:
+          command: block lock
+      - run:
+          command: block sync
+      # --hang installs no handler and waits; the timeout is what ends it.
+      # What matters is that block does not outlive its child and does not
+      # report success for a run that never finished.
+      - run:
+          timeout: 5s
+          command: block exec zipper --hang
+      - assert:
+          exit_code:
+            not: 0

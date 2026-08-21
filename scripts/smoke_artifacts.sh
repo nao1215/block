@@ -35,13 +35,20 @@ shopt -u nullglob
 [ ${#tarballs[@]} -gt 0 ] || fail "no archives (*.tar.gz) found in $DIST"
 [ ${#zips[@]} -gt 0 ] || fail "no Windows archives (*.zip) found in $DIST"
 
+# Every pipeline here captures its producer's whole output before matching.
+# `producer | grep -q` ends the producer with SIGPIPE the moment grep finds
+# what it wants, and `set -o pipefail` then reports the whole pipeline as
+# failed — a race that depends on how much fits in the pipe buffer, so it
+# passes on one machine and fails on another.
 for a in "${tarballs[@]}"; do
-	tar -tzf "$a" | grep -Eq '(^|/)block$' || fail "$a is missing the block binary"
+	listing="$(tar -tzf "$a")"
+	printf '%s\n' "$listing" | grep -Eq '(^|/)block$' || fail "$a is missing the block binary"
 	note "archive contents OK: $(basename "$a")"
 done
 
 for a in "${zips[@]}"; do
-	unzip -Z1 "$a" | grep -Eq '(^|/)block\.exe$' || fail "$a is missing block.exe"
+	listing="$(unzip -Z1 "$a")"
+	printf '%s\n' "$listing" | grep -Eq '(^|/)block\.exe$' || fail "$a is missing block.exe"
 	note "archive contents OK: $(basename "$a")"
 done
 
@@ -62,7 +69,8 @@ echo "$version_out" | grep -q '^block v' || fail "block version output unexpecte
 note "extracted binary runs: $version_out"
 
 # The registry snapshot must be embedded: list is offline and needs nothing else.
-"$workdir/block" list | grep -q '^foundry ' || fail "embedded registry does not list foundry"
+list_out="$("$workdir/block" list)"
+printf '%s\n' "$list_out" | grep -q '^foundry ' || fail "embedded registry does not list foundry"
 note "embedded registry OK"
 
 # --- integrity metadata -----------------------------------------------------
