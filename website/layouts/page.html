@@ -3,7 +3,7 @@
 {{ if .Params.toc }}
 <aside class="sidebar" aria-label="On this page">
 <div class="sidebar-inner">
-{{ if .Params.filter }}<input type="search" class="toc-filter" placeholder="Filter recipes…" aria-label="Filter recipes by keyword" autocomplete="off">{{ end }}
+{{ if .Params.filter }}{{ $what := or .Params.filterLabel "recipes" }}<input type="search" class="toc-filter" placeholder="Filter {{ $what }}…" aria-label="Filter {{ $what }} by keyword" autocomplete="off">{{ end }}
 <nav class="toc-nav">{{ .TableOfContents }}</nav>
 </div>
 </aside>
