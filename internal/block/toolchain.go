@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/lockfile"
 	"github.com/nao1215/block/internal/manifest"
 	"github.com/nao1215/block/internal/platform"
@@ -41,7 +42,7 @@ func OpenToolchain(dir string, p platform.Platform, st *store.Store) (*Toolchain
 	l, err := lockfile.Load(filepath.Join(dir, lockfile.FileName))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%s not found; run \"block lock\" and \"block sync\"", lockfile.FileName)
+			return nil, diag.LockMissing.Errorf("%s not found; run \"block lock\" and \"block sync\"", lockfile.FileName)
 		}
 		return nil, err
 	}
@@ -55,7 +56,7 @@ func OpenToolchain(dir string, p platform.Platform, st *store.Store) (*Toolchain
 	for _, tool := range l.Tools {
 		art, ok := tool.Artifact(p)
 		if !ok {
-			return nil, fmt.Errorf("%s: %s has no artifact for %s; run \"block lock\" and \"block sync\"", tool.Name, lockfile.FileName, p)
+			return nil, diag.LockPlatformMissing.Errorf("%s: %s has no artifact for %s; run \"block lock\" and \"block sync\"", tool.Name, lockfile.FileName, p)
 		}
 		install, err := st.InstallDir(tool.Name, tool.Version, art.SHA256)
 		if err != nil {
@@ -129,7 +130,7 @@ func (t *Toolchain) Command(ctx context.Context, name string, args []string) (*e
 		var err error
 		bin, err = LookPath(name, path)
 		if err != nil {
-			return nil, fmt.Errorf("command %q not found in the locked toolchain or on PATH", name)
+			return nil, diag.CommandNotFound.Errorf("command %q not found in the locked toolchain or on PATH", name)
 		}
 	}
 	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // running the user's command is the point

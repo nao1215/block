@@ -21,6 +21,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/fetch"
 	"github.com/nao1215/block/internal/lockfile"
 	"github.com/nao1215/block/internal/manifest"
@@ -60,7 +61,7 @@ func (a *App) LockPath() string { return filepath.Join(a.Dir, lockfile.FileName)
 func (a *App) loadManifest() (*manifest.Manifest, error) {
 	m, err := manifest.Load(a.ManifestPath())
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("%s not found", manifest.FileName)
+		return nil, diag.ManifestMissing.Errorf("%s not found", manifest.FileName)
 	}
 	return m, err
 }
@@ -82,7 +83,7 @@ func (a *App) sourceFor(t manifest.Tool) (recipe.Source, error) {
 	}
 	rec, ok := a.Registry.Lookup(t.Name)
 	if !ok {
-		return recipe.Source{}, fmt.Errorf("unknown tool %q: it is not in the registry (run \"block list\" to see the supported tools); define [tools.%s.source] in %s to use it anyway",
+		return recipe.Source{}, diag.UnknownTool.Errorf("unknown tool %q: it is not in the registry (run \"block list\" to see the supported tools); define [tools.%s.source] in %s to use it anyway",
 			t.Name, t.Name, manifest.FileName)
 	}
 	return rec.Source, nil
@@ -107,10 +108,10 @@ func (a *App) manifestCommandConflict(m *manifest.Manifest) error {
 			case !ok:
 				seen[key] = owner{tool: t.Name, bin: b}
 			case first.tool != t.Name:
-				return fmt.Errorf("tools %q and %q both provide the command %q; remove one from %s",
+				return diag.CommandConflict.Errorf("tools %q and %q both provide the command %q; remove one from %s",
 					first.tool, t.Name, recipe.CommandName(b), manifest.FileName)
 			default:
-				return fmt.Errorf("tool %q lists %q and %q, which are both the command %q",
+				return diag.CommandConflict.Errorf("tool %q lists %q and %q, which are both the command %q",
 					t.Name, first.bin, b, recipe.CommandName(b))
 			}
 		}
@@ -152,7 +153,7 @@ func (a *App) Lock(ctx context.Context, names []string, check bool) error {
 	only := map[string]bool{}
 	for _, n := range names {
 		if _, ok := m.Tool(n); !ok {
-			return fmt.Errorf("tool %q is not declared in %s", n, manifest.FileName)
+			return diag.ToolNotDeclared.Errorf("tool %q is not declared in %s", n, manifest.FileName)
 		}
 		only[n] = true
 	}
@@ -468,10 +469,10 @@ func commandConflict(l *lockfile.Lock) error {
 			case !ok:
 				seen[key] = owner{tool: t.Name, bin: b}
 			case first.tool != t.Name:
-				return fmt.Errorf("tools %q and %q both provide the command %q; remove one from %s",
+				return diag.CommandConflict.Errorf("tools %q and %q both provide the command %q; remove one from %s",
 					first.tool, t.Name, recipe.CommandName(b), manifest.FileName)
 			default:
-				return fmt.Errorf("tool %q lists %q and %q, which are both the command %q",
+				return diag.CommandConflict.Errorf("tool %q lists %q and %q, which are both the command %q",
 					t.Name, first.bin, b, recipe.CommandName(b))
 			}
 		}
@@ -553,7 +554,7 @@ func Check(m *manifest.Manifest, l *lockfile.Lock, plats []platform.Platform) []
 }
 
 func staleError(reasons []string) error {
-	return fmt.Errorf("%s is stale; run \"block lock\"\n  %s", lockfile.FileName, strings.Join(reasons, "\n  "))
+	return diag.LockStale.Errorf("%s is stale; run \"block lock\"\n  %s", lockfile.FileName, strings.Join(reasons, "\n  "))
 }
 
 // Sync installs every tool in block.lock for the current platform. It never
@@ -569,10 +570,10 @@ func (a *App) Sync(ctx context.Context) error {
 		return err
 	}
 	if l == nil {
-		return fmt.Errorf("%s not found; run \"block lock\"", lockfile.FileName)
+		return diag.LockMissing.Errorf("%s not found; run \"block lock\"", lockfile.FileName)
 	}
 	if !a.Platform.IsSupported() {
-		return fmt.Errorf("unsupported platform %s", a.Platform)
+		return diag.PlatformUnsupported.Errorf("unsupported platform %s", a.Platform)
 	}
 	if reasons := Check(m, l, []platform.Platform{a.Platform}); len(reasons) > 0 {
 		return staleError(reasons)
@@ -632,7 +633,7 @@ func (a *App) ensureShims(l *lockfile.Lock) error {
 func (a *App) install(ctx context.Context, t *lockfile.Tool) (string, error) {
 	art, ok := t.Artifact(a.Platform)
 	if !ok {
-		return "", fmt.Errorf("%s has no artifact for %s", lockfile.FileName, a.Platform)
+		return "", diag.LockPlatformMissing.Errorf("%s has no artifact for %s", lockfile.FileName, a.Platform)
 	}
 	dir, err := a.Store.InstallDir(t.Name, t.Version, art.SHA256)
 	if err != nil {
@@ -665,7 +666,7 @@ func assetName(rawURL string) string {
 // block.toml, block.lock and the store that a shim uses.
 func (a *App) Toolchain() (*Toolchain, error) {
 	if _, err := os.Stat(a.ManifestPath()); err != nil {
-		return nil, fmt.Errorf("%s not found", manifest.FileName)
+		return nil, diag.ManifestMissing.Errorf("%s not found", manifest.FileName)
 	}
 	return OpenToolchain(a.Dir, a.Platform, a.Store)
 }

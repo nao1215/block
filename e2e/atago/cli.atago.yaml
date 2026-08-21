@@ -1,4 +1,5 @@
-# Top-level CLI contract: three commands, version, usage errors.
+# Top-level CLI contract: three lifecycle commands, the read-only ones beside
+# them, version, error codes, usage errors.
 # Run with: make e2e
 version: "1"
 
@@ -46,6 +47,64 @@ scenarios:
               - "  init "
               - "  update "
               - "  outdated "
+
+  # A CLI that refuses is where a person is standing when they need the
+  # documentation, a way to report what went wrong, or a reason to believe the
+  # project is maintained. The addresses are in the binary, not only in a
+  # README they are not reading.
+  - name: help carries the documentation, bug and sponsor links
+    steps:
+      - run:
+          command: block --help
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Documentation:   https://nao1215.github.io/block/"
+              - "Error codes:     https://nao1215.github.io/block/errors/"
+              - "Report a bug:    https://github.com/nao1215/block/issues/new"
+              - "GitHub Sponsors: https://github.com/sponsors/nao1215"
+
+  # Every refusal carries a code, and the code has to be lookable-up from the
+  # terminal the refusal was printed in — offline, with no project around.
+  - name: explain describes a code the way the published reference does
+    steps:
+      - run:
+          command: block explain BLK1003
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "BLK1003  block.lock not found"
+              - "Fix"
+              - "Run \"block lock\" to resolve block.toml into block.lock"
+              - "Exits 1. Since v0.1.0."
+              - "https://nao1215.github.io/block/errors/#blk1003--blocklock-not-found"
+      # However it is spelled: a person retyping a code from a terminal does
+      # not reliably retype the prefix.
+      - run:
+          command: block explain blk1003
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "BLK1003  block.lock not found"
+      - run:
+          command: block explain 1003
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "BLK1003  block.lock not found"
+
+  - name: explain refuses a code that names nothing
+    steps:
+      - run:
+          command: block explain BLK9999
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              block: unknown error code "BLK9999"
+              every code is listed at https://nao1215.github.io/block/errors/
 
   - name: list shows every supported tool, offline and read-only
     env:
@@ -155,7 +214,7 @@ scenarios:
           exit_code: 1
           stderr:
             equals: |
-              block: unknown ecosystem "etheruem"
+              block: BLK1010: unknown ecosystem "etheruem"
               available ecosystems: aptos, avalanche, bitcoin, cardano, celestia, cosmos, ethereum, fabric, ibc, icp, ipfs, near, solana, starknet, stellar, zk, zksync
           stdout:
             equals: ""
@@ -228,7 +287,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: block.toml not found in the current directory or any parent\n"
+            equals: "block: BLK1001: block.toml not found in the current directory or any parent\n"
       - run:
           command: block sync
       - assert:

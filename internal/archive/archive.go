@@ -10,11 +10,12 @@ import (
 	"compress/bzip2"
 	"compress/gzip"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nao1215/block/internal/diag"
 )
 
 // maxFileBytes caps a single extracted file so a crafted archive cannot fill
@@ -37,7 +38,7 @@ func Extract(src, dst, name string, strip int) error {
 		return extractTar(src, dst, strip, func(r io.Reader) (io.Reader, error) {
 			gz, err := gzip.NewReader(r)
 			if err != nil {
-				return nil, fmt.Errorf("invalid gzip archive: %w", err)
+				return nil, diag.ArchiveUnreadable.Errorf("invalid gzip archive: %w", err)
 			}
 			return gz, nil
 		})
@@ -46,7 +47,7 @@ func Extract(src, dst, name string, strip int) error {
 	case strings.HasSuffix(name, ".zip"):
 		return extractZip(src, dst, strip)
 	default:
-		return fmt.Errorf("unsupported archive format: %s", name)
+		return diag.ArchiveUnreadable.Errorf("unsupported archive format: %s", name)
 	}
 }
 
@@ -80,7 +81,7 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("invalid tar archive: %w", err)
+			return diag.ArchiveUnreadable.Errorf("invalid tar archive: %w", err)
 		}
 		if hdr.Typeflag == tar.TypeXGlobalHeader || hdr.Typeflag == tar.TypeXHeader {
 			continue
@@ -103,9 +104,12 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 				return err
 			}
 		case tar.TypeSymlink, tar.TypeLink:
-			return fmt.Errorf("refusing to extract link %q: links are not supported", hdr.Name)
+			return diag.UnsupportedEntry.Errorf("refusing to extract link %q: links are not supported", hdr.Name)
 		default:
-			return fmt.Errorf("refusing to extract %q: unsupported entry type %q", hdr.Name, hdr.Typeflag)
+			// Character and block devices, FIFOs, sockets: a tool
+			// distribution has no use for any of them, and each is a way to
+			// make the install directory do something other than hold files.
+			return diag.UnsupportedEntry.Errorf("refusing to extract %q: unsupported entry type %q", hdr.Name, hdr.Typeflag)
 		}
 	}
 }
@@ -113,7 +117,7 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 func extractZip(src, dst string, strip int) error {
 	zr, err := zip.OpenReader(src)
 	if err != nil {
-		return fmt.Errorf("invalid zip archive: %w", err)
+		return diag.ArchiveUnreadable.Errorf("invalid zip archive: %w", err)
 	}
 	defer zr.Close() //nolint:errcheck // read-only
 	for _, zf := range zr.File {
@@ -132,7 +136,7 @@ func extractZip(src, dst string, strip int) error {
 				return err
 			}
 		case mode&os.ModeSymlink != 0:
-			return fmt.Errorf("refusing to extract link %q: links are not supported", zf.Name)
+			return diag.UnsupportedEntry.Errorf("refusing to extract link %q: links are not supported", zf.Name)
 		case mode.IsRegular():
 			rc, err := zf.Open()
 			if err != nil {
@@ -144,7 +148,9 @@ func extractZip(src, dst string, strip int) error {
 				return err
 			}
 		default:
-			return fmt.Errorf("refusing to extract %q: unsupported entry type", zf.Name)
+			// Zip carries device nodes, FIFOs and sockets in the same mode
+			// bits Go decodes here, so the one branch refuses them all.
+			return diag.UnsupportedEntry.Errorf("refusing to extract %q: unsupported entry type", zf.Name)
 		}
 	}
 	return nil
@@ -154,25 +160,25 @@ func extractZip(src, dst string, strip int) error {
 // names and any traversal outside dst.
 func safePath(dst, name string) (string, error) {
 	if name == "" {
-		return "", errors.New("archive entry has an empty name")
+		return "", diag.PathEscape.Errorf("archive entry has an empty name")
 	}
 	clean := filepath.Clean(filepath.FromSlash(name))
 	// A leading separator is rejected explicitly: on Windows "\etc" is not
 	// absolute in filepath's terms, but it is never a legitimate member name.
 	if filepath.IsAbs(clean) || strings.HasPrefix(clean, string(filepath.Separator)) ||
 		strings.HasPrefix(clean, "..") || filepath.VolumeName(clean) != "" {
-		return "", fmt.Errorf("refusing to extract %q: path escapes the destination", name)
+		return "", diag.PathEscape.Errorf("refusing to extract %q: path escapes the destination", name)
 	}
 	target := filepath.Join(dst, clean)
 	rel, err := filepath.Rel(dst, target)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("refusing to extract %q: path escapes the destination", name)
+		return "", diag.PathEscape.Errorf("refusing to extract %q: path escapes the destination", name)
 	}
 	// Refuse to follow a symlink that an earlier entry could not have created
 	// but that might pre-exist in dst.
 	for dir := filepath.Dir(target); strings.HasPrefix(dir, dst) && dir != dst; dir = filepath.Dir(dir) {
 		if st, err := os.Lstat(dir); err == nil && st.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("refusing to extract %q: parent %q is a symlink", name, dir)
+			return "", diag.PathEscape.Errorf("refusing to extract %q: parent %q is a symlink", name, dir)
 		}
 	}
 	return target, nil
@@ -198,7 +204,7 @@ func writeFile(target string, r io.Reader, mode os.FileMode) error {
 		return err
 	}
 	if n > maxFileBytes {
-		return fmt.Errorf("refusing to extract %q: file exceeds %d bytes", filepath.Base(target), maxFileBytes)
+		return diag.ArchiveTooLarge.Errorf("refusing to extract %q: file exceeds %d bytes", filepath.Base(target), maxFileBytes)
 	}
 	return nil
 }

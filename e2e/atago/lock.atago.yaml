@@ -221,7 +221,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: tool "geth" is not declared in block.toml
+            equals: 'block: BLK1008: tool "geth" is not declared in block.toml
 
 '
 
@@ -542,7 +542,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: foundry: no version of foundry-rs/foundry matches "3"
+            equals: 'block: BLK2001: foundry: no version of foundry-rs/foundry matches "3"
 
 '
           changes:
@@ -564,7 +564,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: foundry: no published release of foundry-rs/foundry matches "1.9"'
+            contains: 'block: BLK2002: foundry: no published release of foundry-rs/foundry matches "1.9"'
 
   - name: a tag without a release falls back to the next older release
     env:
@@ -597,7 +597,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: unknown tool "solana": it is not in the registry (run "block list" to see the supported tools); define [tools.solana.source] in block.toml to use it anyway
+            equals: 'block: BLK1007: unknown tool "solana": it is not in the registry (run "block list" to see the supported tools); define [tools.solana.source] in block.toml to use it anyway
 
 '
 
@@ -616,7 +616,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: block.toml: unknown key "tool"
+            equals: 'block: BLK1002: block.toml: unknown key "tool"
 
 '
       - fixture:
@@ -629,7 +629,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: block.toml: tool "foundry": invalid version constraint "^1.7"'
+            contains: 'block: BLK1002: block.toml: tool "foundry": invalid version constraint "^1.7"'
       - fixture:
           file: block.toml
           content: |
@@ -640,7 +640,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: block.toml: invalid tool name "Foundry"'
+            contains: 'block: BLK1002: block.toml: invalid tool name "Foundry"'
       - fixture:
           file: block.toml
           content: |
@@ -652,7 +652,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: block.toml: unsupported platform "plan9/amd64": supported platforms are linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, windows/arm64'
+            contains: 'block: BLK1002: block.toml: unsupported platform "plan9/amd64": supported platforms are linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, windows/arm64'
       - fixture:
           file: block.toml
           content: |
@@ -696,7 +696,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: foo: refusing insecure url http://mirror.example.com/foo_1.2.0.tar.gz: only https is allowed'
+            contains: 'block: BLK6001: foo: refusing insecure url http://mirror.example.com/foo_1.2.0.tar.gz: only https is allowed'
 
   - name: a missing repository is reported as not found
     env: *t1
@@ -716,7 +716,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: ghost: repository example/ghost: not found\n"
+            equals: "block: BLK2003: ghost: repository example/ghost: not found\n"
 
   - name: a GitHub rate limit is explained with the token hint
     env:
@@ -733,7 +733,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: "block: foundry: github api: rate limit exceeded (set GITHUB_TOKEN to raise the limit); resets at 2023-11-14T22:13:20Z"
+            contains: "block: BLK2005: foundry: github api: rate limit exceeded (set GITHUB_TOKEN to raise the limit); resets at 2023-11-14T22:13:20Z"
 
   # One command name must not mean two executables. A shim resolves a command
   # through the lockfile while PATH resolves it by directory order, so an
@@ -767,7 +767,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: tools "clash" and "foo" both provide the command "foo"; remove one from block.toml
+            equals: 'block: BLK1009: tools "clash" and "foo" both provide the command "foo"; remove one from block.toml
 
 '
           changes:

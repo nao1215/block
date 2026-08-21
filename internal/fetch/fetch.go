@@ -18,6 +18,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/nao1215/block/internal/diag"
 )
 
 // ChecksumError reports a digest mismatch between lockfile and download.
@@ -30,6 +32,9 @@ type ChecksumError struct {
 func (e *ChecksumError) Error() string {
 	return fmt.Sprintf("checksum mismatch for %s: want sha256 %s, got %s", e.URL, e.Want, e.Got)
 }
+
+// Code names the diagnostic this refusal is published under.
+func (e *ChecksumError) Code() diag.Code { return diag.ChecksumMismatch }
 
 // Fetcher downloads into Dir.
 type Fetcher struct {
@@ -87,6 +92,9 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL, want string) (path, sha str
 		return "", "", false, err
 	}
 	if want != "" && sha != want {
+		// The mismatching bytes are removed from the cache, and the blob the
+		// lockfile does name is left exactly as it was: a bad download must
+		// not cost the artifact that was already verified.
 		_ = os.Remove(f.Path(sha))
 		return "", "", false, &ChecksumError{URL: rawURL, Want: want, Got: sha}
 	}
@@ -111,7 +119,7 @@ func (f *Fetcher) verifyCached(want string) (bool, error) {
 		return true, nil
 	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return false, fmt.Errorf("cached artifact %s is corrupt and could not be removed: %w", path, err)
+		return false, diag.CacheUnusable.Errorf("cached artifact %s is corrupt and could not be removed: %w", path, err)
 	}
 	return false, nil
 }
@@ -130,11 +138,11 @@ func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {
 	}
 	resp, err := f.HTTP.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("download %s: %w", rawURL, err)
+		return "", diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only body
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download %s: %s", rawURL, resp.Status)
+		return "", diag.DownloadFailed.Errorf("download %s: %s", rawURL, resp.Status)
 	}
 	tmp, err := os.CreateTemp(f.Dir, ".download-*")
 	if err != nil {
@@ -145,7 +153,7 @@ func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {
 	h := sha256.New()
 	if _, err := io.Copy(io.MultiWriter(tmp, h), resp.Body); err != nil {
 		cleanup()
-		return "", fmt.Errorf("download %s: %w", rawURL, err)
+		return "", diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
@@ -165,7 +173,7 @@ func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {
 func CheckURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("invalid url %q: %w", rawURL, err)
+		return diag.InsecureURL.Errorf("invalid url %q: %w", rawURL, err)
 	}
 	switch u.Scheme {
 	case "https":
@@ -174,9 +182,9 @@ func CheckURL(rawURL string) error {
 		if isLoopback(u.Hostname()) {
 			return nil
 		}
-		return fmt.Errorf("refusing insecure url %s: only https is allowed", rawURL)
+		return diag.InsecureURL.Errorf("refusing insecure url %s: only https is allowed", rawURL)
 	default:
-		return fmt.Errorf("unsupported url scheme in %s: only https is allowed", rawURL)
+		return diag.InsecureURL.Errorf("unsupported url scheme in %s: only https is allowed", rawURL)
 	}
 }
 

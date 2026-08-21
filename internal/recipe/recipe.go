@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/platform"
 	"github.com/nao1215/block/internal/version"
 )
@@ -464,6 +465,9 @@ type UnsupportedPlatformError struct {
 	Platform  platform.Platform
 	Supported []platform.Platform
 }
+
+// Code names the diagnostic this refusal is published under.
+func (e *UnsupportedPlatformError) Code() diag.Code { return diag.PlatformUnsupported }
 
 func (e *UnsupportedPlatformError) Error() string {
 	return fmt.Sprintf("unsupported platform %s (available: %s)", e.Platform, strings.Join(platform.Strings(e.Supported), ", "))

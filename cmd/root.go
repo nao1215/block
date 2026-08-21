@@ -16,6 +16,7 @@ import (
 
 	"github.com/nao1215/block/internal/block"
 	"github.com/nao1215/block/internal/cmdinfo"
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/fetch"
 	"github.com/nao1215/block/internal/github"
 	"github.com/nao1215/block/internal/manifest"
@@ -69,7 +70,10 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	case errors.Is(err, block.ErrOutdated):
 		return exitOutdated
 	}
-	fmt.Fprintf(stderr, "%s: %v\n", cmdinfo.Name, err)
+	// The code goes at the front of the line, once, rather than wherever in a
+	// wrapped chain the problem was named: it is what a reader searches for
+	// and what a reviewer quotes.
+	fmt.Fprintf(stderr, "%s: %s\n", cmdinfo.Name, diag.Message(err))
 	return exitFailure
 }
 
@@ -86,7 +90,10 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 sync never resolves. exec never installs. lock is the only operation that
 can move a pin.
 
-  block list    shows the tools block supports, all or by ecosystem`,
+  block list    shows the tools block supports, all or by ecosystem
+  block explain names what one of block's BLK error codes means
+
+` + Links,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -97,9 +104,35 @@ can move a pin.
 		newSyncCmd(stdout, stderr),
 		newExecCmd(stdout, stderr),
 		newListCmd(stdout),
+		newExplainCmd(stdout),
 		newVersionCmd(stdout),
 	)
 	return root
+}
+
+// Links is the footer every help screen ends with. A CLI that refuses is the
+// place a person is standing when they need the documentation, a way to
+// report what went wrong, or a reason to believe the project is maintained,
+// so the addresses are in the binary rather than only in a README they are
+// not reading.
+const Links = `Documentation:   https://nao1215.github.io/block/
+Error codes:     https://nao1215.github.io/block/errors/
+Report a bug:    https://github.com/nao1215/block/issues/new
+GitHub Sponsors: https://github.com/sponsors/nao1215`
+
+// versionText is what both `block version` and `block --version` print. It
+// doubles as the cobra version template, which is why it ends in a newline
+// and carries no template actions.
+func versionText() string {
+	text := fmt.Sprintf("%s %s\n", cmdinfo.Name, cmdinfo.Resolve())
+	// The recipes are vendored, so "which block" does not by itself answer
+	// "which registry". A binary that cannot say which revision it was built
+	// from cannot be matched to the recipes it resolves with, which is the
+	// pairing the snapshot exists for.
+	if s, err := registry.Snapshot(); err == nil {
+		text += fmt.Sprintf("registry %s (%d recipes from %s)\n", s.Revision[:shortRevision], s.Recipes, s.Source)
+	}
+	return text
 }
 
 // newApp builds the App for the project that contains the working directory.
@@ -246,7 +279,7 @@ a project's own toolchain is its block.toml and block.lock.`,
 			byEcosystem := len(args) == 1
 			if byEcosystem {
 				if !slices.Contains(reg.Ecosystems(), args[0]) {
-					return fmt.Errorf("unknown ecosystem %q\navailable ecosystems: %s", args[0], strings.Join(reg.Ecosystems(), ", "))
+					return diag.UnknownEcosystem.Errorf("unknown ecosystem %q\navailable ecosystems: %s", args[0], strings.Join(reg.Ecosystems(), ", "))
 				}
 				recipes = reg.ByEcosystem(args[0])
 			}
@@ -288,14 +321,7 @@ func newVersionCmd(stdout io.Writer) *cobra.Command {
 		Short: "Print the block version and the registry snapshot it carries",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			fmt.Fprintf(stdout, "%s %s\n", cmdinfo.Name, cmdinfo.Resolve())
-			// The recipes are vendored, so "which block" does not by itself
-			// answer "which registry". A binary that cannot say which
-			// revision it was built from cannot be matched to the recipes it
-			// resolves with, which is the pairing the snapshot exists for.
-			if s, err := registry.Snapshot(); err == nil {
-				fmt.Fprintf(stdout, "registry %s (%d recipes from %s)\n", s.Revision[:shortRevision], s.Recipes, s.Source)
-			}
+			fmt.Fprint(stdout, versionText())
 			return nil
 		},
 	}

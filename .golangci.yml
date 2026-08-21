@@ -81,6 +81,13 @@ linters:
           - goconst
           - mnd
           - prealloc
+      # The diagnostic codes are a table: each entry is a package-level value
+      # because register is the only way to obtain a Code, and each number is
+      # the code itself rather than a quantity a constant could stand for.
+      - path: internal/diag/codes_
+        linters:
+          - gochecknoglobals
+          - mnd
     paths:
       - third_party$
       - builtin$

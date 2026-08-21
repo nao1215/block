@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/nao1215/block/internal/cmdinfo"
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/fakegh"
 	"github.com/nao1215/block/internal/github"
 	"github.com/nao1215/block/internal/store"
@@ -130,7 +131,7 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 		}
 	}
 	code, _, errOut := run(t, dir, "list", "etheruem")
-	if want := "block: unknown ecosystem \"etheruem\"\navailable ecosystems: " + strings.Join(reg.Ecosystems(), ", ") + "\n"; code != 1 || errOut != want {
+	if want := "block: " + diag.UnknownEcosystem.String() + ": unknown ecosystem \"etheruem\"\navailable ecosystems: " + strings.Join(reg.Ecosystems(), ", ") + "\n"; code != 1 || errOut != want {
 		t.Errorf("list etheruem = %d, %q, want %q", code, errOut, want)
 	}
 	if code, _, errOut := run(t, dir, "list", "ethereum", "solana"); code != 1 || !strings.Contains(errOut, "accepts at most 1 arg") {

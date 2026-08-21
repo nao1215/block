@@ -1,7 +1,8 @@
-{{/* Build the cookbook and the tool list from files committed in this
-     repository and mounted under assets/. The committed files stay the single
-     source of truth; this template only strips the H1 (the layout renders the
-     title) and rewrites repository-relative links to GitHub. */}}
+{{/* Build the cookbook, the tool list and the error reference from files
+     committed in this repository and mounted under assets/. The committed
+     files stay the single source of truth; this template only strips the H1
+     (the layout renders the title) and rewrites repository-relative links to
+     GitHub. */}}
 
 {{ $gh := "https://github.com/nao1215/block/blob/main/" }}
 
@@ -31,5 +32,18 @@
         "toc" true
         "filter" true
         "filterLabel" "systems")
+      "content" (dict "mediaType" "text/markdown" "value" $md)) }}
+{{ end }}
+
+{{ with resources.Get "doc/errors.md" }}
+  {{ $md := .Content }}
+  {{ $md = replaceRE `\A# Error codes\n` "" $md }}
+  {{ $md = replaceRE `\]\(\.\./` (printf "](%s" $gh) $md }}
+  {{ $.AddPage (dict
+      "path" "errors"
+      "title" "Error codes"
+      "params" (dict
+        "description" "Every BLK error code block can report: what block observed, what to do about it, and which exit status it produces. The same text block explain prints in a terminal."
+        "toc" true)
       "content" (dict "mediaType" "text/markdown" "value" $md)) }}
 {{ end }}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/platform"
 	"github.com/nao1215/block/internal/recipe"
 	"github.com/nao1215/block/internal/version"
@@ -112,7 +113,10 @@ func Load(path string) (*Lock, error) {
 	}
 	l, err := Parse(data)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
+		// A lockfile is generated, so a reader never fixes one by hand: every
+		// way it can be wrong has the same answer, which is to write it again
+		// with "block lock".
+		return nil, diag.LockInvalid.Errorf("%s: %w", filepath.Base(path), err)
 	}
 	return l, nil
 }
@@ -246,7 +250,7 @@ func Write(path string, l *Lock) error {
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".block.lock.*")
 	if err != nil {
-		return err
+		return diag.LockInvalid.Errorf("writing %s: %w", FileName, err)
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {

@@ -29,11 +29,11 @@ test: ## Start test
 e2e: ## Run offline end-to-end tests against the real CLI (requires atago)
 	./e2e/run.sh
 
-doc: ## Regenerate the docs derived from the registry (doc/tools.md)
-	$(GO) run ./scripts/gen-tools-doc
+doc: ## Regenerate the derived docs (doc/tools.md, doc/errors.md)
+	$(GO) run ./scripts/gen-docs
 
 doc-check: ## Fail if a generated doc is stale (offline; run by CI)
-	$(GO) run ./scripts/gen-tools-doc -check
+	$(GO) run ./scripts/gen-docs -check
 
 demo: build ## Re-record the README GIFs (requires vhs and ffmpeg; needs network and GITHUB_TOKEN)
 	mkdir -p dist && cp $(APP) dist/$(APP)

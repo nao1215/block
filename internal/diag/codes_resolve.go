@@ -1,0 +1,55 @@
+package diag
+
+// BLK2xxx: resolving a version against an upstream. Everything here happens
+// inside `block lock`, which is the only command that talks to an upstream at
+// all. sync and exec never reach these codes.
+var (
+	// NoMatchingVersion is a constraint no published tag satisfies.
+	NoMatchingVersion = register(2001,
+		"no upstream version matches the constraint",
+		"The upstream's tags were read, and none of them is a release version the constraint in block.toml allows. Pre-releases never satisfy a constraint, so a line that has only ever shipped release candidates matches nothing.",
+		"Widen the constraint in block.toml, or check the upstream's releases page for how the line is actually spelled.",
+		"v0.1.0")
+
+	// NoPublishedRelease is a matching tag with no release behind it.
+	NoPublishedRelease = register(2002,
+		"the matching tags have no published release",
+		"Tags satisfying the constraint exist, but the newest of them are drafts, pre-releases, or tags pushed before their release was published. block only pins a published, non-draft, non-pre-release release.",
+		"Wait for the release to be published, or pin a version that already has one.",
+		"v0.1.0")
+
+	// UpstreamNotFound is a repository, tag or release that is not there.
+	UpstreamNotFound = register(2003,
+		"the upstream repository, tag or release does not exist",
+		"The upstream answered \"not found\". The repository has been renamed, deleted, or made private, or the tag the recipe renders for this version was never pushed.",
+		"Check the repo in the recipe or in `[tools.<name>.source]`. A repository that moved needs the new owner/name; a private one needs a GITHUB_TOKEN that can see it.",
+		"v0.1.0")
+
+	// AssetMissing is a release that does not carry the file the recipe names.
+	AssetMissing = register(2004,
+		"the release does not carry the expected asset",
+		"The release was found, but it publishes no file with the name the recipe renders for this version and platform. Upstreams rename their assets, and a recipe is a rule about those names. The message lists what the release does carry.",
+		"For a registry tool, report it at https://github.com/nao1215/block-registry/issues — the recipe needs updating. For a `[tools.<name>.source]` of your own, correct the asset template against the names in the message.",
+		"v0.1.0")
+
+	// RateLimited is the GitHub API refusing to answer any more.
+	RateLimited = register(2005,
+		"the GitHub API rate limit was reached",
+		"block lock reads tags and releases from the GitHub API, which allows 60 requests an hour to an unauthenticated client. sync and exec never call the API, so this can interrupt a re-lock but never a build.",
+		"Set GITHUB_TOKEN (or GH_TOKEN) to a token with public read access, which raises the limit to 5,000 requests an hour. On GitHub Actions, pass secrets.GITHUB_TOKEN. Otherwise wait until the reset time in the message.",
+		"v0.1.0")
+
+	// UpstreamError is any other failure talking to an upstream.
+	UpstreamError = register(2006,
+		"the upstream could not be reached or did not answer usefully",
+		"A request to the GitHub API or to a vendor download server failed, timed out, or returned a status block cannot act on. This is about the network or the service, not about the project.",
+		"Retry. If it persists, check whether the service is up and whether a proxy is in the way; the message carries the URL and the status.",
+		"v0.1.0")
+
+	// PlatformUnsupported is a source that ships nothing for a platform.
+	PlatformUnsupported = register(2007,
+		"the upstream ships no build for this platform",
+		"The recipe records which operating systems and architectures the upstream publishes, and the platform asked for is not one of them. block will not substitute a build for a different platform, and will not build from source.",
+		"Use a platform the message lists, or drop the tool from the platforms your project declares. The full platform coverage of every tool is at https://github.com/nao1215/block/blob/main/doc/tools.md.",
+		"v0.1.0")
+)

@@ -78,6 +78,21 @@ cosign verify-blob \
 sha256sum --check --ignore-missing checksums.txt
 ```
 
+## Reading a refusal
+
+Every refusal on this page carries a code, and the ones in this section are the
+`BLK6xxx` family: block declining, rather than failing. `BLK6001` is a URL it
+will not fetch, `BLK6002` an entry that would be written outside its directory,
+`BLK6003` a link or a device node in an archive, `BLK6004` a member larger than
+block will extract, `BLK6005` a name or version from `block.lock` that is not a
+path component.
+
+```shell
+block explain BLK6002
+```
+
+Every code, and what to do about each, is at [Error codes](/errors/).
+
 ## Reporting a vulnerability
 
 Privately, by email to n.chika156@gmail.com or through the repository's

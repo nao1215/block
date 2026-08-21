@@ -11,6 +11,7 @@ toc: true
 | `block sync` | never | never | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | never | never | never | never | yes |
 | `block list [ecosystem]` | never | never | never | never | no |
+| `block explain <code>` | never | never | never | never | no |
 
 "never" is a guarantee, not a default: there is no flag that turns any of those
 cells into a yes.
@@ -97,7 +98,7 @@ installs or writes:
 
 ```console
 $ forge test
-block: foundry 1.7.1 is not installed; run "block sync"
+block: BLK4004: foundry 1.7.1 is not installed; run "block sync"
 ```
 
 Outside a project, or for a command the current project does not lock, it runs
@@ -122,3 +123,44 @@ it carries.
 Listing is discovery, not selection. block never derives a toolchain from an
 ecosystem — "Ethereum" means contract development to one repository and
 validator operation to another. You pick, `block.toml` records.
+
+## `block explain`
+
+Every refusal block prints carries a code — `BLK1003`, `BLK3002` — and this is
+how to read one without a browser:
+
+```console
+$ block explain BLK1003
+BLK1003  block.lock not found
+
+The project declares a toolchain but has never resolved it, so there is
+nothing to install or run. block will not resolve one on the spot: which
+version a build uses is a decision that gets committed, not one made by
+whoever happened to run the command.
+
+Fix
+Run "block lock" to resolve block.toml into block.lock, and commit both
+files.
+
+Exits 1. Since v0.1.0.
+https://nao1215.github.io/block/errors/#blk1003--blocklock-not-found
+```
+
+The prefix is optional and the case does not matter, because neither survives
+being retyped from a terminal: `block explain blk1003` and `block explain 1003`
+find the same entry. Like `list`, it is offline and read-only.
+
+The whole set is at [Error codes](/errors/), generated from the same registry
+this command reads, so a code cannot mean one thing in a terminal and another
+in a browser.
+
+## `block version`
+
+Prints the version of block, and the `block-registry` revision whose recipes
+are compiled into it — so a resolution can be traced back to a reviewed recipe:
+
+```console
+$ block version
+block v0.1.0
+registry 5f753c063013 (45 recipes from https://github.com/nao1215/block-registry)
+```
