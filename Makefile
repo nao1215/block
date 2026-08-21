@@ -1,4 +1,4 @@
-.PHONY: build test e2e registry-verify registry-sync registry-live coverage clean vet fmt lint website website-serve changelog help
+.PHONY: build test e2e doc doc-check logo registry-verify registry-sync registry-live coverage clean vet fmt lint website website-serve changelog help
 
 APP         = block
 VERSION     = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -28,6 +28,15 @@ test: ## Start test
 
 e2e: ## Run offline end-to-end tests against the real CLI (requires atago)
 	./e2e/run.sh
+
+doc: ## Regenerate the docs derived from the registry (doc/tools.md)
+	$(GO) run ./scripts/gen-tools-doc
+
+doc-check: ## Fail if a generated doc is stale (offline; run by CI)
+	$(GO) run ./scripts/gen-tools-doc -check
+
+logo: ## Redraw doc/img from scripts/gen-logo.py (requires Python and Pillow)
+	python3 ./scripts/gen-logo.py
 
 registry-verify: ## Check that registry/ is still the block-registry snapshot it records (offline)
 	$(GO) run ./scripts/registry-snapshot -verify

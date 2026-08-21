@@ -31,6 +31,12 @@ jobs:
       - name: Verify the vendored registry
         run: make registry-verify
 
+      # doc/tools.md is generated from those same recipes. Checking it here
+      # rather than only in the unit tests means a stale catalogue fails in
+      # seconds, with the command that fixes it.
+      - name: Verify the generated documentation
+        run: make doc-check
+
   unit_test:
     name: Unit test (${{ matrix.os }}, go ${{ matrix.go }})
     strategy:

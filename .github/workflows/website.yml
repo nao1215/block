@@ -5,11 +5,15 @@ on:
     branches: [main]
     paths:
       - "website/**"
+      - "doc/**"
+      - "registry/**"
       - ".github/workflows/website.yml"
   pull_request:
     branches: [main]
     paths:
       - "website/**"
+      - "doc/**"
+      - "registry/**"
       - ".github/workflows/website.yml"
   workflow_dispatch:
 
@@ -28,6 +32,9 @@ jobs:
       contents: read
     env:
       HUGO_VERSION: 0.165.0
+      HUGO_SHA256: 5c3a37a5450b3e386e5b75a87a790fea2d04a796d75e171216c80ef48a32b432
+      PAGEFIND_VERSION: 1.5.2
+      PAGEFIND_SHA256: afb824a9e7f64905a934900481cea5be679c03975e527329e0e5e6cc70f5feda
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,19 +42,30 @@ jobs:
 
       - name: Install Hugo
         run: |
-          curl -sSfL -o hugo.tar.gz \
+          curl -fsSL -o "${RUNNER_TEMP}/hugo.tar.gz" \
             "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_linux-amd64.tar.gz"
-          tar -xzf hugo.tar.gz hugo
-          sudo install -m 0755 hugo /usr/local/bin/hugo
+          echo "${HUGO_SHA256}  ${RUNNER_TEMP}/hugo.tar.gz" | sha256sum --check -
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/hugo.tar.gz" hugo
+          sudo install -m 0755 "${RUNNER_TEMP}/hugo" /usr/local/bin/hugo
           hugo version
 
-      - name: Build
-        working-directory: website
-        run: hugo --gc --minify --cleanDestinationDir
+      - name: Build website
+        run: make website
+
+      # Client-side search. The index is built here rather than committed, and
+      # the layout loads the UI only when the search box is focused, so a page
+      # that is never searched pays nothing for it.
+      - name: Index the site with Pagefind
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/pagefind.tar.gz" \
+            "https://github.com/Pagefind/pagefind/releases/download/v${PAGEFIND_VERSION}/pagefind-v${PAGEFIND_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${PAGEFIND_SHA256}  ${RUNNER_TEMP}/pagefind.tar.gz" | sha256sum --check -
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/pagefind.tar.gz" pagefind
+          "${RUNNER_TEMP}/pagefind" --site website/public
 
       - name: Upload the site
         if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: website/public
 
@@ -64,5 +82,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
