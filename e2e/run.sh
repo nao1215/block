@@ -78,8 +78,7 @@ if [ ! -s "$TMP/fakegh.url" ]; then
 	exit 1
 fi
 
-# The suite runs on Linux and macOS, and much of what it asserts names a
-# platform: an asset file name, an artifact's platform key, an "unsupported
+# Much of what the suite asserts names a platform: an asset file name, an artifact's platform key, an "unsupported
 # platform" message. These say which platform this run is, so the specs stay
 # exact everywhere instead of loosening into regexes. BLOCK_OTHER_PLATFORM is
 # a platform this machine is definitely not, for the scenarios about a tool
@@ -123,17 +122,26 @@ export PATH="$TMP/bin:$PATH"
 echo "e2e: BLOCK_GITHUB_API_URL=$BLOCK_GITHUB_API_URL"
 echo "e2e: platform=$BLOCK_PLATFORM (other=$BLOCK_OTHER_PLATFORM)"
 
-# On Windows the suite is the Windows spec file, not the whole directory.
+# The whole suite runs on every platform. A scenario is skipped only where the
+# thing it asserts does not exist there — POSIX signals, say — never merely
+# because the harness would need arranging.
 #
-# Most scenarios elsewhere pin registry tools — foundry, hermes — and those
-# upstreams publish no Windows build, which the registry records and block
-# correctly reports as an unsupported platform. Running them there would not
-# test block; it would assert that Foundry ships something it does not.
-# windows.atago.yaml covers what is genuinely different on Windows instead,
-# through fixtures that do publish for it.
+# Two arrangements make that possible on Windows:
+#
+#   ATAGO_SHELL      a `shell: true` step is cmd.exe by default there, and the
+#                    suite's compound steps are POSIX ("cd x && block lock").
+#                    The runner is already Git Bash, so pointing atago at the
+#                    same sh keeps one spelling of every step rather than two.
+#   BLOCK_PATH_SEP   what separates PATH entries, which is the one piece of a
+#                    scenario that cannot be written the same way twice.
 if [ "$(go env GOOS)" = "windows" ]; then
-	SUITE="$SCRIPT_DIR/atago/windows.atago.yaml"
+	ATAGO_SHELL="$(command -v sh)"
+	export ATAGO_SHELL
+	BLOCK_PATH_SEP=";"
+	echo "e2e: ATAGO_SHELL=$ATAGO_SHELL"
 else
-	SUITE="$SCRIPT_DIR/atago"
+	BLOCK_PATH_SEP=":"
 fi
-atago run "$@" "$SUITE"
+export BLOCK_PATH_SEP
+
+atago run "$@" "$SCRIPT_DIR/atago"

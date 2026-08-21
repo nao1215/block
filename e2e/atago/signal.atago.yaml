@@ -18,8 +18,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -57,8 +63,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -86,8 +98,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync

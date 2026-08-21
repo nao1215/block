@@ -12,24 +12,34 @@ suite:
 
 scenarios:
   - name: the same command runs each project's pinned version
-    skip:
-      os: windows
     env: &shimmed
       BLOCK_HOME: "${workdir}/home"
       BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
       # The one setup step a user does, once.
-      PATH: "${workdir}/home/shims:${env:PATH}"
+      PATH: "${workdir}/home/shims${env:BLOCK_PATH_SEP}${env:PATH}"
     steps:
       - fixture:
           file: project-a/block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - fixture:
           file: project-b/block.toml
           content: |
-            [tools]
-            foundry = "1.6"
+            [tools.foundry]
+            version = "1.6"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: cd project-a && block lock && block sync
@@ -81,15 +91,19 @@ scenarios:
             contains: "forge 1.6.0 (fake)"
 
   - name: a nested directory belongs to the project above it
-    skip:
-      os: windows
     env: *shimmed
     steps:
       - fixture:
           file: repo/block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - fixture:
           file: repo/contracts/test/.keep
           content: ""
@@ -107,15 +121,19 @@ scenarios:
               - "args: test -vvv"
 
   - name: the tool's exit status is the shim's exit status
-    skip:
-      os: windows
     env: *shimmed
     steps:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: block lock && block sync
@@ -128,15 +146,19 @@ scenarios:
             equals: ""
 
   - name: a shim never installs, resolves or writes
-    skip:
-      os: windows
     env: *shimmed
     steps:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       # Sync once so the shims exist, then lock a project that was never
       # synced: the shim says what to run instead of running it.
       - run:
@@ -145,8 +167,14 @@ scenarios:
       - fixture:
           file: fresh/block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: cd fresh && block lock
@@ -156,7 +184,7 @@ scenarios:
           env:
             # A different store: the tool is locked, and installed nowhere.
             BLOCK_HOME: "${workdir}/empty"
-            PATH: "${workdir}/home/shims:${env:PATH}"
+            PATH: "${workdir}/home/shims${env:BLOCK_PATH_SEP}${env:PATH}"
       - assert:
           exit_code: 1
           stdout:
@@ -173,8 +201,14 @@ scenarios:
       - fixture:
           file: fresh/block.toml
           content: |
-            [tools]
-            foundry = "1.6"
+            [tools.foundry]
+            version = "1.6"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: cd fresh && forge --version
@@ -197,8 +231,14 @@ scenarios:
       - fixture:
           file: proj/block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           shell: true
           command: cd proj && block lock && block sync
@@ -224,7 +264,7 @@ scenarios:
           shell: true
           command: cd elsewhere && forge --version
           env:
-            PATH: "${workdir}/home/shims:${workdir}/sysbin:${env:PATH}"
+            PATH: "${workdir}/home/shims${env:BLOCK_PATH_SEP}${workdir}/sysbin${env:BLOCK_PATH_SEP}${env:PATH}"
       - assert:
           exit_code: 0
           stdout:
@@ -233,8 +273,23 @@ scenarios:
       - fixture:
           file: hermes-only/block.toml
           content: |
-            [tools]
-            hermes = "1.13"
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
       - run:
           shell: true
           command: cd hermes-only && block lock && block sync
@@ -242,7 +297,7 @@ scenarios:
           shell: true
           command: cd hermes-only && forge --version
           env:
-            PATH: "${workdir}/home/shims:${workdir}/sysbin:${env:PATH}"
+            PATH: "${workdir}/home/shims${env:BLOCK_PATH_SEP}${workdir}/sysbin${env:BLOCK_PATH_SEP}${env:PATH}"
       - assert:
           exit_code: 0
           stdout:

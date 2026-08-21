@@ -14,9 +14,32 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
-            hermes = "1.13"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
 
             [tools.foo]
             version = "1.2"
@@ -55,8 +78,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block lock
       - run:
@@ -75,8 +104,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block lock --check
       - assert:
@@ -92,17 +127,46 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
-            hermes = "1.13"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
       - run:
           command: block lock
       - fixture:
           file: block.toml
           content: |
             platforms = ["${env:BLOCK_PLATFORM}", "${env:BLOCK_OTHER_PLATFORM}"]
-            [tools]
-            foundry = "1.6"
+            [tools.foundry]
+            version = "1.6"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block lock --check
       - assert:
@@ -120,8 +184,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block lock
       # The resolved version does not move, but block.lock would still be
@@ -129,8 +199,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7.4"
+            [tools.foundry]
+            version = "1.7.4"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block lock --check
       - assert:
@@ -218,8 +294,14 @@ scenarios:
       - fixture:
           file: block.toml
           content: |
-            [tools]
-            foundry = "1.7"
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block lock --check
       - assert:
