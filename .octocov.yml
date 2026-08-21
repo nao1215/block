@@ -3,11 +3,20 @@ coverage:
     - cover.out
   acceptable: 90%
   # The atago-driven E2E suite drives the real CLI, so main.go and the cobra
-  # wiring are measured. Only the offline fake GitHub command is excluded: it
-  # is E2E test infrastructure, not part of the block binary.
+  # wiring are measured. What is excluded is what block never runs: the
+  # offline test infrastructure and the maintenance commands.
   exclude:
     - "github.com/nao1215/block/e2e/fakegh/main.go"
     - "github.com/nao1215/block/internal/fakegh/fakegh.go"
+    # The compiled stand-in the fake GitHub serves as every tool. Like the
+    # server itself, it is E2E infrastructure: block never runs this code,
+    # and the suite exercises it end to end on every push.
+    - "github.com/nao1215/block/e2e/faketool/main.go"
+    # Maintenance commands. Neither is part of block — `go install` does not
+    # build them — and both are run by make targets and by CI, which is what
+    # says they work.
+    - "github.com/nao1215/block/scripts/gen-tools-doc/main.go"
+    - "github.com/nao1215/block/scripts/registry-snapshot/main.go"
   badge:
     path: doc/coverage.svg
 # When this repository goes public, add "artifact://nao1215/block" to the
