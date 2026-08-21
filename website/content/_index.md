@@ -8,6 +8,8 @@ whichever relayer the integration test found. block makes that set explicit and
 reproducible — declared in `block.toml`, pinned by checksum in `block.lock`,
 and identical on every machine and every runner.
 
+![block: two lines of block.toml, then lock, sync and a real tool running](/img/demo.gif)
+
 ## Try it in 30 seconds
 
 If you have Go, paste this into an empty directory:
@@ -46,19 +48,10 @@ overnight, and a stale lockfile is an error rather than a guess.
 ## What can it install?
 
 45 CLIs across 17 blockchain systems, from Bitcoin Core and Foundry to Agave,
-Gaia, Hermes and Starknet Foundry. Ask the binary, offline:
+Gaia, Hermes and Starknet Foundry. Ask the binary — offline, with no
+`block.toml` and no token:
 
-```shell
-block list solana
-```
-
-```text
-NAME            COMMANDS                                                          DESCRIPTION
-agave           solana, solana-keygen, solana-test-validator, agave-ledger-tool   Solana validator client and CLI suite, including a local test validator
-anchor          anchor                                                            Framework and CLI for writing, testing and deploying Solana programs
-solana-verify   solana-verify                                                     Verifies that an on-chain Solana program matches its source
-surfpool        surfpool                                                          Local Solana network that streams mainnet state for pre-deployment testing
-```
+![block list cosmos, and a misspelled ecosystem answering with the ones that exist](/img/list.gif)
 
 The whole catalogue, with commands and platform coverage: [Tools](/tools/). A
 tool that is not there — or a fork of one that is — is four lines in your own
@@ -80,19 +73,28 @@ a way to run something. It manages no language runtimes, and it is not trying
 to become a package manager. See [Compared to Docker](/comparison/) for the
 overlap, and where a container is still the better answer.
 
+## One machine, one toolchain per project
+
+`block sync` writes one file per command into `$BLOCK_HOME/shims`. Put that
+directory on `PATH` once, by hand, and the version follows the directory you
+are standing in — no shell hook, no `eval`, no activation:
+
+![two repositories pinning different Foundry versions, each running its own](/img/shims.gif)
+
+Outside a block project, or for a command the current project does not lock,
+the shim steps aside and runs the next command of that name on `PATH`.
+
 ## Next
 
-```shell
-block sync                       # install exactly what block.lock names
-block exec forge test            # run with the locked toolchain on PATH
-block lock --check               # has upstream published anything newer?
-```
-
 The [cookbook](/cookbook/) has the rest: locking for a platform you are not on,
-running tools by their own names, caching the toolchain in CI, bringing your own
-tool, and reading a refusal. To start from something rather than a blank file,
+caching the toolchain in CI, bringing your own tool, and reading a refusal.
+[Reference](/reference/) is the file formats and the machinery underneath them.
+
+To start from something rather than a blank file,
 [examples/](https://github.com/nao1215/block/tree/main/examples) holds a
-`block.toml` for each of eight kinds of repository.
+`block.toml` for each of eight kinds of repository — EVM contracts, an Ethereum
+node pair, a Cosmos appchain, a Solana program, Bitcoin, Starknet, a
+multi-chain tree, and one that brings its own tool.
 
 ## Install
 
