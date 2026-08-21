@@ -479,6 +479,20 @@ var tool []byte //nolint:gochecknoglobals // fixture state, set once before serv
 // SetTool makes every served executable a copy of the compiled stand-in.
 func SetTool(binary []byte) { tool = binary }
 
+// windowsAsset reports whether an asset is the Windows build of a release, by
+// finding the platform it was published for. The name alone is not enough:
+// a recipe may rename the platform (Rust spells it "pc-windows-msvc") or
+// replace the pair entirely with a target string.
+func windowsAsset(rel release, name string) bool {
+	for p, asset := range rel.assets {
+		if asset == name {
+			return strings.HasPrefix(p, "windows/")
+		}
+	}
+	// A vendor blob has no asset map; its own naming decides.
+	return strings.Contains(name, "windows")
+}
+
 // executable is the body of one fake tool inside an archive.
 func executable(bin, ver string) entry {
 	if len(tool) > 0 {
@@ -498,9 +512,17 @@ func buildArchive(name string, rel release) []byte {
 		}
 		return []byte(script(rel.bins[0], ver) + "# " + name + "\n")
 	}
+	// A real upstream's Windows archive names its executables with the
+	// suffix Windows needs to run them, and block looks for exactly that.
+	// A fixture that shipped a bare "forge" inside a .zip would fail every
+	// Windows install for a reason no upstream has.
+	suffix := ""
+	if windowsAsset(rel, name) {
+		suffix = ".exe"
+	}
 	var members []entry
 	for _, b := range rel.bins {
-		members = append(members, executable(b, ver))
+		members = append(members, executable(b+suffix, ver))
 	}
 	// The asset name goes into the README so every platform's archive hashes
 	// differently, as real per-platform builds do.

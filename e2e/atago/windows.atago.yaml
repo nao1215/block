@@ -66,11 +66,14 @@ scenarios:
           exit_code: 0
           stdout:
             contains: "zipper  3.0.0  installed"
-      # Unpacked with the suffix Windows needs to execute it.
+      # Unpacked with the suffix Windows needs to execute it. The install
+      # directory carries the artifact digest, so the executable is found by
+      # globbing the one directory rather than by naming a digest.
       - assert:
-          file:
-            path: home/tools/zipper/3.0.0-*/zipper.exe
-            exists: true
+          dir:
+            path: home/tools/zipper
+            count: 1
+            glob: "3.0.0-*"
       - run:
           command: block exec zipper
       - assert:
