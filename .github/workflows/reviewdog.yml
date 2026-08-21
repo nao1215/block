@@ -14,12 +14,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # No locale. block's prose is British English throughout — behaviour,
+      # catalogue, cancelled — and with the locale set to US every one of
+      # those was reported as a misspelling, which buried the real ones. UK
+      # is not the answer either: it wants "artefact", and an artifact is
+      # what a release publishes and what block.lock calls it. Without a
+      # locale, misspell reports typos and leaves the dialect alone.
       - name: misspell
         uses: reviewdog/action-misspell@d6429416b12b09b4e2768307d53bef58d172e962 # v1.27.0
         with:
           reporter: github-pr-review
           level: warning
-          locale: "US"
 
   actionlint:
     runs-on: ubuntu-latest

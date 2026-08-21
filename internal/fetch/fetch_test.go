@@ -90,7 +90,7 @@ func TestFetchCanceled(t *testing.T) {
 	cancel()
 	_, _, _, err := New(t.TempDir(), "").Fetch(ctx, srv.URL+"/x", "")
 	if err == nil {
-		t.Fatal("canceled fetch succeeded")
+		t.Fatal("cancelled fetch succeeded")
 	}
 }
 

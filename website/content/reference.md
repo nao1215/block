@@ -174,7 +174,7 @@ repositories. New releases need nothing. Recipes are data, never commands.
 
 Not every blockchain CLI is a GitHub Release asset, and block does not stop
 there. But where a recipe may download from is a rule, not a preference: the
-registry writes it down and its linter enforces it, so a catalog that keeps
+registry writes it down and its linter enforces it, so a catalogue that keeps
 growing cannot quietly grow the set of hosts block fetches binaries from.
 
 | type | what it does | where it may point |

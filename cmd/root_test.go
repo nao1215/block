@@ -71,7 +71,7 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 	if len(lines)-1 != len(reg.Recipes()) {
 		t.Errorf("list printed %d rows for %d recipes", len(lines)-1, len(reg.Recipes()))
 	}
-	// Column widths depend on the whole catalog, so a row is compared by
+	// Column widths depend on the whole catalogue, so a row is compared by
 	// its fields rather than by the spacing of the day.
 	row := func(out, name string) (string, bool) {
 		for _, line := range strings.Split(out, "\n") {
