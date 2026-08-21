@@ -11,16 +11,20 @@
 <meta name="description" content="{{ $desc }}">
 <link rel="canonical" href="{{ .Permalink }}">
 {{- /* A right-ratio (1.91:1) social card and a square favicon, both derived at
-       build time from the committed images: the wide wordmark is fit to 1000px
-       and padded onto a 1200x630 brand-dark canvas so X/Slack/Discord render a
-       full card instead of cropping the 3:1 source, and the square mark — the
-       padlock on its own — becomes the tab icon, because a wordmark shrunk to
-       64px is an unreadable smudge. Falls back to the raw files if the
-       processable assets are ever unavailable. */ -}}
-{{- $ogImage := absURL "img/block-logo.png" }}{{ $ogW := "1800" }}{{ $ogH := "600" }}
+       build time from the committed images, so replacing doc/img/block-logo.png
+       with a different drawing — of any aspect ratio — is the whole job: the
+       wordmark is fit to 1000px wide and centred on a 1200x630 brand-dark
+       canvas, with the padding computed from the resized height rather than
+       assumed, so X/Slack/Discord render a full card instead of cropping. The
+       square mark becomes the tab icon, because a wordmark shrunk to 64px is an
+       unreadable smudge. Both fall back to the raw files if the processable
+       assets are ever unavailable. */ -}}
+{{- $ogImage := absURL "img/block-logo.png" }}{{ $ogW := "1200" }}{{ $ogH := "630" }}
 {{- $favicon := relURL "img/block-mark.png" }}
 {{- with resources.Get "imgsrc/block-logo.png" }}
-  {{- $card := (.Resize "1000x q90").Filter (images.Padding 149 100 148 100 "#0d1117") }}
+  {{- $fit := cond (gt (div (float .Width) (float .Height)) 1.5873) (.Resize "1000x q90") (.Resize "x630 q90") }}
+  {{- $x := div (sub 1200 $fit.Width) 2 }}{{ $y := div (sub 630 $fit.Height) 2 }}
+  {{- $card := $fit.Filter (images.Padding $y (sub (sub 1200 $fit.Width) $x) (sub (sub 630 $fit.Height) $y) $x "#0d1117") }}
   {{- $ogImage = $card.Permalink }}{{ $ogW = string $card.Width }}{{ $ogH = string $card.Height }}
 {{- end }}
 {{- with resources.Get "imgsrc/block-mark.png" }}
