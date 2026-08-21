@@ -152,6 +152,37 @@ func TestExtractRefusals(t *testing.T) {
 		}, "a.tar.gz", "links are not supported"},
 		{"tar fifo", func(t *testing.T) string { return tarGz(t, member{name: "f", typ: tar.TypeFifo}) }, "a.tar.gz", "unsupported entry type"},
 		{"tar empty name", func(t *testing.T) string { return tarGz(t, member{name: "", content: "x", mode: 0o644}) }, "a.tar.gz", "empty name"},
+		{"tar character device", func(t *testing.T) string {
+			return tarGz(t, member{name: "null", typ: tar.TypeChar})
+		}, "a.tar.gz", "unsupported entry type"},
+		{"tar block device", func(t *testing.T) string {
+			return tarGz(t, member{name: "disk", typ: tar.TypeBlock})
+		}, "a.tar.gz", "unsupported entry type"},
+		// Refused on every platform, not only on Windows: an archive naming a
+		// drive or a share is the same archive wherever it is unpacked.
+		{"tar drive letter", func(t *testing.T) string {
+			return tarGz(t, member{name: `C:\Windows\x`, content: "x", mode: 0o644})
+		}, "a.tar.gz", "may not name a drive"},
+		{"tar lower-case drive letter", func(t *testing.T) string {
+			return tarGz(t, member{name: "c:/Windows/x", content: "x", mode: 0o644})
+		}, "a.tar.gz", "may not name a drive"},
+		{"tar unc path", func(t *testing.T) string {
+			return tarGz(t, member{name: `\\server\share\x`, content: "x", mode: 0o644})
+		}, "a.tar.gz", "may not name a drive"},
+		{"tar backslash separator", func(t *testing.T) string {
+			return tarGz(t, member{name: `sub\..\..\x`, content: "x", mode: 0o644})
+		}, "a.tar.gz", "may not name a drive"},
+		{"zip drive letter", func(t *testing.T) string {
+			return zipFile(t, member{name: `C:\Windows\x`, content: "x", mode: 0o644})
+		}, "a.zip", "may not name a drive"},
+		{"zip unc path", func(t *testing.T) string {
+			return zipFile(t, member{name: `\\server\share\x`, content: "x", mode: 0o644})
+		}, "a.zip", "may not name a drive"},
+		{"tar writes one file twice", func(t *testing.T) string {
+			return tarGz(t,
+				member{name: "tool", content: "first", mode: 0o644},
+				member{name: "tool", content: "second", mode: 0o644})
+		}, "a.tar.gz", "already wrote that file"},
 		{"zip traversal", func(t *testing.T) string { return zipFile(t, member{name: "../x", content: "x", mode: 0o644}) }, "a.zip", "path escapes the destination"},
 		{"zip symlink", func(t *testing.T) string { return zipFile(t, member{name: "l", link: "/etc/passwd", mode: 0o777}) }, "a.zip", "links are not supported"},
 		{"unknown format", func(t *testing.T) string { return tarGz(t, member{name: "a", content: "x", mode: 0o644}) }, "a.tar.xz", "unsupported archive format"},

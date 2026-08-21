@@ -106,12 +106,12 @@ func TestReleaseByTag(t *testing.T) {
 	if rel.TagName != "v1.0.0" || !rel.Prerelease || len(rel.Assets) != 1 {
 		t.Errorf("release = %+v", rel)
 	}
-	a, ok := rel.Asset("a.tar.gz")
-	if !ok || a.BrowserDownloadURL != "https://dl/a.tar.gz" || a.Size != 3 {
-		t.Errorf("Asset() = %+v, %v", a, ok)
+	named := rel.AssetsNamed("a.tar.gz")
+	if len(named) != 1 || named[0].BrowserDownloadURL != "https://dl/a.tar.gz" || named[0].Size != 3 {
+		t.Errorf("AssetsNamed() = %+v", named)
 	}
-	if _, ok := rel.Asset("b.tar.gz"); ok {
-		t.Error("missing asset found")
+	if got := rel.AssetsNamed("b.tar.gz"); len(got) != 0 {
+		t.Errorf("AssetsNamed() found %+v for a name the release does not carry", got)
 	}
 	_, err = c.ReleaseByTag(context.Background(), "o/r", "v9.9.9")
 	if !errors.Is(err, ErrNotFound) {

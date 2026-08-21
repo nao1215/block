@@ -84,14 +84,20 @@ func (a Asset) SHA256() string {
 	return hex
 }
 
-// Asset returns the asset with the given file name.
-func (r *Release) Asset(name string) (Asset, bool) {
+// AssetsNamed returns every asset of the release with this file name.
+//
+// It returns a list rather than "the" asset because a release carrying two
+// files of one name is not something to resolve by taking the first: the two
+// are different downloads, and which one a lockfile pinned would depend on the
+// order the API happened to answer in. The caller refuses that instead.
+func (r *Release) AssetsNamed(name string) []Asset {
+	var out []Asset
 	for _, a := range r.Assets {
 		if a.Name == name {
-			return a, true
+			out = append(out, a)
 		}
 	}
-	return Asset{}, false
+	return out
 }
 
 type ref struct {

@@ -26,6 +26,13 @@ var (
 		"For a `[tools.<name>.source]` of your own, take an artifact the upstream publishes without links. For a registry tool, report it at https://github.com/nao1215/block-registry/issues.",
 		"v0.1.0")
 
+	// DuplicateEntry is an archive writing one file twice.
+	DuplicateEntry = register(6006,
+		"an archive writes the same file twice",
+		"Two members of the archive resolve to one file, so what ends up on disk would depend on which of them was extracted last. Names differing only in case are the usual cause: they are two files on Linux and one on macOS and Windows, and an archive that relies on the difference installs differently on different machines.",
+		"For a `[tools.<name>.source]` of your own, take an artifact whose members are distinct. For a registry tool, report it at https://github.com/nao1215/block-registry/issues.",
+		"v0.1.0")
+
 	// ArchiveTooLarge is a member that would fill the disk.
 	ArchiveTooLarge = register(6004,
 		"an archive member is larger than block will extract",
