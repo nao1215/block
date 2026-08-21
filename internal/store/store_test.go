@@ -434,7 +434,9 @@ func TestInstallIntoADeeplyNestedStore(t *testing.T) {
 	}
 
 	s := &Store{Root: root}
-	src := tarGz(t, map[string]string{"bin/deep": "#!/bin/sh\n"}, true)
+	// Named the way the platform names an executable, because that is what
+	// the recipe's "bin/deep" resolves to here.
+	src := tarGz(t, map[string]string{"bin/deep" + ExeSuffix: "#!/bin/sh\n"}, true)
 	dir, err := s.InstallDir("deep", "1.0.0", "abcdef0123456789")
 	if err != nil {
 		t.Fatal(err)
@@ -462,7 +464,7 @@ func TestInstallLosingTheRaceIsNotAnError(t *testing.T) {
 	t.Parallel()
 
 	s := &Store{Root: t.TempDir()}
-	src := tarGz(t, map[string]string{"bin/deep": "#!/bin/sh\n"}, true)
+	src := tarGz(t, map[string]string{"bin/deep" + ExeSuffix: "#!/bin/sh\n"}, true)
 	dir, err := s.InstallDir("racer", "1.0.0", "abcdef0123456789")
 	if err != nil {
 		t.Fatal(err)
