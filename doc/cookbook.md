@@ -822,7 +822,7 @@ re-lock — never a build.
 A constraint that looks like a range is refused rather than guessed at:
 
 ```text
-block: block.toml: tool "foundry": invalid version constraint "^1.7"
+block: block.toml: tool "foundry": invalid version constraint "^1.7": component "^1" is not a number
 ```
 
 Two tools claiming the same command name is reported, not resolved by `PATH`
