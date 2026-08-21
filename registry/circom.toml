@@ -1,8 +1,14 @@
 # circom: the compiler for the circom zero-knowledge circuit language.
 # https://github.com/iden3/circom
 #
-# Releases ship one raw executable per platform; there is no macOS arm64
-# build, and the Windows one is the only name carrying an extension.
+# Releases ship one raw executable per platform, and the Windows one is the
+# only name carrying an extension.
+#
+# The macOS asset is called circom-macos-amd64 and is a 64-bit arm64 Mach-O
+# binary. That is upstream's name, not a mistake in this file: the platform
+# string is mapped whole so the Apple Silicon build is what an Apple Silicon
+# machine gets. There is no Intel macOS build, so darwin/amd64 is left out and
+# block says so rather than handing an Intel Mac something it cannot run.
 name = "circom"
 ecosystems = ["zk"]
 description = "Compiler for the circom zero-knowledge circuit language"
@@ -15,5 +21,5 @@ bin = ["circom"]
 
 [source.target]
 "linux/amd64" = "linux-amd64"
-"darwin/amd64" = "macos-amd64"
+"darwin/arm64" = "macos-amd64"
 "windows/amd64" = "windows-amd64.exe"

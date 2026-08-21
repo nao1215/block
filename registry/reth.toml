@@ -1,5 +1,10 @@
 # Reth: an Ethereum execution client by Paradigm.
 # https://github.com/paradigmxyz/reth
+#
+# There is no Intel macOS build. The Apple Silicon one is dynamically linked
+# against Homebrew's z3 (/opt/homebrew/opt/z3/lib), so it starts only on a
+# machine that has "brew install z3" — block installs the client upstream
+# published, not the libraries it was linked against.
 name = "reth"
 ecosystems = ["ethereum"]
 description = "Modular Ethereum execution client written in Rust"
