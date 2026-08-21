@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a generated reference page (`doc/errors.md`, published at
   https://nao1215.github.io/block/errors/). The thousands digit says where the
   fix lives; every coded error exits 1.
+- Archives are refused when a member names a Windows drive, a UNC share or any
+  backslash-separated path, when it is a device node, FIFO or socket, and when
+  two members would write one file — on every platform, not only where the
+  name would have meant something.
+- A release publishing one asset name twice is refused at lock time rather
+  than resolved by taking whichever the API answered with first.
 - `block --version` prints the same two lines as `block version`.
 - `block --help` carries the documentation, error-code, bug-report and
   GitHub Sponsors addresses.

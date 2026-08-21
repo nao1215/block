@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/nao1215/block/internal/diag"
@@ -148,13 +149,23 @@ func ArtifactFor(res Resolution, src recipe.Source, p platform.Platform) (Artifa
 	if res.Release == nil {
 		return Artifact{}, diag.Internal.Errorf("release not resolved")
 	}
-	a, ok := res.Release.Asset(name)
-	if !ok {
+	matches := res.Release.AssetsNamed(name)
+	switch {
+	case len(matches) == 0:
 		names := make([]string, 0, len(res.Release.Assets))
 		for _, x := range res.Release.Assets {
 			names = append(names, x.Name)
 		}
 		return Artifact{}, diag.AssetMissing.Errorf("release %s of %s has no asset %q (assets: %s)", src.Tag(res.Version), src.Repo, name, strings.Join(names, ", "))
+	case len(matches) > 1:
+		urls := make([]string, 0, len(matches))
+		for _, m := range matches {
+			urls = append(urls, m.BrowserDownloadURL)
+		}
+		sort.Strings(urls)
+		return Artifact{}, diag.AmbiguousAsset.Errorf("release %s of %s has %d assets named %q (%s); block will not choose between them",
+			src.Tag(res.Version), src.Repo, len(matches), name, strings.Join(urls, ", "))
 	}
+	a := matches[0]
 	return Artifact{URL: a.BrowserDownloadURL, SHA256: a.SHA256()}, nil
 }

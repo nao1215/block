@@ -32,6 +32,13 @@ var (
 		"For a registry tool, report it at https://github.com/nao1215/block-registry/issues — the recipe needs updating. For a `[tools.<name>.source]` of your own, correct the asset template against the names in the message.",
 		"v0.1.0")
 
+	// AmbiguousAsset is a release publishing the same file name twice.
+	AmbiguousAsset = register(2008,
+		"the release carries the asset name more than once",
+		"The release publishes several files with the name the recipe renders. They are different downloads, and which of them a lockfile pinned would depend on the order the API happened to answer in, so block refuses rather than choosing. The message lists their URLs.",
+		"For a registry tool, report it at https://github.com/nao1215/block-registry/issues — the asset template needs to be specific enough to name one file. For a `[tools.<name>.source]` of your own, make the template unambiguous.",
+		"v0.1.0")
+
 	// RateLimited is the GitHub API refusing to answer any more.
 	RateLimited = register(2005,
 		"the GitHub API rate limit was reached",

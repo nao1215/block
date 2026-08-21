@@ -52,3 +52,6 @@ cover.html
 # versions and would be stale within a release, and the store is a throwaway.
 /doc/demo/*/block.lock
 /doc/demo/.home/
+
+# atago's run state: which scenarios failed last time, for --failed.
+/.atago/

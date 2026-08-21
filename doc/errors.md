@@ -7,11 +7,11 @@ A code is `BLK` followed by four digits, and the thousands digit says what kind 
 | Codes | Kind | Codes assigned |
 |---|---|---|
 | `BLK1xxx` | what was asked for — block.toml, block.lock, and the names typed on the command line | 10 |
-| `BLK2xxx` | resolving a version against an upstream, which only `block lock` ever does | 7 |
+| `BLK2xxx` | resolving a version against an upstream, which only `block lock` ever does | 8 |
 | `BLK3xxx` | downloading an artifact and proving it is the one block.lock names | 3 |
 | `BLK4xxx` | installing into the store under `$BLOCK_HOME` | 5 |
 | `BLK5xxx` | running a command with the locked toolchain, through `block exec` or a shim | 4 |
-| `BLK6xxx` | a refusal on security grounds — block declining, rather than failing | 5 |
+| `BLK6xxx` | a refusal on security grounds — block declining, rather than failing | 6 |
 | `BLK9xxx` | an internal error: a bug in block | 1 |
 
 The digit is not the exit status. Every coded error exits 1. block's other non-zero exit, 2 from `block lock --check`, is a result rather than an error — the lockfile would change — and carries no code, because there is nothing to look up.
@@ -43,6 +43,7 @@ Look a code up from the terminal with `block explain BLK1001`, which prints this
 | [`BLK2005`](#blk2005--the-github-api-rate-limit-was-reached) | the GitHub API rate limit was reached | v0.1.0 |
 | [`BLK2006`](#blk2006--the-upstream-could-not-be-reached-or-did-not-answer-usefully) | the upstream could not be reached or did not answer usefully | v0.1.0 |
 | [`BLK2007`](#blk2007--the-upstream-ships-no-build-for-this-platform) | the upstream ships no build for this platform | v0.1.0 |
+| [`BLK2008`](#blk2008--the-release-carries-the-asset-name-more-than-once) | the release carries the asset name more than once | v0.1.0 |
 | [`BLK3001`](#blk3001--an-artifact-could-not-be-downloaded) | an artifact could not be downloaded | v0.1.0 |
 | [`BLK3002`](#blk3002--a-download-does-not-match-the-digest-in-blocklock) | a download does not match the digest in block.lock | v0.1.0 |
 | [`BLK3003`](#blk3003--a-cached-artifact-is-corrupt-and-could-not-be-replaced) | a cached artifact is corrupt and could not be replaced | v0.1.0 |
@@ -60,6 +61,7 @@ Look a code up from the terminal with `block explain BLK1001`, which prints this
 | [`BLK6003`](#blk6003--an-archive-contains-an-entry-block-will-not-extract) | an archive contains an entry block will not extract | v0.1.0 |
 | [`BLK6004`](#blk6004--an-archive-member-is-larger-than-block-will-extract) | an archive member is larger than block will extract | v0.1.0 |
 | [`BLK6005`](#blk6005--a-name-or-version-from-blocklock-is-not-a-path-component) | a name or version from block.lock is not a path component | v0.1.0 |
+| [`BLK6006`](#blk6006--an-archive-writes-the-same-file-twice) | an archive writes the same file twice | v0.1.0 |
 | [`BLK9001`](#blk9001--an-internal-error) | an internal error | v0.1.0 |
 
 ## BLK1xxx — what was asked for — block.toml, block.lock, and the names typed on the command line
@@ -199,6 +201,14 @@ Exits 1. Since v0.1.0.
 The recipe records which operating systems and architectures the upstream publishes, and the platform asked for is not one of them. block will not substitute a build for a different platform, and will not build from source.
 
 Fix: Use a platform the message lists, or drop the tool from the platforms your project declares. The full platform coverage of every tool is at https://github.com/nao1215/block/blob/main/doc/tools.md.
+
+Exits 1. Since v0.1.0.
+
+### BLK2008 — the release carries the asset name more than once
+
+The release publishes several files with the name the recipe renders. They are different downloads, and which of them a lockfile pinned would depend on the order the API happened to answer in, so block refuses rather than choosing. The message lists their URLs.
+
+Fix: For a registry tool, report it at https://github.com/nao1215/block-registry/issues — the asset template needs to be specific enough to name one file. For a `[tools.<name>.source]` of your own, make the template unambiguous.
 
 Exits 1. Since v0.1.0.
 
@@ -343,6 +353,14 @@ Exits 1. Since v0.1.0.
 A tool's name and version become a directory under $BLOCK_HOME, and that directory is one block creates, populates and removes. A value carrying a separator, a "..", a NUL or anything but the closed alphabet a version is written in is refused before it reaches the filesystem.
 
 Fix: Do not hand-edit block.lock. Restore it from version control, or delete it and run "block lock" to write it again.
+
+Exits 1. Since v0.1.0.
+
+### BLK6006 — an archive writes the same file twice
+
+Two members of the archive resolve to one file, so what ends up on disk would depend on which of them was extracted last. Names differing only in case are the usual cause: they are two files on Linux and one on macOS and Windows, and an archive that relies on the difference installs differently on different machines.
+
+Fix: For a `[tools.<name>.source]` of your own, take an artifact whose members are distinct. For a registry tool, report it at https://github.com/nao1215/block-registry/issues.
 
 Exits 1. Since v0.1.0.
 

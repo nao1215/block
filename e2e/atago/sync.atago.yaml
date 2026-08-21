@@ -286,6 +286,127 @@ scenarios:
             path: fresh/tools
             exists: false
 
+  # A bad download is a bad download; it is not a reason to lose a toolchain
+  # that was already installed and verified. The store is content-addressed and
+  # every install is built in a temporary directory and renamed into place, so
+  # a failure leaves what was already there exactly as it was.
+  - name: a checksum mismatch leaves an existing install alone
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: block lock && block sync && cp block.lock block.lock.good
+      - assert:
+          exit_code: 0
+      - assert:
+          dir:
+            path: home/tools/foundry
+            count: 1
+      # Now the artifact at that URL is not the artifact that was locked.
+      - run:
+          shell: true
+          command: perl -pi -e 's/^sha256 = "[0-9a-f]{4}/sha256 = "0000/' block.lock
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "block: BLK3002: foundry: checksum mismatch"
+      # Nothing was added to the store, and nothing half-written was left
+      # behind: the one install there is still the one that verified.
+      - assert:
+          dir:
+            path: home/tools/foundry
+            count: 1
+      # And with the lockfile back, the toolchain is untouched — no re-download
+      # and no repair needed.
+      - run:
+          shell: true
+          command: cp block.lock.good block.lock
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foundry  1.7.4  cached"
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.7.4 (fake)"
+
+  # A download in flight is written to a temporary file and only ever named
+  # after its own digest, so an interrupted transfer cannot be picked up as a
+  # cache hit. A file planted under a digest it does not hash to is discarded.
+  - name: a partial download is never served as a cache hit
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      # Plant a truncated blob under the digest the lockfile names.
+      - run:
+          shell: true
+          command: |
+            mkdir -p home/cache/sha256
+            digest=$(perl -ne 'print $1 if /^sha256 = "([0-9a-f]{64})"/' block.lock | head -1)
+            printf 'truncated' > "home/cache/sha256/$digest"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foundry  1.7.4  installed"
+      # It was re-fetched rather than trusted: the blob on disk now really
+      # hashes to its own name, and the tool runs.
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.7.4 (fake)"
+
+  # An https artifact answered by a redirect to plain http is a downgrade, and
+  # the transport rule is held on every hop rather than only on the first.
+  - name: a redirect to plain http is refused rather than followed
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          command: block lock
+      - run:
+          shell: true
+          command: perl -pi -e 's#/download/#/downgrade/#' block.lock
+      - run:
+          command: block sync
+          env:
+            BLOCK_HOME: "${workdir}/fresh"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "block: BLK6001: foundry: download"
+      - assert:
+          stderr:
+            contains: "refusing insecure url http://mirror.example.com/downgraded.tar.gz: only https is allowed"
+      - assert:
+          dir:
+            path: fresh/tools
+            exists: false
+
   - name: a cached archive is trusted only under its own digest
     env: *t1
     steps:
@@ -428,6 +549,111 @@ scenarios:
           file:
             path: outside/keep-me
             equals: "untouched\n"
+      - assert:
+          dir:
+            path: home
+            exists: false
+
+  # A lockfile arrives through pull requests and hand edits, and a bin entry is
+  # the field that says which file gets run. One pointing outside the install
+  # directory is refused where it is read, so neither sync nor exec nor a shim
+  # ever resolves it to a path on the machine.
+  - name: a hand-edited bin entry that points outside the install is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "1.7.4"
+            bin = ["../../../../../../bin/sh"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK1004: block.lock: tool "foundry": invalid bin entry "../../../../../../bin/sh": want a relative path inside the archive'
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - run:
+          command: block exec forge
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'invalid bin entry "../../../../../../bin/sh"'
+      - assert:
+          dir:
+            path: home
+            exists: false
+
+  # An absolute one, and one spelled the Windows way, are the same refusal:
+  # a lockfile is committed on one platform and read on every other.
+  - name: an absolute or drive-qualified bin entry is refused too
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "1.7.4"
+            bin = ["/bin/sh"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK1004: block.lock: tool "foundry": invalid bin entry "/bin/sh"'
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "1.7.4"
+            bin = ["C:\\Windows\\System32\\cmd"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK1004: block.lock: tool "foundry": invalid bin entry'
       - assert:
           dir:
             path: home

@@ -138,7 +138,10 @@ func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {
 	}
 	resp, err := f.HTTP.Do(req)
 	if err != nil {
-		return "", diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
+		// Wrap rather than Errorf: a redirect this client refused already
+		// carries the code for why, and "the download failed" is the less
+		// useful of the two answers.
+		return "", diag.DownloadFailed.Wrap(fmt.Errorf("download %s: %w", rawURL, err))
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only body
 	if resp.StatusCode != http.StatusOK {

@@ -162,6 +162,16 @@ func safePath(dst, name string) (string, error) {
 	if name == "" {
 		return "", diag.PathEscape.Errorf("archive entry has an empty name")
 	}
+	// tar and zip member names are slash-separated by specification, so a
+	// backslash, a drive letter or a UNC prefix is never a legitimate one.
+	// They are refused on every platform rather than only on Windows: an
+	// archive that carries "C:\Windows\..." is the same archive wherever it
+	// is unpacked, and finding out only on the platform where it would have
+	// worked is finding out too late. The check also keeps extraction — and
+	// the test that pins it — identical everywhere.
+	if strings.ContainsRune(name, '\\') || driveLetter(name) {
+		return "", diag.PathEscape.Errorf("refusing to extract %q: an archive entry may not name a drive, a share or a Windows path", name)
+	}
 	clean := filepath.Clean(filepath.FromSlash(name))
 	// A leading separator is rejected explicitly: on Windows "\etc" is not
 	// absolute in filepath's terms, but it is never a legitimate member name.
@@ -184,6 +194,16 @@ func safePath(dst, name string) (string, error) {
 	return target, nil
 }
 
+// driveLetter reports whether name starts with a Windows drive specification
+// ("C:", "c:/"), whatever platform this is.
+func driveLetter(name string) bool {
+	if len(name) < 2 || name[1] != ':' {
+		return false
+	}
+	c := name[0]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
 func writeFile(target string, r io.Reader, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
 		return err
@@ -192,7 +212,15 @@ func writeFile(target string, r io.Reader, mode os.FileMode) error {
 	if mode&0o100 != 0 {
 		perm = execMode
 	}
+	// O_EXCL, so a second member can never rewrite what a first one wrote.
+	// That matters most where the two names are not equal: on a
+	// case-insensitive filesystem "tool" and "TOOL" are one file, and an
+	// archive that relies on which of them lands last means different things
+	// on macOS and on Linux.
 	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm) //nolint:gosec // inside the install dir
+	if errors.Is(err, os.ErrExist) {
+		return diag.DuplicateEntry.Errorf("refusing to extract %q: the archive already wrote that file (names differing only in case are one file on some filesystems)", filepath.Base(target))
+	}
 	if err != nil {
 		return err
 	}

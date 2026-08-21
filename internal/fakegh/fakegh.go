@@ -14,6 +14,7 @@
 // Special prefixes emulate failure modes:
 //
 //	/ratelimited/repos/...   403 with X-RateLimit-Remaining: 0
+//	/downgrade/<name>        302 to plain http on a host that is not loopback
 //
 // Besides GitHub, the server plays a vendor download host at /blobs/<name>
 // for http-type recipes (modelled on go-ethereum's gethstore).
@@ -53,6 +54,10 @@ type release struct {
 	entries []entry
 	// prefix wraps every member in a directory, as versioned tarballs do.
 	prefix string
+	// twice publishes every asset of this release under its name a second
+	// time, at a different URL: the ambiguity block must refuse rather than
+	// resolve by taking whichever the API answered with first.
+	twice bool
 }
 
 type entry struct {
@@ -60,6 +65,9 @@ type entry struct {
 	link    string
 	content string
 	mode    int64
+	// typ overrides the tar type flag, so a fixture can carry the entries a
+	// tool distribution never legitimately has: a device node, a FIFO.
+	typ byte
 }
 
 // Repo is one fixture repository.
@@ -161,6 +169,40 @@ func Fixtures() []Repo {
 				assets:  platformAssets("linky_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
 				entries: []entry{{name: "etc-passwd", link: "/etc/passwd"}}},
 		}},
+		{owner: "example", name: "devnode", releases: []release{
+			// A character device inside a release archive. No tool
+			// distribution has one; an archive that does is asking for
+			// something other than files on disk.
+			{tag: "v1.0.0", at: 1, bins: []string{"devnode"},
+				assets:  platformAssets("devnode_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
+				entries: []entry{{name: "null", typ: tar.TypeChar, mode: 0o666}}},
+		}},
+		{owner: "example", name: "winpath", releases: []release{
+			// A member naming a Windows drive. It is refused wherever block
+			// runs, not only where it would have meant something.
+			{tag: "v1.0.0", at: 1, bins: []string{"winpath"},
+				assets:  platformAssets("winpath_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
+				entries: []entry{{name: `C:\Windows\System32\evil`, content: "outside\n", mode: 0o644}}},
+		}},
+		{owner: "example", name: "unc", releases: []release{
+			{tag: "v1.0.0", at: 1, bins: []string{"unc"},
+				assets:  platformAssets("unc_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
+				entries: []entry{{name: `\\server\share\evil`, content: "outside\n", mode: 0o644}}},
+		}},
+		{owner: "example", name: "twofiles", releases: []release{
+			// One name, two members: what lands on disk would depend on
+			// extraction order.
+			{tag: "v1.0.0", at: 1, bins: []string{"twofiles"},
+				assets: platformAssets("twofiles_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
+				entries: []entry{
+					{name: "README.md", content: "second\n", mode: 0o644},
+				}},
+		}},
+		{owner: "example", name: "dupasset", releases: []release{
+			// The same asset name published twice, at two URLs.
+			{tag: "v1.0.0", at: 1, twice: true, bins: []string{"dupasset"},
+				assets: platformAssets("dupasset_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
+		}},
 		{owner: "example", name: "nobin", releases: []release{
 			{tag: "v1.0.0", at: 1, bins: []string{"something-else"},
 				assets: platformAssets("nobin_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
@@ -229,6 +271,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-RateLimit-Reset", "1700000000")
 		http.Error(w, `{"message":"API rate limit exceeded"}`, http.StatusForbidden)
 		_ = rest
+		return
+	}
+	if rest, ok := strings.CutPrefix(path, "/downgrade/"); ok {
+		// A locked https (or loopback-http) URL whose host answers with a
+		// redirect to plain http somewhere else. block has to refuse the hop
+		// rather than follow it.
+		// A fixed destination, not one derived from the request: this is a
+		// test server, and the point is only that block sees an https (or
+		// loopback-http) URL answered by a plain-http Location somewhere
+		// else.
+		_ = rest
+		w.Header().Set("Location", "http://mirror.example.com/downgraded.tar.gz")
+		w.WriteHeader(http.StatusFound)
 		return
 	}
 	if rest, ok := strings.CutPrefix(path, "/download/"); ok {
@@ -313,6 +368,14 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, rest string, s
 					a["digest"] = "sha256:" + hex.EncodeToString(sum[:])
 				}
 				assets = append(assets, a)
+				if rel.twice {
+					dup := map[string]any{}
+					for k, v := range a {
+						dup[k] = v
+					}
+					dup["browser_download_url"] = fmt.Sprintf("%s/download/%s/%s/%s/mirror/%s", s.base, rp.owner, rp.name, rel.tag, name)
+					assets = append(assets, dup)
+				}
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"tag_name": rel.tag, "draft": rel.draft, "prerelease": rel.prerelease, "assets": assets,
@@ -547,17 +610,20 @@ func buildTarGz(members []entry) []byte {
 	tw := tar.NewWriter(gz)
 	for _, m := range members {
 		hdr := &tar.Header{Name: m.name, Mode: m.mode, ModTime: epoch}
-		if m.link != "" {
+		switch {
+		case m.typ != 0:
+			hdr.Typeflag = m.typ
+		case m.link != "":
 			hdr.Typeflag = tar.TypeSymlink
 			hdr.Linkname = m.link
-		} else {
+		default:
 			hdr.Typeflag = tar.TypeReg
 			hdr.Size = int64(len(m.content))
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
 			log.Fatal(err)
 		}
-		if m.link == "" {
+		if hdr.Typeflag == tar.TypeReg {
 			if _, err := tw.Write([]byte(m.content)); err != nil {
 				log.Fatal(err)
 			}

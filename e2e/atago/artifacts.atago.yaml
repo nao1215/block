@@ -159,6 +159,140 @@ scenarios:
           stderr:
             contains: 'refusing to extract link "etc-passwd": links are not supported'
 
+  # Every one of these is refused on every platform, so the scenarios carry no
+  # "only:" gate: an archive that names a Windows drive, or ships a device
+  # node, is the same archive wherever it is unpacked, and finding out only on
+  # the platform where it would have worked is finding out too late.
+  - name: an archive naming a Windows drive is refused everywhere
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.winpath]
+            version = "1"
+            [tools.winpath.source]
+            type = "github_release"
+            repo = "example/winpath"
+            asset = "winpath_{version}_{os}_{arch}.tar.gz"
+            bin = ["winpath"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK6002: winpath: extract winpath_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: refusing to extract "C:\\Windows\\System32\\evil": an archive entry may not name a drive, a share or a Windows path'
+      - assert:
+          dir:
+            path: home/tools/winpath
+            count: 0
+
+  - name: an archive naming a UNC share is refused everywhere
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.unc]
+            version = "1"
+            [tools.unc.source]
+            type = "github_release"
+            repo = "example/unc"
+            asset = "unc_{version}_{os}_{arch}.tar.gz"
+            bin = ["unc"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'an archive entry may not name a drive, a share or a Windows path'
+      - assert:
+          dir:
+            path: home/tools/unc
+            count: 0
+
+  - name: an archive containing a device node is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.devnode]
+            version = "1"
+            [tools.devnode.source]
+            type = "github_release"
+            repo = "example/devnode"
+            asset = "devnode_{version}_{os}_{arch}.tar.gz"
+            bin = ["devnode"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK6003: devnode: extract devnode_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: refusing to extract "null": unsupported entry type'
+      - assert:
+          dir:
+            path: home/tools/devnode
+            count: 0
+
+  # Two members of one name: which of them ended up on disk would otherwise
+  # depend on extraction order, and on a case-insensitive filesystem two
+  # members whose names differ only in case are the same collision.
+  - name: an archive that writes one file twice is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.twofiles]
+            version = "1"
+            [tools.twofiles.source]
+            type = "github_release"
+            repo = "example/twofiles"
+            asset = "twofiles_{version}_{os}_{arch}.tar.gz"
+            bin = ["twofiles"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK6006: twofiles: extract twofiles_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: refusing to extract "README.md": the archive already wrote that file'
+      - assert:
+          dir:
+            path: home/tools/twofiles
+            count: 0
+
+  # A release publishing one name twice is ambiguous, and block resolves the
+  # ambiguity by refusing: which of the two a lockfile pinned would otherwise
+  # depend on the order the API answered in.
+  - name: a release carrying one asset name twice is refused at lock time
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.dupasset]
+            version = "1"
+            [tools.dupasset.source]
+            type = "github_release"
+            repo = "example/dupasset"
+            asset = "dupasset_{version}_{os}_{arch}.tar.gz"
+            bin = ["dupasset"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK2008: dupasset: release v1.0.0 of example/dupasset has 2 assets named "dupasset_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz"'
+      - assert:
+          file:
+            path: block.lock
+            exists: false
+
   - name: an archive without the declared executable is not installed
     env: *t1
     steps:
