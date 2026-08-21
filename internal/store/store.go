@@ -58,11 +58,65 @@ func Open() (*Store, error) {
 func (s *Store) CacheDir() string { return filepath.Join(s.Root, "cache") }
 
 // InstallDir is where an artifact with the given digest is extracted.
-func (s *Store) InstallDir(name, ver, sha string) string {
+//
+// The name and the version reach here from block.lock, which arrives through
+// pull requests and hand edits, and the result is a directory this package
+// creates, populates and removes. Both are validated upstream — the name by
+// [recipe.ValidateName] and the version by [version.Parse], whose alphabet
+// admits no separator — and validated again here, because the cost of being
+// wrong is os.RemoveAll on a path outside $BLOCK_HOME.
+func (s *Store) InstallDir(name, ver, sha string) (string, error) {
 	if len(sha) > shortDigest {
 		sha = sha[:shortDigest]
 	}
-	return filepath.Join(s.Root, "tools", name, ver+"-"+sha)
+	if err := safeComponent("tool name", name); err != nil {
+		return "", fmt.Errorf("refusing to install %s %s: %w", name, ver, err)
+	}
+	if err := safeComponent("version", ver); err != nil {
+		return "", fmt.Errorf("refusing to install %s %s: %w", name, ver, err)
+	}
+	toolsRoot := filepath.Join(s.Root, "tools")
+	dir := filepath.Join(toolsRoot, name, ver+"-"+sha)
+	if err := containedIn(toolsRoot, dir); err != nil {
+		return "", fmt.Errorf("refusing to install %s %s: %w", name, ver, err)
+	}
+	return dir, nil
+}
+
+// safeComponent requires a value to be exactly one path component that names
+// something: not empty, not a directory reference, and carrying no separator
+// of either flavour. Checking the parts rather than only the joined result
+// matters because filepath.Join cleans an absolute component into a relative
+// one — "/etc/passwd" as a tool name would land inside the store rather than
+// outside it, and would still be nonsense on disk.
+func safeComponent(what, v string) error {
+	switch {
+	case v == "":
+		return fmt.Errorf("%s is empty", what)
+	case v == "." || v == "..":
+		return fmt.Errorf("%s %q is a directory reference", what, v)
+	case strings.ContainsRune(v, '/'), strings.ContainsRune(v, '\\'):
+		return fmt.Errorf("%s %q contains a path separator", what, v)
+	case strings.ContainsRune(v, 0):
+		return fmt.Errorf("%s %q contains a NUL", what, v)
+	case v != filepath.Clean(v):
+		return fmt.Errorf("%s %q is not a plain path component", what, v)
+	}
+	return nil
+}
+
+// containedIn reports whether dir is strictly below root once both are
+// cleaned. safeComponent already refuses the ways in, so this is the check
+// that has to keep holding if one is ever missed.
+func containedIn(root, dir string) error {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(dir))
+	if err != nil {
+		return fmt.Errorf("install path %q is not under %q", dir, root)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return fmt.Errorf("install path %q escapes %q", dir, root)
+	}
+	return nil
 }
 
 // IsInstalled reports whether dir holds a complete, usable install: the

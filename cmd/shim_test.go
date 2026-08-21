@@ -147,7 +147,11 @@ func installTool(t *testing.T, st *store.Store, tool, command, version string) s
 	}
 	sum := sha256.Sum256(buf.Bytes())
 	digest := hex.EncodeToString(sum[:])
-	if err := st.Install(archive, tool+".tar.gz", st.InstallDir(tool, version, digest), []string{command}, 0); err != nil {
+	dir, err := st.InstallDir(tool, version, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Install(archive, tool+".tar.gz", dir, []string{command}, 0); err != nil {
 		t.Fatal(err)
 	}
 	return digest

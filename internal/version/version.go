@@ -34,21 +34,36 @@ type Version struct {
 	text string
 }
 
+// maxVersion bounds the whole string. Upstream versions are short; anything
+// longer is a lockfile someone is playing with, and a path component has
+// limits of its own.
+const maxVersion = 128
+
 // Parse parses "MAJOR.MINOR[.PATCH][-PRE]". A bare alphabetic suffix such as
 // "rc1" in "29.1rc1" is a pre-release too. A leading "v" is not accepted
 // here; stripping the tag prefix is the recipe's job, not the parser's.
+//
+// The accepted alphabet is closed, and deliberately so: a parsed version
+// becomes a directory name under $BLOCK_HOME, and block.lock arrives through
+// pull requests and hand edits. A version carrying a separator, a "..", a NUL
+// or a control character is refused here rather than defended against
+// downstream — see [Version.String], whose result the store joins onto a path.
 func Parse(s string) (Version, error) {
 	var v Version
 	if s == "" {
 		return v, errors.New("version is empty")
 	}
-	core, pre, _ := strings.Cut(s, "-")
-	if plus := strings.IndexByte(pre, '+'); plus >= 0 {
-		pre = pre[:plus]
+	if len(s) > maxVersion {
+		return v, fmt.Errorf("invalid version: %d characters is longer than the %d a version may be", len(s), maxVersion)
 	}
-	if plus := strings.IndexByte(core, '+'); plus >= 0 {
-		core = core[:plus]
+	if err := checkAlphabet(s); err != nil {
+		return v, err
 	}
+	// Build metadata is not part of ordering, but it is part of the spelling
+	// String returns, so it is split off first and held to the same shape as
+	// the pre-release rather than skipped.
+	rest, build, hasBuild := strings.Cut(s, "+")
+	core, pre, _ := strings.Cut(rest, "-")
 	// "29.1rc1": split the bare suffix off the last numeric component.
 	if i := strings.IndexFunc(core, func(r rune) bool { return r != '.' && (r < '0' || r > '9') }); i >= 0 {
 		if pre != "" {
@@ -68,11 +83,53 @@ func Parse(s string) (Version, error) {
 		}
 		nums[i] = n
 	}
-	if pre != "" && pre[0] == '.' {
-		return v, fmt.Errorf("invalid version %q: empty pre-release", s)
+	if pre != "" {
+		if err := checkIdentifiers("pre-release", pre); err != nil {
+			return v, fmt.Errorf("invalid version %q: %w", s, err)
+		}
+	}
+	if hasBuild {
+		if err := checkIdentifiers("build metadata", build); err != nil {
+			return v, fmt.Errorf("invalid version %q: %w", s, err)
+		}
 	}
 	v.Major, v.Minor, v.Patch, v.Pre, v.text = nums[0], nums[1], nums[2], pre, s
 	return v, nil
+}
+
+// checkAlphabet rejects every byte a version may not contain. Only ASCII
+// alphanumerics and the four characters semver itself uses are allowed, which
+// leaves no way to write a path separator, a NUL, a control character, a
+// space, a shell metacharacter or a non-ASCII lookalike.
+func checkAlphabet(s string) error {
+	for i := range len(s) {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9',
+			c >= 'a' && c <= 'z',
+			c >= 'A' && c <= 'Z',
+			c == '.', c == '-', c == '+', c == '_':
+		default:
+			return fmt.Errorf("invalid version %q: %q is not allowed in a version", s, string(rune(c)))
+		}
+	}
+	return nil
+}
+
+// checkIdentifiers holds a pre-release or a build-metadata field to semver's
+// own shape: dot-separated identifiers, each non-empty. It is what stops "..",
+// a leading "." and a trailing "." from reaching a directory name, since a dot
+// is a legal separator but an empty identifier is not.
+func checkIdentifiers(what, field string) error {
+	if field == "" {
+		return fmt.Errorf("empty %s", what)
+	}
+	for _, id := range strings.Split(field, ".") {
+		if id == "" {
+			return fmt.Errorf("empty %s identifier", what)
+		}
+	}
+	return nil
 }
 
 // MustParse is Parse for literals in tests and tables; it panics on error.

@@ -58,7 +58,10 @@ func OpenToolchain(dir string, p platform.Platform, st *store.Store) (*Toolchain
 		if !ok {
 			return nil, fmt.Errorf("%s: %s has no artifact for %s; run \"block lock\" and \"block sync\"", tool.Name, lockfile.FileName, p)
 		}
-		install := st.InstallDir(tool.Name, tool.Version, art.SHA256)
+		install, err := st.InstallDir(tool.Name, tool.Version, art.SHA256)
+		if err != nil {
+			return nil, err
+		}
 		if err := st.Verify(install, tool.Bin); err != nil {
 			return nil, fmt.Errorf("%s %s %w; run \"block sync\"", tool.Name, tool.Version, err)
 		}

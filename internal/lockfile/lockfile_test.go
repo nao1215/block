@@ -119,6 +119,34 @@ func TestParseErrors(t *testing.T) {
 		}), `tool "foundry" (darwin/arm64): url is empty`},
 		{"short sha", valid(func(s string) string { return strings.Replace(s, sha, "abc", 1) }), `sha256 "abc" is not a 64-character hex digest`},
 		{"upper sha", valid(func(s string) string { return strings.Replace(s, sha, strings.ToUpper(sha), 1) }), "is not a 64-character hex digest"},
+
+		// A lockfile arrives through pull requests and hand edits. Its
+		// version becomes a directory name under $BLOCK_HOME, so anything
+		// that could be read as a path is refused before a download starts.
+		{"version escapes with unix separators", valid(func(s string) string {
+			return strings.Replace(s, `version = "1.7.1"`, `version = "1.7/../../outside"`, 1)
+		}), `tool "foundry": invalid version "1.7/../../outside"`},
+		{"version escapes with windows separators", valid(func(s string) string {
+			return strings.Replace(s, `version = "1.7.1"`, `version = '1.7\..\..\outside'`, 1)
+		}), `tool "foundry": invalid version`},
+		{"version hides a separator in the pre-release", valid(func(s string) string {
+			return strings.Replace(s, `version = "1.7.1"`, `version = "1.7.1-rc/../../outside"`, 1)
+		}), `tool "foundry": invalid version`},
+		{"version carries a control character", valid(func(s string) string {
+			return strings.Replace(s, `version = "1.7.1"`, `version = "1.7.1-rc\u0000"`, 1)
+		}), `tool "foundry": invalid version`},
+		{"version has an empty pre-release identifier", valid(func(s string) string {
+			return strings.Replace(s, `version = "1.7.1"`, `version = "1.7.1-a..b"`, 1)
+		}), `empty pre-release identifier`},
+
+		// And the pin has to be one the constraint beside it could have
+		// chosen: "resolved 1.7 to 9.9.9" installs what nobody asked for.
+		{"version does not satisfy its constraint", valid(func(s string) string {
+			return strings.Replace(s, `version = "1.7.1"`, `version = "9.9.9"`, 1)
+		}), `tool "foundry": version 9.9.9 does not satisfy the constraint "1.7"`},
+		{"version is a pre-release its constraint excludes", valid(func(s string) string {
+			return strings.Replace(s, `version = "1.7.1"`, `version = "1.7.2-rc.1"`, 1)
+		}), `does not satisfy the constraint`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

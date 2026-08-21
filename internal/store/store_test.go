@@ -79,11 +79,18 @@ func TestOpen(t *testing.T) {
 func TestInstallDir(t *testing.T) {
 	t.Parallel()
 	s := &Store{Root: "/r"}
-	got := s.InstallDir("foundry", "1.7.4", "593c607acd4d8fe57f560298f64779441a0aa7461893223def00eeedc612d0bb")
+	got, err := s.InstallDir("foundry", "1.7.4", "593c607acd4d8fe57f560298f64779441a0aa7461893223def00eeedc612d0bb")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got != filepath.Join("/r", "tools", "foundry", "1.7.4-593c607acd4d") {
 		t.Errorf("InstallDir() = %s", got)
 	}
-	if s.InstallDir("x", "1.0.0", "abc") != filepath.Join("/r", "tools", "x", "1.0.0-abc") {
+	short, err := s.InstallDir("x", "1.0.0", "abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if short != filepath.Join("/r", "tools", "x", "1.0.0-abc") {
 		t.Error("short digests must not be sliced")
 	}
 }
@@ -95,7 +102,10 @@ func TestInstall(t *testing.T) {
 	}
 	s := &Store{Root: t.TempDir()}
 	src := tarGz(t, map[string]string{"forge": "#!/bin/sh\n", "bin/cast": "#!/bin/sh\n"}, true)
-	dir := s.InstallDir("foundry", "1.7.4", "abcdef0123456789")
+	dir, err := s.InstallDir("foundry", "1.7.4", "abcdef0123456789")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if s.IsInstalled(dir, []string{"forge", "bin/cast"}) {
 		t.Fatal("installed before Install")
 	}
@@ -129,7 +139,10 @@ func TestInstallSetsTheExecutableBitOnDeclaredBins(t *testing.T) {
 	}
 	s := &Store{Root: t.TempDir()}
 	src := tarGz(t, map[string]string{"lotus": "x", "README": "docs"}, false)
-	dir := s.InstallDir("lotus", "1.36.2", "abcdef012345")
+	dir, err := s.InstallDir("lotus", "1.36.2", "abcdef012345")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Install(src, "lotus.tar.gz", dir, []string{"lotus"}, 0); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
@@ -164,8 +177,11 @@ func TestInstallRejectsBadArchives(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			dir := s.InstallDir(strings.ReplaceAll(tt.name, " ", "-"), "1.0.0", "abcdef012345")
-			err := s.Install(tt.src, "t.tar.gz", dir, tt.bins, 0)
+			dir, err := s.InstallDir(strings.ReplaceAll(tt.name, " ", "-"), "1.0.0", "abcdef012345")
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = s.Install(tt.src, "t.tar.gz", dir, tt.bins, 0)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Install() error = %v, want containing %q", err, tt.want)
 			}
@@ -190,7 +206,10 @@ func TestInstallRawExecutable(t *testing.T) {
 	if err := os.WriteFile(src, []byte("#!/bin/sh\necho solc\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dir := s.InstallDir("solc", "0.8.30", "abcdef012345")
+	dir, err := s.InstallDir("solc", "0.8.30", "abcdef012345")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Install(src, "solc-static-linux", dir, []string{"solc"}, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +217,10 @@ func TestInstallRawExecutable(t *testing.T) {
 	if err != nil || st.Mode()&0o100 == 0 {
 		t.Errorf("solc = %v, %v", st, err)
 	}
-	bad := s.InstallDir("solc", "0.8.31", "abcdef012345")
+	bad, err := s.InstallDir("solc", "0.8.31", "abcdef012345")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Install(src, "solc-static-linux", bad, []string{"a", "b"}, 0); err == nil || !strings.Contains(err.Error(), "exactly one bin name") {
 		t.Errorf("Install(two bins) error = %v", err)
 	}
@@ -247,7 +269,10 @@ func TestIsInstalledRejectsDamagedInstalls(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			s := &Store{Root: t.TempDir()}
-			dir := s.InstallDir("foundry", "1.7.4", "abcdef012345")
+			dir, err := s.InstallDir("foundry", "1.7.4", "abcdef012345")
+			if err != nil {
+				t.Fatal(err)
+			}
 			if err := s.Install(src, "foundry.tar.gz", dir, bins, 0); err != nil {
 				t.Fatal(err)
 			}
@@ -300,7 +325,10 @@ func TestInstallRejectsUnsafeBinEntries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			s := &Store{Root: t.TempDir()}
-			dir := s.InstallDir("tool", "1.0.0", "abcdef012345")
+			dir, err := s.InstallDir("tool", "1.0.0", "abcdef012345")
+			if err != nil {
+				t.Fatal(err)
+			}
 			if err := s.Install(tt.src, "tool", dir, tt.bins, 0); err == nil {
 				t.Fatal("an unsafe bin entry was accepted")
 			}
@@ -311,5 +339,71 @@ func TestInstallRejectsUnsafeBinEntries(t *testing.T) {
 				t.Fatal("a file was written outside the store")
 			}
 		})
+	}
+}
+
+// InstallDir builds a path this package creates, populates and removes, from
+// a name and a version that both arrive through block.lock. The version parser
+// closed the hole that let "1.7/../../outside" through; this is the second
+// wall, and it has to hold on its own.
+func TestInstallDirRefusesToEscapeTheStore(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(outside, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(outside, "keep-me")
+	if err := os.WriteFile(sentinel, []byte("untouched"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := &Store{Root: filepath.Join(root, "home")}
+
+	tests := []struct {
+		name string
+		tool string
+		ver  string
+	}{
+		{"version climbs out with unix separators", "foundry", "1.7/../../../outside"},
+		{"version climbs out with the OS separator", "foundry", filepath.Join("1.7", "..", "..", "..", "outside")},
+		{"version is a parent reference", "foundry", ".."},
+		{"version is an absolute path", "foundry", filepath.Join(root, "outside")},
+		{"tool name climbs out", filepath.Join("..", "..", "outside"), "1.7.0"},
+		{"tool name is absolute", filepath.Join(root, "outside"), "1.7.0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir, err := s.InstallDir(tt.tool, tt.ver, "abcdef012345")
+			if err == nil {
+				t.Fatalf("InstallDir(%q, %q) = %q, want an error", tt.tool, tt.ver, dir)
+			}
+			if dir != "" {
+				t.Errorf("InstallDir returned %q alongside its error", dir)
+			}
+		})
+	}
+
+	// Nothing was created and nothing was removed: refusing has to happen
+	// before any filesystem call, not after a directory has been made.
+	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "untouched" {
+		t.Errorf("the sentinel outside the store changed: %q, %v", got, err)
+	}
+	if _, err := os.Stat(s.Root); !os.IsNotExist(err) {
+		t.Errorf("the store root was created by a refused install: %v", err)
+	}
+}
+
+// The path it does build has to be the one the rest of the store expects.
+func TestInstallDirStaysUnderTools(t *testing.T) {
+	t.Parallel()
+	s := &Store{Root: t.TempDir()}
+	dir, err := s.InstallDir("foundry", "1.7.1", "abcdef0123456789")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(s.Root, "tools", "foundry", "1.7.1-abcdef012345")
+	if dir != want {
+		t.Errorf("InstallDir() = %q, want %q", dir, want)
 	}
 }

@@ -584,7 +584,10 @@ func (a *App) install(ctx context.Context, t *lockfile.Tool) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%s has no artifact for %s", lockfile.FileName, a.Platform)
 	}
-	dir := a.Store.InstallDir(t.Name, t.Version, art.SHA256)
+	dir, err := a.Store.InstallDir(t.Name, t.Version, art.SHA256)
+	if err != nil {
+		return "", err
+	}
 	if a.Store.IsInstalled(dir, t.Bin) {
 		return "cached", nil
 	}

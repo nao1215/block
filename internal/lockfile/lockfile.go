@@ -149,11 +149,20 @@ func validateTool(t *Tool) error {
 	if err := recipe.ValidateName(t.Name); err != nil {
 		return err
 	}
-	if _, err := version.ParseConstraint(t.Constraint); err != nil {
+	c, err := version.ParseConstraint(t.Constraint)
+	if err != nil {
 		return fmt.Errorf("tool %q: %w", t.Name, err)
 	}
-	if _, err := version.Parse(t.Version); err != nil {
+	v, err := version.Parse(t.Version)
+	if err != nil {
 		return fmt.Errorf("tool %q: %w", t.Name, err)
+	}
+	// The pin has to be a version the constraint beside it could have chosen.
+	// A lockfile arrives through pull requests and hand edits, and "resolved
+	// 1.7 to 9.9.9" is exactly the edit that would otherwise install
+	// something block.toml never asked for.
+	if !c.Matches(v) {
+		return fmt.Errorf("tool %q: version %s does not satisfy the constraint %q it was resolved from", t.Name, v, t.Constraint)
 	}
 	if len(t.Bin) == 0 {
 		return fmt.Errorf("tool %q: bin is empty", t.Name)

@@ -381,3 +381,140 @@ scenarios:
           exit_code: 1
           stderr:
             equals: "block: block.lock: unsupported lockfile version 2 (this block writes version 1)\n"
+
+  # A lockfile arrives through pull requests and hand edits, and its version
+  # becomes a directory name under $BLOCK_HOME. A version carrying a path
+  # separator would send the install — and the os.RemoveAll and MkdirAll that
+  # go with it — outside the store, so it is refused before anything is
+  # created, downloaded or removed.
+  - name: a hand-edited version that could escape the store is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: outside/keep-me
+          content: "untouched\n"
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "1.7/../../../outside"
+            bin = ["forge"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: block.lock: tool "foundry": invalid version "1.7/../../../outside"'
+          # Nothing was downloaded, nothing was installed, nothing was removed.
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - assert:
+          file:
+            path: outside/keep-me
+            equals: "untouched\n"
+      - assert:
+          dir:
+            path: home
+            exists: false
+
+  # The same edit with Windows separators, because a lockfile is committed on
+  # one platform and read on another.
+  - name: a hand-edited version with backslashes is refused too
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: outside/keep-me
+          content: "untouched\n"
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = '1.7\..\..\..\outside'
+            bin = ["forge"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: block.lock: tool "foundry": invalid version'
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - assert:
+          file:
+            path: outside/keep-me
+            equals: "untouched\n"
+      - assert:
+          dir:
+            path: home
+            exists: false
+
+  # A pin the constraint beside it could never have produced is the other half
+  # of the same edit: "resolved 1.7 to 9.9.9" would install what block.toml
+  # never asked for.
+  - name: a pinned version that does not satisfy its constraint is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "9.9.9"
+            bin = ["forge"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: block.lock: tool "foundry": version 9.9.9 does not satisfy the constraint "1.7" it was resolved from
+
+'
+          changes:
+            created: []
+            modified: []
+            deleted: []

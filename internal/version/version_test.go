@@ -1,6 +1,7 @@
 package version
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -217,4 +218,82 @@ func FuzzParse(f *testing.F) {
 			t.Fatalf("round trip changed %q: %v vs %v", s, v, again)
 		}
 	})
+}
+
+// A version becomes a directory name under $BLOCK_HOME, and block.lock
+// arrives through pull requests and hand edits. Everything below parsed before
+// the alphabet was closed, and "1.7/../../outside" reached filepath.Join.
+func TestParseRefusesAnythingThatCouldBeAPath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+	}{
+		{"unix separator", "1.7/../../outside"},
+		{"unix separator in the pre-release", "1.7.0-rc/../../outside"},
+		{"windows separator", `1.7\..\..\outside`},
+		{"windows separator in the pre-release", `1.7.0-rc\..\outside`},
+		{"bare unix separator", "1.7/x"},
+		{"bare windows separator", `1.7\x`},
+		{"parent directory", "1.7.0-.."},
+		{"parent directory alone", ".."},
+		{"trailing dot", "1.7.0-rc."},
+		{"leading dot in the pre-release", "1.7.0-.rc"},
+		{"empty pre-release identifier", "1.7.0-a..b"},
+		{"empty build identifier", "1.7.0+a..b"},
+		{"empty build metadata", "1.7.0+"},
+		{"NUL", "1.7.0-rc\x00"},
+		{"newline", "1.7.0-rc\nx"},
+		{"carriage return", "1.7.0-rc\rx"},
+		{"tab", "1.7.0-rc\tx"},
+		{"escape", "1.7.0-rc\x1b[2J"},
+		{"space", "1.7.0-rc 1"},
+		{"absolute path", "/etc/passwd"},
+		{"windows drive", `C:\windows`},
+		{"colon", "1.7.0-rc:1"},
+		{"tilde", "1.7.0-~"},
+		{"non-ascii digit", "1.7.٠"},
+		{"non-ascii lookalike", "1.7.0-rcｰ1"},
+		{"shell metacharacter", "1.7.0-rc;rm"},
+		{"quote", `1.7.0-rc"`},
+		{"star", "1.7.0-rc*"},
+		{"much too long", "1.7.0-" + strings.Repeat("a", 200)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v, err := Parse(tt.in)
+			if err == nil {
+				t.Fatalf("Parse(%q) = %q, want an error", tt.in, v)
+			}
+		})
+	}
+}
+
+// The formats block already supported have to keep working: the alphabet was
+// narrowed to stop paths, not to stop upstreams from spelling versions their
+// own way.
+func TestParseKeepsTheFormatsUpstreamsUse(t *testing.T) {
+	t.Parallel()
+	for _, s := range []string{
+		"1.2.3",          // semver
+		"29.0",           // two components, Bitcoin Core
+		"1.2.3-rc.1",     // dotted pre-release
+		"29.1rc1",        // bare suffix, Bitcoin Core
+		"1.2.3+build.5",  // build metadata
+		"1.2.3-rc.1+b.2", // both
+		"0.8.28",         // solc
+		"1.0.0-alpha",    // single-identifier pre-release
+		"2.0.0-beta.1",   // CometBFT
+		"1.7.0-rc_1",     // underscore, which semver allows in an identifier
+	} {
+		v, err := Parse(s)
+		if err != nil {
+			t.Errorf("Parse(%q): %v", s, err)
+			continue
+		}
+		if v.String() != s {
+			t.Errorf("Parse(%q).String() = %q, want the original spelling", s, v.String())
+		}
+	}
 }
