@@ -3,7 +3,7 @@
 Copyable recipes for pinning a blockchain toolchain. Every one of them runs as
 shown; swap the tool names and versions for yours.
 
-Three commands carry the whole workflow, and they never trade jobs:
+Three lifecycle commands carry the whole workflow, and they never trade jobs:
 
 ```text
 block.toml  ──block lock──▶  block.lock  ──block sync──▶  installed toolchain  ──block exec──▶  command

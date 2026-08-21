@@ -38,6 +38,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nao1215/block/registry"
 )
 
 // docImageRef is one image reference found in a documentation file.
@@ -580,4 +582,53 @@ func lastCommitUnix(path string) (int64, bool) {
 		return 0, false
 	}
 	return seconds, true
+}
+
+// The front pages count the catalogue out loud — "45 tools across 17
+// blockchain systems" — and that sentence is the one thing about the registry
+// a reader takes on trust without opening doc/tools.md. It goes stale the
+// moment a recipe is added, and nothing else notices, because the count is
+// prose rather than generated text. So it is checked against the registry the
+// binary actually carries.
+func TestDocs_CatalogueCountsMatchTheRegistry(t *testing.T) {
+	t.Parallel()
+
+	reg, err := registry.Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, ecosystems := len(reg.Recipes()), len(reg.Ecosystems())
+	if tools == 0 || ecosystems == 0 {
+		t.Fatal("the embedded registry is empty; the loader changed")
+	}
+
+	// Every phrasing of the claim across the documentation, so a page cannot
+	// escape the check by wording it differently.
+	claim := regexp.MustCompile(`(\d+) (?:tools|CLIs|recipes) across (\d+) blockchain systems`)
+	found := 0
+	for _, doc := range append(documentedFiles(t), repoPath(filepath.Join("doc", "tools.md"))) {
+		data, readErr := os.ReadFile(filepath.Clean(doc))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			m := claim.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			found++
+			gotTools, _ := strconv.Atoi(m[1])
+			gotEcosystems, _ := strconv.Atoi(m[2])
+			if gotTools != tools || gotEcosystems != ecosystems {
+				t.Errorf("%s says %q, but the embedded registry has %d tools across %d blockchain systems",
+					doc, m[0], tools, ecosystems)
+			}
+			if strings.Contains(m[0], "CLIs") {
+				t.Errorf("%s says %q; a registry entry is a tool, and one tool can provide several CLIs (foundry provides four)", doc, m[0])
+			}
+		}
+	}
+	if found == 0 {
+		t.Error("no page states how large the catalogue is; the check has nothing to guard")
+	}
 }
