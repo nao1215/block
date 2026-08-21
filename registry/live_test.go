@@ -255,6 +255,11 @@ func retry(fn func() error) error {
 // than a check on the recipe.
 func probe(t *testing.T, bin string) {
 	t.Helper()
+	// What each attempt said, kept so that a failure names the reason. "None
+	// of them worked" is not something a maintainer can act on: a binary that
+	// prints usage and exits 1 is a different problem from one the kernel
+	// refuses to start, and only one of the two is the recipe's fault.
+	var attempts []string
 	for _, args := range [][]string{{"--version"}, {"version"}, {"-version"}, {"--help"}} {
 		ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
 		out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
@@ -263,8 +268,10 @@ func probe(t *testing.T, bin string) {
 			t.Logf("%s %v: %s", filepath.Base(bin), args, firstLine(out))
 			return
 		}
+		attempts = append(attempts, fmt.Sprintf("%v: %v (%s)", args, err, firstLine(out)))
 	}
-	t.Errorf("%s: none of --version, version, -version or --help worked", filepath.Base(bin))
+	t.Errorf("%s: none of --version, version, -version or --help worked:\n  %s",
+		filepath.Base(bin), strings.Join(attempts, "\n  "))
 }
 
 func firstLine(b []byte) string {
