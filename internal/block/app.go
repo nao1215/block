@@ -185,7 +185,10 @@ func (a *App) report(results []lockResult, old, next *lockfile.Lock) error {
 // comparing artifact counts in report.
 func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, prev *lockfile.Tool, plats []platform.Platform, resolve, check bool) (*lockfile.Tool, lockResult, error) {
 	res := lockResult{name: t.Name}
-	entry := &lockfile.Tool{Name: t.Name, Constraint: t.Constraint.String(), Bin: append([]string(nil), src.Bin...), Source: src.Hash()}
+	entry := &lockfile.Tool{Name: t.Name, Constraint: t.Constraint.String(), Bin: append([]string(nil), src.Bin...), StripComponents: src.StripComponents}
+	if t.Source != nil {
+		entry.Source = src.Hash()
+	}
 	if prev != nil {
 		res.before = prev.Version
 	}
@@ -214,43 +217,43 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 		if _, ok := entry.Artifact(p); ok {
 			continue
 		}
-		if resolution.Release == nil {
+		if resolution.Release == nil && resolution.Version.String() == "" {
 			r, err := a.resolveExact(ctx, src, entry)
 			if err != nil {
 				return nil, res, err
 			}
 			resolution = r
 		}
-		artifactURL, err := resolver.Artifact(resolution, src, p)
+		art, err := resolver.ArtifactFor(resolution, src, p)
 		if err != nil {
 			return nil, res, err
 		}
-		if check {
-			entry.SetArtifact(lockfile.Artifact{Platform: p.String(), URL: artifactURL, SHA256: strings.Repeat("0", 64)}) //nolint:mnd // placeholder, never written
-			continue
+		switch {
+		case check:
+			// Placeholder: check mode compares versions and platforms only.
+			art.SHA256 = strings.Repeat("0", 64) //nolint:mnd // sha256 hex length
+		case art.SHA256 == "":
+			// The upstream publishes no digest: trust the first download.
+			fmt.Fprintf(a.Stderr, "downloading %s\n", art.URL)
+			_, sha, _, err := a.Fetcher.Fetch(ctx, art.URL, "")
+			if err != nil {
+				return nil, res, err
+			}
+			art.SHA256 = sha
 		}
-		fmt.Fprintf(a.Stderr, "downloading %s\n", artifactURL)
-		_, sha, _, err := a.Fetcher.Fetch(ctx, artifactURL, "")
-		if err != nil {
-			return nil, res, err
-		}
-		entry.SetArtifact(lockfile.Artifact{Platform: p.String(), URL: artifactURL, SHA256: sha})
+		entry.SetArtifact(lockfile.Artifact{Platform: p.String(), URL: art.URL, SHA256: art.SHA256})
 	}
 	return entry, res, nil
 }
 
-// resolveExact re-fetches the release of an already pinned version, needed
-// when a new platform is added to a pin that is otherwise kept.
+// resolveExact re-resolves an already pinned version, needed when a new
+// platform is added to a pin that is otherwise kept.
 func (a *App) resolveExact(ctx context.Context, src recipe.Source, entry *lockfile.Tool) (resolver.Resolution, error) {
 	v, err := entry.ParsedVersion()
 	if err != nil {
 		return resolver.Resolution{}, err
 	}
-	r, err := a.Releases.ReleaseByTag(ctx, src.Repo, src.Tag(v))
-	if err != nil {
-		return resolver.Resolution{}, fmt.Errorf("release %s of %s: %w", src.Tag(v), src.Repo, err)
-	}
-	return resolver.Resolution{Version: v, Release: r}, nil
+	return resolver.Exact(ctx, a.Releases, src, v)
 }
 
 // writeLock persists next when it differs from old and reports whether it did.
@@ -289,9 +292,10 @@ func (a *App) printResults(results []lockResult, verb, same string) {
 
 // Check compares a manifest with a lockfile and lists every reason the
 // lockfile cannot be trusted for the given platforms. An empty result means
-// the lockfile is current. It needs no network and no registry beyond the
-// recipe fingerprint.
-func Check(m *manifest.Manifest, l *lockfile.Lock, sources map[string]recipe.Source, plats []platform.Platform) []string {
+// the lockfile is current. It needs no network and no registry: only a
+// project-local source is fingerprinted, so registry changes never stale a
+// lock.
+func Check(m *manifest.Manifest, l *lockfile.Lock, plats []platform.Platform) []string {
 	var reasons []string
 	for _, t := range m.Tools {
 		e, ok := l.Tool(t.Name)
@@ -302,7 +306,7 @@ func Check(m *manifest.Manifest, l *lockfile.Lock, sources map[string]recipe.Sou
 		if e.Constraint != t.Constraint.String() {
 			reasons = append(reasons, fmt.Sprintf("%s: %s wants %q but %s was resolved from %q", t.Name, manifest.FileName, t.Constraint, lockfile.FileName, e.Constraint))
 		}
-		if src, ok := sources[t.Name]; ok && src.Hash() != e.Source {
+		if t.Source != nil && t.Source.Hash() != e.Source {
 			reasons = append(reasons, fmt.Sprintf("%s: the source definition changed since %s was resolved", t.Name, lockfile.FileName))
 		}
 		for _, p := range plats {
@@ -341,13 +345,7 @@ func (a *App) Sync(ctx context.Context) error {
 	if !a.Platform.IsSupported() {
 		return fmt.Errorf("unsupported platform %s", a.Platform)
 	}
-	sources := map[string]recipe.Source{}
-	for _, t := range m.Tools {
-		if src, err := a.sourceFor(t); err == nil {
-			sources[t.Name] = src
-		}
-	}
-	if reasons := Check(m, l, sources, []platform.Platform{a.Platform}); len(reasons) > 0 {
+	if reasons := Check(m, l, []platform.Platform{a.Platform}); len(reasons) > 0 {
 		return staleError(reasons)
 	}
 	tw := tabwriter.NewWriter(a.Stdout, 0, 0, 2, ' ', 0) //nolint:mnd // column padding
@@ -375,7 +373,7 @@ func (a *App) install(ctx context.Context, t *lockfile.Tool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := a.Store.Install(blob, assetName(art.URL), dir, t.Bin); err != nil {
+	if err := a.Store.Install(blob, assetName(art.URL), dir, t.Bin, t.StripComponents); err != nil {
 		return "", err
 	}
 	return "installed", nil

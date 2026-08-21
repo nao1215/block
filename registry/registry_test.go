@@ -15,7 +15,7 @@ func TestBuiltin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(r.Names(), ","); got != "foundry,hermes" {
+	if got := strings.Join(r.Names(), ","); got != "foundry,geth,hermes,solc" {
 		t.Errorf("Names() = %s", got)
 	}
 	foundry, ok := r.Lookup("foundry")
@@ -31,18 +31,29 @@ func TestBuiltin(t *testing.T) {
 	if err != nil || name != "hermes-v1.13.3-x86_64-unknown-linux-gnu.tar.gz" {
 		t.Errorf("hermes asset = %q, %v", name, err)
 	}
-	if _, ok := r.Lookup("geth"); ok {
-		t.Error("geth should not be registered yet")
+	geth, _ := r.Lookup("geth")
+	url, err := geth.Source.Render(version.MustParse("1.17.5"), platform.Platform{OS: "linux", Arch: "amd64"}, "9621c6ad10934a01b5514886fb6fbd87640b6c05")
+	if err != nil || url != "https://gethstore.blob.core.windows.net/builds/geth-linux-amd64-1.17.5-9621c6ad.tar.gz" || geth.Source.StripComponents != 1 {
+		t.Errorf("geth url = %q, %v", url, err)
 	}
-	// Every recipe must ship for every platform block supports, so that a
-	// multi-platform block.toml never fails on a registry tool.
-	for _, n := range r.Names() {
-		rec, _ := r.Lookup(n)
-		for _, p := range platform.Supported() {
-			if !rec.Source.Supports(p) {
-				t.Errorf("%s does not support %s", n, p)
-			}
+	if geth.Source.Supports(platform.Platform{OS: "darwin", Arch: "arm64"}) {
+		t.Error("geth has no macOS builds")
+	}
+	solc, _ := r.Lookup("solc")
+	for p, want := range map[platform.Platform]string{
+		{OS: "linux", Arch: "amd64"}:  "solc-static-linux",
+		{OS: "darwin", Arch: "arm64"}: "solc-macos",
+	} {
+		name, err := solc.Source.AssetName(version.MustParse("0.8.30"), p)
+		if err != nil || name != want {
+			t.Errorf("solc asset for %s = %q, %v", p, name, err)
 		}
+	}
+	if solc.Source.IsArchive() {
+		t.Error("solc ships raw executables")
+	}
+	if _, ok := r.Lookup("reth"); ok {
+		t.Error("unexpected recipe")
 	}
 }
 

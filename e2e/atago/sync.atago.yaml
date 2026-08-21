@@ -30,6 +30,7 @@ scenarios:
               hermes   1.13.0  installed
           changes:
             created:
+              - home/cache/sha256/*
               - home/tools/**
             modified: []
             deleted: []
@@ -38,6 +39,10 @@ scenarios:
             path: home/tools/foundry
             count: 1
             glob: "1.7.4-*"
+      - assert:
+          dir:
+            path: home/cache/sha256
+            count: 2
 
   - name: a second sync is served from the store and touches nothing
     env: *t1

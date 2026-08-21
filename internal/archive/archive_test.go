@@ -95,7 +95,7 @@ func TestExtractTarGz(t *testing.T) {
 		member{name: "pax", typ: tar.TypeXGlobalHeader},
 	)
 	dst := t.TempDir()
-	if err := Extract(src, dst, "x.tar.gz"); err != nil {
+	if err := Extract(src, dst, "x.tar.gz", 0); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dst, "dir", "forge"))
@@ -122,7 +122,7 @@ func TestExtractZip(t *testing.T) {
 		member{name: "doc.txt", content: "d", mode: 0o644},
 	)
 	dst := t.TempDir()
-	if err := Extract(src, dst, "x.zip"); err != nil {
+	if err := Extract(src, dst, "x.zip", 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dst, "bin", "tool")); err != nil {
@@ -170,7 +170,7 @@ func TestExtractRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dst := t.TempDir()
-			err := Extract(tt.src(t), dst, tt.ext)
+			err := Extract(tt.src(t), dst, tt.ext, 0)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Extract() error = %v, want containing %q", err, tt.want)
 			}
@@ -192,7 +192,7 @@ func TestExtractRefusesSymlinkedParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := tarGz(t, member{name: "lib/evil", content: "x", mode: 0o644})
-	err := Extract(src, dst, "a.tar.gz")
+	err := Extract(src, dst, "a.tar.gz", 0)
 	if err == nil || !strings.Contains(err.Error(), "is a symlink") {
 		t.Fatalf("Extract() error = %v", err)
 	}
@@ -208,7 +208,40 @@ func TestExtractDoesNotOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := tarGz(t, member{name: "a", content: "new", mode: 0o644})
-	if err := Extract(src, dst, "a.tar.gz"); err == nil {
+	if err := Extract(src, dst, "a.tar.gz", 0); err == nil {
 		t.Fatal("Extract overwrote an existing file")
+	}
+}
+
+func TestExtractStripComponents(t *testing.T) {
+	t.Parallel()
+	src := tarGz(t,
+		member{name: "geth-linux-amd64-1.17.5-abcdef12/", typ: tar.TypeDir, mode: 0o755},
+		member{name: "geth-linux-amd64-1.17.5-abcdef12/geth", content: "#!/bin/sh\n", mode: 0o755},
+		member{name: "geth-linux-amd64-1.17.5-abcdef12/COPYING", content: "gpl", mode: 0o644},
+		member{name: "toplevel-only", content: "dropped", mode: 0o644},
+	)
+	dst := t.TempDir()
+	if err := Extract(src, dst, "a.tar.gz", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "geth")); err != nil {
+		t.Errorf("geth not at the top level: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "toplevel-only")); err == nil {
+		t.Error("a member with too few components must be dropped")
+	}
+	// Stripping cannot be used to escape: "dir/../../x" is still refused.
+	evil := tarGz(t, member{name: "dir/../../x", content: "x", mode: 0o644})
+	if err := Extract(evil, t.TempDir(), "a.tar.gz", 1); err == nil {
+		t.Error("traversal after stripping accepted")
+	}
+	zsrc := zipFile(t, member{name: "pkg/", mode: 0o755}, member{name: "pkg/tool", content: "x", mode: 0o755})
+	zdst := t.TempDir()
+	if err := Extract(zsrc, zdst, "a.zip", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(zdst, "tool")); err != nil {
+		t.Errorf("zip strip failed: %v", err)
 	}
 }

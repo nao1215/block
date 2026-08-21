@@ -26,20 +26,35 @@ const (
 	execMode = 0o755
 )
 
-// Extract unpacks src into dst based on src's file name extension. dst must
+// Extract unpacks src into dst based on name's extension, dropping strip
+// leading path components from every member (entries that do not have that
+// many components are skipped, as tar --strip-components does). dst must
 // already exist and should be empty.
-func Extract(src, dst, name string) error {
+func Extract(src, dst, name string, strip int) error {
 	switch {
 	case strings.HasSuffix(name, ".tar.gz"), strings.HasSuffix(name, ".tgz"):
-		return extractTarGz(src, dst)
+		return extractTarGz(src, dst, strip)
 	case strings.HasSuffix(name, ".zip"):
-		return extractZip(src, dst)
+		return extractZip(src, dst, strip)
 	default:
 		return fmt.Errorf("unsupported archive format: %s", name)
 	}
 }
 
-func extractTarGz(src, dst string) error {
+// stripName removes n leading components; ok is false when nothing is left.
+func stripName(name string, n int) (string, bool) {
+	if n == 0 {
+		return name, true
+	}
+	parts := strings.Split(strings.TrimPrefix(name, "/"), "/")
+	if len(parts) <= n {
+		return "", false
+	}
+	rest := strings.Join(parts[n:], "/")
+	return rest, rest != ""
+}
+
+func extractTarGz(src, dst string, strip int) error {
 	f, err := os.Open(src) //nolint:gosec // cache path
 	if err != nil {
 		return err
@@ -59,7 +74,14 @@ func extractTarGz(src, dst string) error {
 		if err != nil {
 			return fmt.Errorf("invalid tar archive: %w", err)
 		}
-		target, err := safePath(dst, hdr.Name)
+		if hdr.Typeflag == tar.TypeXGlobalHeader || hdr.Typeflag == tar.TypeXHeader {
+			continue
+		}
+		name, ok := stripName(hdr.Name, strip)
+		if !ok {
+			continue
+		}
+		target, err := safePath(dst, name)
 		if err != nil {
 			return err
 		}
@@ -74,22 +96,24 @@ func extractTarGz(src, dst string) error {
 			}
 		case tar.TypeSymlink, tar.TypeLink:
 			return fmt.Errorf("refusing to extract link %q: links are not supported", hdr.Name)
-		case tar.TypeXGlobalHeader, tar.TypeXHeader:
-			continue
 		default:
 			return fmt.Errorf("refusing to extract %q: unsupported entry type %q", hdr.Name, hdr.Typeflag)
 		}
 	}
 }
 
-func extractZip(src, dst string) error {
+func extractZip(src, dst string, strip int) error {
 	zr, err := zip.OpenReader(src)
 	if err != nil {
 		return fmt.Errorf("invalid zip archive: %w", err)
 	}
 	defer zr.Close() //nolint:errcheck // read-only
 	for _, zf := range zr.File {
-		target, err := safePath(dst, zf.Name)
+		name, ok := stripName(zf.Name, strip)
+		if !ok {
+			continue
+		}
+		target, err := safePath(dst, name)
 		if err != nil {
 			return err
 		}

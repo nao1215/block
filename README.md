@@ -101,7 +101,7 @@ Commit both `block.toml` and `block.lock`.
 
 | Command | Resolves versions | Writes `block.lock` | Downloads | Installs | Runs your command |
 | --- | :-: | :-: | :-: | :-: | :-: |
-| `block lock [tool...]` | yes | yes | artifacts for new pins | no | no |
+| `block lock [tool...]` | yes | yes | only artifacts whose upstream publishes no digest | no | no |
 | `block lock --check` | yes | **no** | no | no | no |
 | `block sync` | **no** | **no** | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | **no** | **no** | **no** | **no** | yes |
@@ -120,6 +120,12 @@ $ block lock hermes       # re-resolve hermes, keep the other pins
 
 Output is one line per tool: `locked 1.7.4` for a new pin, `1.7.4 -> 1.7.5`
 for a moved one, `1.7.4` for an unchanged one.
+
+When the upstream publishes a checksum (GitHub records a sha256 for every
+release asset uploaded since 2025), `lock` writes it down without
+downloading anything. Otherwise it downloads the artifact once to record its
+digest (trust on first use); every later download, on every machine, must
+match.
 
 ### `block lock --check`
 
@@ -141,6 +147,7 @@ $ echo $?
 
 Use it in a scheduled job to learn about upstream releases without touching
 the repository; run `block lock` and open a pull request when it exits 2.
+`--check` stops at version discovery: it never downloads artifacts.
 
 ### `block sync`
 
@@ -215,12 +222,15 @@ asset = "foo_{version}_{os}_{arch}.tar.gz"   # {version} has no "v" prefix
 bin = ["foo"]                                # executables inside the archive
 # tag_prefix = "v"                           # text before the version in tags
 # platforms = ["linux/amd64", "darwin/arm64"]
+# strip_components = 1                       # drop a wrapping directory
 # [tools.foo.source.os]   linux = "unknown-linux-gnu"   # rename {os}
 # [tools.foo.source.arch] amd64 = "x86_64"              # rename {arch}
 ```
 
 A project-local source uses exactly the same model as a registry recipe, so
-moving a definition into the registry is a copy.
+moving a definition into the registry is a copy. That is the intended path:
+define the tool in your project, use it, and promote it to the registry once
+it is useful to more than one project. Nobody waits for a registry merge.
 
 Supported platforms: `linux/amd64`, `linux/arm64`, `darwin/amd64`,
 `darwin/arm64`.
@@ -237,7 +247,6 @@ name = "foundry"
 constraint = "1.7"
 version = "1.7.4"
 bin = ["forge", "cast", "anvil", "chisel"]
-source = "sha256:…"          # fingerprint of the recipe the pin was resolved with
 
 [[tools.artifacts]]
 platform = "darwin/arm64"
@@ -259,8 +268,10 @@ Three files, three responsibilities:
 | `block.lock` | *what was decided* | your repository |
 
 The lock holds facts only — exact version, executables, URL and digest per
-platform — plus a fingerprint of the recipe, so a changed recipe makes the
-pin stale instead of silently installing something it never resolved.
+platform. A project-local source additionally records a fingerprint of its
+definition (`source = "sha256:…"`), so editing it makes the pin stale. A
+registry recipe change never affects an existing lock: `sync` needs only the
+URLs and digests already written down.
 
 Checksums are computed by block when it first downloads an artifact
 (trust-on-first-use at `lock` time); every later download, on every machine,
@@ -316,7 +327,7 @@ git tags of the repository           (GET /repos/{repo}/git/matching-refs/tags/{
 Listing tags instead of paging through `/releases` matters for projects such
 as Foundry, whose release list is dominated by hundreds of nightly builds.
 
-## Registry
+## Registry and source types
 
 The built-in registry is a directory of TOML recipes, one per tool, embedded
 into the binary:
@@ -344,22 +355,40 @@ arm64 = "aarch64"
 A recipe changes only when an upstream renames its assets or moves
 repositories. New releases need nothing. Recipes are data, never commands.
 
-Currently registered: `foundry` (`forge`, `cast`, `anvil`, `chisel`) and
-`hermes`. The registry is intentionally small; it grows when a recipe is
-needed, not to pad a list. Tools that do not publish per-platform archives on
-GitHub Releases (for example go-ethereum, whose builds come from a separate
-download server keyed by commit hash) are not supported yet.
+Not every blockchain CLI is a GitHub Release asset, and block does not stop
+there. A recipe names one of the source types below — the most
+self-contained, fastest and safest one the upstream allows — and block
+executes it deterministically, never falling back to another at run time:
+
+| type | what it does | example |
+| --- | --- | --- |
+| `github_release` | versions from git tags; download a release asset (archive or a single raw executable); use GitHub's sha256 when recorded | foundry, hermes, solc |
+| `http` | versions from git tags; download from the upstream's own HTTPS server; `{commit}` expands to the tagged commit for vendors that name builds by it | geth |
+
+Next in line, each added only when a tool needs it: official GitHub content
+or archives, language package registries (`go_install`, `cargo`, `npm`,
+`pipx`), and limited known source builds (`go_build`, `cargo_build`). Every
+one of them will be a source type whose meaning and safety boundary block
+understands. There is no `install = "curl … | bash"` escape hatch and there
+never will be.
+
+Currently registered: `foundry` (`forge`, `cast`, `anvil`, `chisel`), `geth`
+(Linux only — upstream stopped shipping macOS builds), `hermes` and `solc`.
+See [registry/README.md](./registry/README.md) for the recipe schema.
 
 ## Security
 
 - Artifacts are fetched over HTTPS only. Plain HTTP is accepted only for
   loopback addresses so offline test servers can stand in for GitHub.
 - Every download is hashed while streaming and must match the SHA-256 in
-  `block.lock` before extraction. The cache stores blobs under their digest,
-  so a cached file can never be the wrong bytes for its name.
+  `block.lock` before extraction. The digest comes from the upstream when it
+  publishes one (GitHub's per-asset sha256) and from the first download
+  otherwise. The cache stores blobs under their digest, so a cached file can
+  never be the wrong bytes for its name.
 - Archives (`.tar.gz`, `.tgz`, `.zip`) are extracted defensively: absolute
-  paths, `..` components, symlinks and hard links are refused; only the
-  executable bit is preserved from archive permissions.
+  paths, `..` components, symlinks and hard links are refused — also after
+  `strip_components` — and only the executable bit is preserved from archive
+  permissions. A raw executable is copied under its one `bin` name.
 - Installs are atomic: extraction happens in a temporary directory that is
   renamed into place only after every entry succeeded and every declared
   executable exists.

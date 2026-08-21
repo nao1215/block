@@ -12,15 +12,23 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/nao1215/block/internal/platform"
 	"github.com/nao1215/block/internal/version"
 )
 
-// TypeGitHubRelease names the only source type v0.1 implements: versions come
-// from git tags and artifacts from GitHub Release assets.
-const TypeGitHubRelease = "github_release"
+// Source types, in the order block prefers them. A recipe states one; block
+// executes it deterministically and never falls back to another.
+const (
+	// TypeGitHubRelease discovers versions from git tags and downloads a
+	// GitHub Release asset (an archive or a single raw executable).
+	TypeGitHubRelease = "github_release"
+	// TypeHTTP discovers versions from git tags and downloads a prebuilt
+	// artifact from the upstream's own HTTPS download server.
+	TypeHTTP = "http"
+)
 
 // DefaultTagPrefix is stripped from tags when no tag_prefix is configured.
 const DefaultTagPrefix = "v"
@@ -34,9 +42,18 @@ type Source struct {
 	// TagPrefix is the text before the semantic version in a git tag ("v"
 	// for "v1.7.4"). Set it to "" explicitly for bare "1.7.4" tags.
 	TagPrefix *string `toml:"tag_prefix,omitempty"`
-	// Asset is the release asset file name template. {version}, {os} and
-	// {arch} are substituted; {os}/{arch} go through the OS/Arch maps first.
-	Asset string `toml:"asset"`
+	// Asset is the release asset file name template (github_release).
+	// {version}, {os} and {arch} are substituted; {os}/{arch} go through the
+	// OS/Arch maps first. A name without an archive extension is a single
+	// raw executable installed under the one name in Bin.
+	Asset string `toml:"asset,omitempty"`
+	// URL is the HTTPS download URL template (http). Besides the asset
+	// placeholders it accepts {commit}, the first 8 hex digits of the commit
+	// the version tag points at.
+	URL string `toml:"url,omitempty"`
+	// StripComponents drops this many leading path components when
+	// extracting, for archives that wrap everything in a versioned directory.
+	StripComponents int `toml:"strip_components,omitempty"`
 	// OS renames Go's GOOS into the upstream's spelling (darwin -> apple-darwin).
 	OS map[string]string `toml:"os,omitempty"`
 	// Arch renames Go's GOARCH into the upstream's spelling (amd64 -> x86_64).
@@ -57,27 +74,41 @@ type Recipe struct {
 
 // Validate checks that the source is complete and internally consistent.
 func (s Source) Validate() error {
-	if s.Type != TypeGitHubRelease {
-		return fmt.Errorf("unsupported source type %q: only %q is supported", s.Type, TypeGitHubRelease)
-	}
 	owner, name, ok := strings.Cut(s.Repo, "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return fmt.Errorf("invalid repo %q: want owner/name", s.Repo)
 	}
-	if s.Asset == "" {
-		return errors.New("asset template is required")
+	switch s.Type {
+	case TypeGitHubRelease:
+		if s.URL != "" {
+			return errors.New("url is only valid for type \"http\"")
+		}
+		if err := s.validateAsset(); err != nil {
+			return err
+		}
+	case TypeHTTP:
+		if s.Asset != "" {
+			return errors.New("asset is only valid for type \"github_release\"")
+		}
+		if err := s.validateURL(); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported source type %q: want %q or %q", s.Type, TypeGitHubRelease, TypeHTTP)
 	}
-	if !strings.Contains(s.Asset, "{version}") {
-		return fmt.Errorf("asset template %q must contain {version}", s.Asset)
-	}
-	if strings.ContainsAny(s.Asset, "/\\") {
-		return fmt.Errorf("asset template %q must be a bare file name", s.Asset)
-	}
-	if !supportedArchive(s.Asset) {
-		return fmt.Errorf("asset template %q must end in .tar.gz, .tgz or .zip", s.Asset)
+	if s.StripComponents < 0 {
+		return errors.New("strip_components must not be negative")
 	}
 	if len(s.Bin) == 0 {
 		return errors.New("bin must list at least one executable")
+	}
+	if !s.IsArchive() {
+		if len(s.Bin) != 1 || strings.Contains(s.Bin[0], "/") {
+			return fmt.Errorf("a raw executable %q needs exactly one bare bin name", s.ArtifactTemplate())
+		}
+		if s.StripComponents != 0 {
+			return errors.New("strip_components is only valid for archives")
+		}
 	}
 	for _, b := range s.Bin {
 		if err := validateBin(b); err != nil {
@@ -92,13 +123,63 @@ func (s Source) Validate() error {
 	return nil
 }
 
-func supportedArchive(name string) bool {
+func (s Source) validateAsset() error {
+	if s.Asset == "" {
+		return errors.New("asset template is required")
+	}
+	// {version} is optional here: the release is already version-specific
+	// and some upstreams (solc) name their assets without it.
+	if strings.ContainsAny(s.Asset, "/\\") {
+		return fmt.Errorf("asset template %q must be a bare file name", s.Asset)
+	}
+	if strings.Contains(s.Asset, "{commit}") {
+		return errors.New("{commit} is only valid in an http url")
+	}
+	return nil
+}
+
+func (s Source) validateURL() error {
+	if s.URL == "" {
+		return errors.New("url template is required")
+	}
+	if !strings.HasPrefix(s.URL, "https://") && !strings.HasPrefix(s.URL, "http://") {
+		return fmt.Errorf("url template %q must start with https://", s.URL)
+	}
+	if !strings.Contains(s.URL, "{version}") {
+		return fmt.Errorf("url template %q must contain {version}", s.URL)
+	}
+	return nil
+}
+
+// ArtifactTemplate is the asset or url template, whichever the type uses.
+func (s Source) ArtifactTemplate() string {
+	if s.Type == TypeHTTP {
+		return s.URL
+	}
+	return s.Asset
+}
+
+// IsArchive reports whether the artifact is an archive (as opposed to a
+// single raw executable), judged by the template's extension.
+func (s Source) IsArchive() bool {
+	return IsArchiveName(s.ArtifactTemplate())
+}
+
+// IsArchiveName reports whether a file name has an archive extension block
+// can extract.
+func IsArchiveName(name string) bool {
 	for _, ext := range []string{".tar.gz", ".tgz", ".zip"} {
 		if strings.HasSuffix(name, ext) {
 			return true
 		}
 	}
 	return false
+}
+
+// NeedsCommit reports whether resolving an artifact requires the commit the
+// version tag points at.
+func (s Source) NeedsCommit() bool {
+	return strings.Contains(s.ArtifactTemplate(), "{commit}")
 }
 
 func validateBin(b string) error {
@@ -190,10 +271,17 @@ func (s Source) Supports(p platform.Platform) bool {
 	return false
 }
 
-// AssetName renders the release asset file name for a version and platform.
-func (s Source) AssetName(v version.Version, p platform.Platform) (string, error) {
+// commitLen is how many hex digits of a commit {commit} expands to.
+const commitLen = 8
+
+// Render expands the asset or url template for a version, platform and
+// (when the template uses it) commit.
+func (s Source) Render(v version.Version, p platform.Platform, commit string) (string, error) {
 	if !s.Supports(p) {
 		return "", &UnsupportedPlatformError{Platform: p, Supported: s.SupportedPlatforms()}
+	}
+	if s.NeedsCommit() && len(commit) < commitLen {
+		return "", fmt.Errorf("template %q needs a commit but none was resolved", s.ArtifactTemplate())
 	}
 	os, arch := p.OS, p.Arch
 	if m, ok := s.OS[os]; ok {
@@ -202,14 +290,24 @@ func (s Source) AssetName(v version.Version, p platform.Platform) (string, error
 	if m, ok := s.Arch[arch]; ok {
 		arch = m
 	}
-	r := strings.NewReplacer("{version}", v.String(), "{os}", os, "{arch}", arch)
-	return r.Replace(s.Asset), nil
+	short := commit
+	if len(short) > commitLen {
+		short = short[:commitLen]
+	}
+	r := strings.NewReplacer("{version}", v.String(), "{os}", os, "{arch}", arch, "{commit}", short)
+	return r.Replace(s.ArtifactTemplate()), nil
+}
+
+// AssetName renders the release asset file name for a version and platform.
+func (s Source) AssetName(v version.Version, p platform.Platform) (string, error) {
+	return s.Render(v, p, "")
 }
 
 // Equal reports whether two sources resolve artifacts identically.
 func (s Source) Equal(o Source) bool {
 	return s.Type == o.Type && s.Repo == o.Repo && s.EffectiveTagPrefix() == o.EffectiveTagPrefix() &&
-		s.Asset == o.Asset && mapsEqual(s.OS, o.OS) && mapsEqual(s.Arch, o.Arch) &&
+		s.Asset == o.Asset && s.URL == o.URL && s.StripComponents == o.StripComponents &&
+		mapsEqual(s.OS, o.OS) && mapsEqual(s.Arch, o.Arch) &&
 		sliceSetEqual(s.Platforms, o.Platforms) && sliceEqual(s.Bin, o.Bin)
 }
 
@@ -260,7 +358,8 @@ func (e *UnsupportedPlatformError) Error() string {
 // stale instead of silently installing something the lock never resolved.
 func (s Source) Hash() string {
 	var b strings.Builder
-	b.WriteString(s.Type + "\n" + s.Repo + "\n" + s.EffectiveTagPrefix() + "\n" + s.Asset + "\n")
+	b.WriteString(s.Type + "\n" + s.Repo + "\n" + s.EffectiveTagPrefix() + "\n" + s.Asset + "\n" + s.URL + "\n")
+	b.WriteString(strconv.Itoa(s.StripComponents) + "\n")
 	writeMap := func(m map[string]string) {
 		keys := make([]string, 0, len(m))
 		for k := range m {

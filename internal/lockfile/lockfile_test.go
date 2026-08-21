@@ -107,7 +107,7 @@ func TestParseErrors(t *testing.T) {
 		{"bad constraint", valid(func(s string) string { return strings.Replace(s, `constraint = "1.7"`, `constraint = "~1.7"`, 1) }), `tool "foundry": invalid version constraint`},
 		{"bad version", valid(func(s string) string { return strings.Replace(s, `version = "1.7.1"`, `version = "v1.7.1"`, 1) }), `tool "foundry": invalid version "v1.7.1"`},
 		{"no bin", valid(func(s string) string { return strings.Replace(s, `bin = ["hermes"]`, `bin = []`, 1) }), `tool "hermes": bin is empty`},
-		{"no source", valid(func(s string) string { return strings.Replace(s, `source = "`+source+`"`, `source = ""`, 1) }), `tool "foundry": source is empty`},
+		{"negative strip", "version = 1\n[[tools]]\nname = \"hermes\"\nconstraint = \"1\"\nversion = \"1.0.0\"\nbin = [\"hermes\"]\nstrip_components = -1\n", `tool "hermes": strip_components must not be negative`},
 		{"bad platform", valid(func(s string) string {
 			return strings.Replace(s, `platform = "darwin/arm64"`, `platform = "windows/arm64"`, 1)
 		}), `tool "foundry": unsupported platform`},

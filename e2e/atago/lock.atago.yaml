@@ -20,6 +20,8 @@ scenarios:
             foundry = "1.7"
       - run:
           command: block lock
+      # GitHub records a sha256 for the asset, so lock writes it down without
+      # downloading anything.
       - assert:
           exit_code: 0
           stdout:
@@ -27,11 +29,9 @@ scenarios:
               foundry  locked 1.7.4
               wrote block.lock
           stderr:
-            contains: "downloading "
+            equals: ""
           changes:
-            created:
-              - block.lock
-              - home/cache/sha256/*
+            created: [block.lock]
             modified: []
       - assert:
           file:
@@ -43,16 +43,17 @@ scenarios:
               - 'constraint = "1.7"'
               - 'version = "1.7.4"'
               - 'bin = ["forge", "cast", "anvil", "chisel"]'
-              - 'source = "sha256:'
               - 'platform = "linux/amd64"'
               - "/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_linux_amd64.tar.gz"
-      # The lock records facts, not the recipe.
+      # The lock records facts, not the recipe; a registry tool carries no
+      # source fingerprint, so a registry change never stales it.
       - assert:
           file:
             path: block.lock
             not_contains:
               - "repo ="
               - "asset ="
+              - "source ="
       - run:
           shell: true
           command: grep -E 'sha256 = "[0-9a-f]{64}"' block.lock
@@ -261,15 +262,13 @@ scenarios:
           exit_code: 0
           stdout:
             contains: "wrote block.lock"
-          stderr:
-            contains: "foundry_v1.7.4_darwin_arm64.tar.gz"
-            not_contains: "foundry_v1.7.4_linux_amd64.tar.gz"
       - assert:
           file:
             path: block.lock
             contains:
               - 'platform = "darwin/arm64"'
               - 'platform = "linux/amd64"'
+              - "foundry_v1.7.4_darwin_arm64.tar.gz"
 
   - name: removing a tool from block.toml drops it from block.lock
     env: *t1
@@ -336,16 +335,118 @@ scenarios:
             bin = ["foo"]
       - run:
           command: block lock
+      # example/foo publishes no digest: the artifact is downloaded once so
+      # its checksum can be recorded (trust on first use).
       - assert:
           exit_code: 0
           stdout:
             contains:
               - "foo      locked 1.2.0"
               - "foundry  locked 1.7.4"
+          stderr:
+            equals: "downloading ${env:FAKEGH_URL}/download/example/foo/v1.2.0/foo_1.2.0_linux_amd64.tar.gz\n"
+          changes:
+            created:
+              - block.lock
+              - home/cache/sha256/*
+      # A project-local recipe is fingerprinted so that editing it stales the lock.
       - assert:
           file:
             path: block.lock
-            contains: "/download/example/foo/v1.2.0/foo_1.2.0_linux_amd64.tar.gz"
+            contains:
+              - "/download/example/foo/v1.2.0/foo_1.2.0_linux_amd64.tar.gz"
+              - 'source = "sha256:'
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stderr:
+            equals: ""
+          stdout:
+            contains: "block.lock is up to date"
+
+  - name: an http source downloads from the vendor's server using the tagged commit
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.geth]
+            version = "1.17"
+
+            [tools.geth.source]
+            type = "http"
+            repo = "ethereum/go-ethereum"
+            url = "${env:FAKEGH_URL}/blobs/geth-{os}-{arch}-{version}-{commit}.tar.gz"
+            strip_components = 1
+            bin = ["geth"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "geth  locked 1.17.4"
+      - run:
+          shell: true
+          command: grep -E 'url = ".*/blobs/geth-linux-amd64-1\.17\.4-[0-9a-f]{8}\.tar\.gz"' block.lock && grep -q 'strip_components = 1' block.lock
+      - assert:
+          exit_code: 0
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "geth  1.17.4  installed\n"
+      - run:
+          command: block exec geth version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "geth 1.17.4 (fake)"
+      - run:
+          command: block lock --check
+          env:
+            BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: "geth  1.17.4 -> 1.17.5\n"
+
+  - name: a release that ships a single raw executable is installed under its bin name
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.rawbin]
+            version = "1"
+
+            [tools.rawbin.source]
+            type = "github_release"
+            repo = "example/rawbin"
+            asset = "rawbin-{os}-{arch}"
+            bin = ["rawbin"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "rawbin  1.0.0  installed"
+      - assert:
+          dir:
+            path: home/tools/rawbin
+            recursive: true
+            count: 1
+            glob: "rawbin"
+      - run:
+          command: block exec rawbin --flag
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              rawbin 1.0.0 (fake)
+              args: --flag
 
   - name: a project-local source can opt out of the v tag prefix
     env: *t1
@@ -388,9 +489,7 @@ scenarios:
           stdout:
             contains: "wrote block.lock"
           changes:
-            created:
-              - block.lock
-              - home/cache/sha256/*
+            created: [block.lock]
 
   - name: lock fails when no release satisfies the constraint
     env: *t1
@@ -460,7 +559,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: unknown tool "solana": it is not in the registry (known tools: foundry, hermes); define [tools.solana.source] in block.toml to use it anyway
+            equals: 'block: unknown tool "solana": it is not in the registry (known tools: foundry, geth, hermes, solc); define [tools.solana.source] in block.toml to use it anyway
 
 '
 
@@ -533,7 +632,7 @@ scenarios:
             [tools.foo]
             version = "1.2"
             [tools.foo.source]
-            type = "http"
+            type = "cargo"
             repo = "example/foo"
             asset = "foo_{version}.tar.gz"
             bin = ["foo"]
@@ -542,7 +641,24 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'tool "foo": unsupported source type "http": only "github_release" is supported'
+            contains: 'tool "foo": unsupported source type "cargo": want "github_release" or "http"'
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "http"
+            repo = "example/foo"
+            url = "http://mirror.example.com/foo_{version}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block lock
+      # A non-loopback http url passes validation but is refused at download time.
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: foo: refusing insecure url http://mirror.example.com/foo_1.2.0.tar.gz: only https is allowed'
 
   - name: a missing repository is reported as not found
     env: *t1

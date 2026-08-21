@@ -17,7 +17,6 @@ import (
 	"github.com/nao1215/block/internal/lockfile"
 	"github.com/nao1215/block/internal/manifest"
 	"github.com/nao1215/block/internal/platform"
-	"github.com/nao1215/block/internal/recipe"
 	"github.com/nao1215/block/internal/store"
 	"github.com/nao1215/block/registry"
 )
@@ -57,9 +56,9 @@ func newHarness(t *testing.T, snapshot string) *harness {
 	return h
 }
 
-// at switches the fake GitHub to another point in time.
-func (h *harness) at(snapshot string) {
-	h.Releases = &github.Client{BaseURL: h.srv.URL + snapshot, HTTP: h.srv.Client()}
+// later moves the fake GitHub from t1 to the latest point in time.
+func (h *harness) later() {
+	h.Releases = &github.Client{BaseURL: h.srv.URL, HTTP: h.srv.Client()}
 }
 
 // offline makes any upstream call fail loudly.
@@ -99,11 +98,12 @@ func TestLockResolvesAndRelocks(t *testing.T) {
 	if h.stdout.String() != "foundry  locked 1.7.4\nwrote block.lock\n" {
 		t.Errorf("stdout = %q", h.stdout)
 	}
-	if !strings.Contains(h.stderr.String(), "downloading ") {
+	// GitHub publishes a digest for foundry's assets: nothing is downloaded.
+	if h.stderr.Len() != 0 {
 		t.Errorf("stderr = %q", h.stderr)
 	}
 	first := h.lockText(t)
-	for _, forbidden := range []string{"repo =", "asset ="} {
+	for _, forbidden := range []string{"repo =", "asset =", "source ="} {
 		if strings.Contains(first, forbidden) {
 			t.Errorf("lockfile contains recipe field %q", forbidden)
 		}
@@ -127,19 +127,19 @@ func TestLockResolvesAndRelocks(t *testing.T) {
 	if err := h.Lock(ctx, nil, false); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(h.stderr.String(), "downloading ") != 1 || !strings.Contains(h.stderr.String(), "v1.7.4/foundry_v1.7.4_darwin_arm64.tar.gz") {
+	if h.stderr.Len() != 0 {
 		t.Errorf("stderr = %q", h.stderr)
 	}
 	l, err := lockfile.Load(h.LockPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tool, _ := l.Tool("foundry"); len(tool.Artifacts) != 2 {
+	if tool, _ := l.Tool("foundry"); len(tool.Artifacts) != 2 || !strings.Contains(tool.Artifacts[0].URL, "darwin_arm64") {
 		t.Errorf("artifacts = %+v", tool.Artifacts)
 	}
 
 	// Upstream publishes 1.7.5: lock moves the pin.
-	h.at("")
+	h.later()
 	h.reset()
 	if err := h.Lock(ctx, nil, false); err != nil {
 		t.Fatal(err)
@@ -159,6 +159,63 @@ func TestLockResolvesAndRelocks(t *testing.T) {
 	}
 }
 
+func TestLockWithoutUpstreamDigestDownloadsOnce(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools.foo]\nversion = \"1.2\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"example/foo\"\nasset = \"foo_{version}_{os}_{arch}.tar.gz\"\nbin = [\"foo\"]\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(h.stderr.String(), "downloading ") != 1 {
+		t.Errorf("stderr = %q", h.stderr)
+	}
+	if !strings.Contains(h.lockText(t), `source = "sha256:`) {
+		t.Error("a project-local tool must record its source fingerprint")
+	}
+	h.reset()
+	if err := h.Lock(ctx, nil, false); err != nil || h.stderr.Len() != 0 {
+		t.Errorf("relock = %v, stderr %q (artifact must be reused)", err, h.stderr)
+	}
+}
+
+func TestLockHTTPSourceAndRawExecutable(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools.geth]\nversion = \"1.17\"\n[tools.geth.source]\ntype = \"http\"\nrepo = \"ethereum/go-ethereum\"\nurl = \""+h.srv.URL+"/blobs/geth-{os}-{arch}-{version}-{commit}.tar.gz\"\nstrip_components = 1\nbin = [\"geth\"]\n\n[tools.rawbin]\nversion = \"1\"\n[tools.rawbin.source]\ntype = \"github_release\"\nrepo = \"example/rawbin\"\nasset = \"rawbin-{os}-{arch}\"\nbin = [\"rawbin\"]\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	lock := h.lockText(t)
+	if !strings.Contains(lock, "/blobs/geth-linux-amd64-1.17.4-") || !strings.Contains(lock, "strip_components = 1") || !strings.Contains(lock, "/rawbin-linux-amd64\"") {
+		t.Errorf("lock = %s", lock)
+	}
+	h.offline()
+	h.reset()
+	if err := h.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.reset()
+	if code, err := h.Exec(ctx, []string{"geth", "version"}, nil); err != nil || code != 0 || !strings.Contains(h.stdout.String(), "geth 1.17.4 (fake)") {
+		t.Errorf("Exec(geth) = %d, %v, %q", code, err, h.stdout)
+	}
+	h.reset()
+	if code, err := h.Exec(ctx, []string{"rawbin"}, nil); err != nil || code != 0 || !strings.Contains(h.stdout.String(), "rawbin 1.0.0 (fake)") {
+		t.Errorf("Exec(rawbin) = %d, %v, %q", code, err, h.stdout)
+	}
+	// T2: geth 1.17.5 is tagged; the commit-named blob resolves too.
+	h.later()
+	h.reset()
+	err := h.Lock(ctx, nil, true)
+	if !errors.Is(err, ErrOutdated) || !strings.Contains(h.stdout.String(), "geth    1.17.4 -> 1.17.5") {
+		t.Errorf("check = %v, %q", err, h.stdout)
+	}
+}
+
 func TestLockNamesOnlyThoseTools(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "/t1")
@@ -167,7 +224,7 @@ func TestLockNamesOnlyThoseTools(t *testing.T) {
 	if err := h.Lock(ctx, nil, false); err != nil {
 		t.Fatal(err)
 	}
-	h.at("")
+	h.later()
 	h.reset()
 	if err := h.Lock(ctx, []string{"hermes"}, false); err != nil {
 		t.Fatal(err)
@@ -214,7 +271,7 @@ func TestLockCheck(t *testing.T) {
 	if err := h.Lock(ctx, nil, true); err != nil || h.stdout.String() != "foundry  1.7.4 (up-to-date)\nhermes   1.13.0 (up-to-date)\n" {
 		t.Errorf("check(current) = %v, %q", err, h.stdout)
 	}
-	h.at("")
+	h.later()
 	h.reset()
 	err = h.Lock(ctx, nil, true)
 	if !errors.Is(err, ErrOutdated) || h.stdout.String() != "foundry  1.7.4 -> 1.7.5\nhermes   1.13.0 -> 1.13.1\n" {
@@ -223,6 +280,13 @@ func TestLockCheck(t *testing.T) {
 	if h.lockText(t) != before || h.stderr.Len() != 0 {
 		t.Error("check modified block.lock or downloaded")
 	}
+	// check never downloads, even for tools without an upstream digest.
+	h.manifest(t, "[tools.foo]\nversion = \"1.2\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"example/foo\"\nasset = \"foo_{version}_{os}_{arch}.tar.gz\"\nbin = [\"foo\"]\n")
+	h.reset()
+	if err := h.Lock(ctx, nil, true); !errors.Is(err, ErrOutdated) || h.stderr.Len() != 0 {
+		t.Errorf("check(no digest) = %v, stderr %q", err, h.stderr)
+	}
+	h.manifest(t, "[tools]\nfoundry = \"1.7\"\nhermes = \"1.13\"\n")
 	// A dropped tool and a new platform are changes too.
 	h.manifest(t, "platforms = [\"linux/amd64\", \"darwin/arm64\"]\n[tools]\nfoundry = \"1.7.4\"\n")
 	h.reset()
@@ -240,7 +304,7 @@ func TestLockErrors(t *testing.T) {
 	tests := []struct {
 		name, manifest, want string
 	}{
-		{"unknown tool", "[tools]\ngeth = \"1\"\n", `unknown tool "geth": it is not in the registry (known tools: foundry, hermes); define [tools.geth.source] in block.toml`},
+		{"unknown tool", "[tools]\nreth = \"1\"\n", `unknown tool "reth": it is not in the registry (known tools: foundry, geth, hermes, solc); define [tools.reth.source] in block.toml`},
 		{"no match", "[tools]\nfoundry = \"9\"\n", `foundry: no version of foundry-rs/foundry matches "9"`},
 		{"prerelease only", "[tools]\nfoundry = \"1.9\"\n", `foundry: no published release of foundry-rs/foundry matches "1.9"`},
 		{"unsupported platform", "[tools.maconly]\nversion = \"0.1\"\n[tools.maconly.source]\ntype = \"github_release\"\nrepo = \"example/maconly\"\nasset = \"maconly_{version}_{os}_{arch}.tar.gz\"\nplatforms = [\"darwin/arm64\"]\nbin = [\"maconly\"]\n", "maconly: unsupported platform linux/amd64 (available: darwin/arm64)"},
@@ -302,9 +366,7 @@ source = "sha256:x"
 	if err != nil {
 		t.Fatal(err)
 	}
-	foo, _ := m.Tool("foo")
-	sources := map[string]recipe.Source{"foo": *foo.Source}
-	got := Check(m, l, sources, []platform.Platform{{OS: "linux", Arch: "amd64"}})
+	got := Check(m, l, []platform.Platform{{OS: "linux", Arch: "amd64"}})
 	want := []string{
 		"foo: the source definition changed since block.lock was resolved",
 		"foo: block.lock has no artifact for linux/amd64",
@@ -316,8 +378,15 @@ source = "sha256:x"
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("Check() =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if reasons := Check(m, l, nil, nil); len(reasons) != 3 {
-		t.Errorf("Check(no sources, no platforms) = %v", reasons)
+	if reasons := Check(m, l, nil); len(reasons) != 4 {
+		t.Errorf("Check(no platforms) = %v", reasons)
+	}
+	// A registry recipe change never stales a lock: only local sources carry
+	// a fingerprint.
+	m2, _ := manifest.Parse([]byte("[tools]\nfoundry = \"1.6\"\n"))
+	l2, _ := lockfile.Parse([]byte("version = 1\n[[tools]]\nname = \"foundry\"\nconstraint = \"1.6\"\nversion = \"1.6.0\"\nbin = [\"forge\"]\n"))
+	if reasons := Check(m2, l2, nil); len(reasons) != 0 {
+		t.Errorf("Check(registry tool without source) = %v", reasons)
 	}
 }
 

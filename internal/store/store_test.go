@@ -86,7 +86,7 @@ func TestInstall(t *testing.T) {
 	if s.IsInstalled(dir) {
 		t.Fatal("installed before Install")
 	}
-	if err := s.Install(src, "foundry.tar.gz", dir, []string{"forge", "bin/cast"}); err != nil {
+	if err := s.Install(src, "foundry.tar.gz", dir, []string{"forge", "bin/cast"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	if !s.IsInstalled(dir) {
@@ -97,7 +97,7 @@ func TestInstall(t *testing.T) {
 		t.Errorf("temp dirs left behind: %v", entries)
 	}
 	// Idempotent.
-	if err := s.Install("/nonexistent", "foundry.tar.gz", dir, nil); err != nil {
+	if err := s.Install("/nonexistent", "foundry.tar.gz", dir, nil, 0); err != nil {
 		t.Errorf("second Install should be a no-op, got %v", err)
 	}
 	dirs := BinDirs(dir, []string{"forge", "bin/cast", "anvil"})
@@ -126,7 +126,7 @@ func TestInstallRejectsBadArchives(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dir := s.InstallDir(strings.ReplaceAll(tt.name, " ", "-"), "1.0.0", "abcdef012345")
-			err := s.Install(tt.src, "t.tar.gz", dir, tt.bins)
+			err := s.Install(tt.src, "t.tar.gz", dir, tt.bins, 0)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Install() error = %v, want containing %q", err, tt.want)
 			}
@@ -138,5 +138,29 @@ func TestInstallRejectsBadArchives(t *testing.T) {
 				t.Errorf("temp dirs left behind: %v", entries)
 			}
 		})
+	}
+}
+
+func TestInstallRawExecutable(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("executable bits are not tracked on windows")
+	}
+	s := &Store{Root: t.TempDir()}
+	src := filepath.Join(t.TempDir(), "solc-static-linux")
+	if err := os.WriteFile(src, []byte("#!/bin/sh\necho solc\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := s.InstallDir("solc", "0.8.30", "abcdef012345")
+	if err := s.Install(src, "solc-static-linux", dir, []string{"solc"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(filepath.Join(dir, "solc"))
+	if err != nil || st.Mode()&0o100 == 0 {
+		t.Errorf("solc = %v, %v", st, err)
+	}
+	bad := s.InstallDir("solc", "0.8.31", "abcdef012345")
+	if err := s.Install(src, "solc-static-linux", bad, []string{"a", "b"}, 0); err == nil || !strings.Contains(err.Error(), "exactly one bin name") {
+		t.Errorf("Install(two bins) error = %v", err)
 	}
 }

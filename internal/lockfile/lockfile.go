@@ -40,9 +40,13 @@ type Tool struct {
 	Version    string `toml:"version"`
 	// Bin lists the executables inside the artifact that `block exec` exposes.
 	Bin []string `toml:"bin"`
-	// Source fingerprints the recipe the pin was resolved with (see
-	// recipe.Source.Hash), so a changed recipe makes the pin stale.
-	Source string `toml:"source"`
+	// StripComponents is how many leading path components to drop when
+	// extracting the artifact.
+	StripComponents int `toml:"strip_components,omitempty"`
+	// Source fingerprints a project-local recipe (see recipe.Source.Hash) so
+	// that editing it makes the pin stale. Empty for registry tools: a
+	// registry change never invalidates an existing lock.
+	Source string `toml:"source,omitempty"`
 	// Artifacts are sorted by platform.
 	Artifacts []Artifact `toml:"artifacts"`
 }
@@ -154,8 +158,8 @@ func validateTool(t *Tool) error {
 	if len(t.Bin) == 0 {
 		return fmt.Errorf("tool %q: bin is empty", t.Name)
 	}
-	if t.Source == "" {
-		return fmt.Errorf("tool %q: source is empty", t.Name)
+	if t.StripComponents < 0 {
+		return fmt.Errorf("tool %q: strip_components must not be negative", t.Name)
 	}
 	seen := map[string]bool{}
 	for _, a := range t.Artifacts {

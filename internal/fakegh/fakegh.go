@@ -14,6 +14,9 @@
 // Special prefixes emulate failure modes:
 //
 //	/ratelimited/repos/...   403 with X-RateLimit-Remaining: 0
+//
+// Besides GitHub, the server plays a vendor download host at /blobs/<name>
+// for http-type recipes (modelled on go-ethereum's gethstore).
 package fakegh
 
 import (
@@ -21,6 +24,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -46,6 +51,8 @@ type release struct {
 	bins []string
 	// entries adds raw archive members (for malformed-archive fixtures).
 	entries []entry
+	// prefix wraps every member in a directory, as versioned tarballs do.
+	prefix string
 }
 
 type entry struct {
@@ -59,6 +66,13 @@ type entry struct {
 type Repo struct {
 	owner, name string
 	releases    []release
+	// digest makes the API report GitHub's sha256 for every asset, as it
+	// does for uploads made since 2025.
+	digest bool
+	// blobs serves this repository's archives from /blobs/ (a vendor
+	// download host) instead of as release assets, named
+	// <name>-<os>-<arch>-<version>-<commit8>.tar.gz with a directory prefix.
+	blobs bool
 }
 
 const (
@@ -101,7 +115,7 @@ func Fixtures() []Repo {
 			assets: platformAssets(base+"_"+strings.TrimPrefix(tag, "v")+"_{os}_{arch}"+ext, platforms, nil, nil)}
 	}
 	return []Repo{
-		{owner: "foundry-rs", name: "foundry", releases: []release{
+		{owner: "foundry-rs", name: "foundry", digest: true, releases: []release{
 			foundry("v1.6.0", 1, false),
 			foundry("v1.7.0", 1, false),
 			foundry("v1.7.1", 1, false),
@@ -113,7 +127,7 @@ func Fixtures() []Repo {
 			{tag: "nightly-deadbeef", at: 1, prerelease: true, bins: foundryBins,
 				assets: platformAssets("foundry_nightly_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
 		}},
-		{owner: "informalsystems", name: "hermes", releases: []release{
+		{owner: "informalsystems", name: "hermes", digest: true, releases: []release{
 			hermes("v1.13.0", 1),
 			hermes("v1.13.1", 2),
 		}},
@@ -143,6 +157,15 @@ func Fixtures() []Repo {
 		{owner: "example", name: "nobin", releases: []release{
 			{tag: "v1.0.0", at: 1, bins: []string{"something-else"},
 				assets: platformAssets("nobin_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
+		}},
+		{owner: "example", name: "rawbin", releases: []release{
+			// A single raw executable per platform, no archive.
+			{tag: "v1.0.0", at: 1, bins: []string{"rawbin"},
+				assets: platformAssets("rawbin-{os}-{arch}", allPlatforms, nil, nil)},
+		}},
+		{owner: "ethereum", name: "go-ethereum", blobs: true, releases: []release{
+			{tag: "v1.17.4", at: 1, bins: []string{"geth"}},
+			{tag: "v1.17.5", at: 2, bins: []string{"geth"}},
 		}},
 		{owner: "example", name: "bare", releases: []release{
 			// Tags without the "v" prefix, for tag_prefix = "".
@@ -192,6 +215,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveDownload(w, r, rest)
 		return
 	}
+	if rest, ok := strings.CutPrefix(path, "/blobs/"); ok {
+		s.serveBlob(w, r, rest)
+		return
+	}
 	if rest, ok := strings.CutPrefix(path, "/repos/"); ok {
 		s.serveAPI(w, r, rest, snapshot)
 		return
@@ -239,6 +266,15 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, rest string, s
 			refs = []map[string]string{}
 		}
 		writeJSON(w, http.StatusOK, refs[start:end])
+	case strings.HasPrefix(parts[2], "commits/"):
+		ref := strings.TrimPrefix(parts[2], "commits/")
+		for _, rel := range rp.releases {
+			if rel.tag == ref && rel.at <= snapshot {
+				writeJSON(w, http.StatusOK, map[string]string{"sha": commitOf(rel.tag)})
+				return
+			}
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 	case strings.HasPrefix(parts[2], "releases/tags/"):
 		tag := strings.TrimPrefix(parts[2], "releases/tags/")
 		for _, rel := range rp.releases {
@@ -247,11 +283,16 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, rest string, s
 			}
 			assets := []map[string]any{}
 			for _, name := range rel.assets {
-				assets = append(assets, map[string]any{
+				a := map[string]any{
 					"name":                 name,
 					"browser_download_url": fmt.Sprintf("%s/download/%s/%s/%s/%s", s.base, rp.owner, rp.name, rel.tag, name),
 					"size":                 0,
-				})
+				}
+				if rp.digest {
+					sum := sha256.Sum256(buildArchive(name, rel))
+					a["digest"] = "sha256:" + hex.EncodeToString(sum[:])
+				}
+				assets = append(assets, a)
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"tag_name": rel.tag, "draft": rel.draft, "prerelease": rel.prerelease, "assets": assets,
@@ -298,6 +339,45 @@ func (s *Server) serveDownload(w http.ResponseWriter, r *http.Request, rest stri
 	http.NotFound(w, r)
 }
 
+// commitOf derives a stable fake commit SHA for a tag.
+func commitOf(tag string) string {
+	sum := sha256.Sum256([]byte("commit:" + tag))
+	return hex.EncodeToString(sum[:])[:40]
+}
+
+// serveBlob answers /blobs/<name>-<os>-<arch>-<version>-<commit8>.tar.gz for
+// repositories flagged blobs, wrapping the members in a directory of the
+// same name as real vendor tarballs do.
+func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, name string) {
+	base, ok := strings.CutSuffix(name, ".tar.gz")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	parts := strings.Split(base, "-")
+	if len(parts) != 5 {
+		http.NotFound(w, r)
+		return
+	}
+	tool, ver, commit8 := parts[0], parts[3], parts[4]
+	for _, rp := range s.repos {
+		if !rp.blobs || rp.name != tool && rp.name != "go-ethereum" {
+			continue
+		}
+		for _, rel := range rp.releases {
+			if rel.tag != "v"+ver || !strings.HasPrefix(commitOf(rel.tag), commit8) {
+				continue
+			}
+			wrapped := rel
+			wrapped.prefix = base
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write(buildArchive(name, wrapped)) //nolint:gosec // generated archive bytes, not user input
+			return
+		}
+	}
+	http.NotFound(w, r)
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -320,6 +400,10 @@ exit 0
 
 func buildArchive(name string, rel release) []byte {
 	ver := strings.TrimPrefix(rel.tag, "v")
+	if !strings.HasSuffix(name, ".tar.gz") && !strings.HasSuffix(name, ".zip") {
+		// A raw executable: the script itself, platform-flavoured.
+		return []byte(script(rel.bins[0], ver) + "# " + name + "\n")
+	}
 	var members []entry
 	for _, b := range rel.bins {
 		members = append(members, entry{name: b, content: script(b, ver), mode: 0o755})
@@ -328,6 +412,11 @@ func buildArchive(name string, rel release) []byte {
 	// differently, as real per-platform builds do.
 	members = append(members, entry{name: "README.md", content: "fake release " + rel.tag + " " + name + "\n", mode: 0o644})
 	members = append(members, rel.entries...)
+	if rel.prefix != "" {
+		for i := range members {
+			members[i].name = rel.prefix + "/" + members[i].name
+		}
+	}
 	if strings.HasSuffix(name, ".zip") {
 		return buildZip(members)
 	}

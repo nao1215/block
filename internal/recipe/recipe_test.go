@@ -45,14 +45,22 @@ func TestSourceValidate(t *testing.T) {
 		src  Source
 		want string
 	}{
-		{"type", mutate(func(s *Source) { s.Type = "http" }), `unsupported source type "http"`},
+		{"type", mutate(func(s *Source) { s.Type = "cargo" }), `unsupported source type "cargo"`},
+		{"url on release", mutate(func(s *Source) { s.URL = "https://x/{version}" }), `url is only valid for type "http"`},
+		{"commit in asset", mutate(func(s *Source) { s.Asset = "f_{version}_{commit}.tar.gz" }), "{commit} is only valid in an http url"},
+		{"negative strip", mutate(func(s *Source) { s.StripComponents = -1 }), "strip_components must not be negative"},
+		{"raw two bins", mutate(func(s *Source) { s.Asset = "solc-{version}-{os}"; s.Bin = []string{"a", "b"} }), "needs exactly one bare bin name"},
+		{"raw nested bin", mutate(func(s *Source) { s.Asset = "solc-{version}-{os}"; s.Bin = []string{"bin/solc"} }), "needs exactly one bare bin name"},
+		{"raw strip", mutate(func(s *Source) { s.Asset = "solc-{version}"; s.Bin = []string{"solc"}; s.StripComponents = 1 }), "strip_components is only valid for archives"},
+		{"http no url", Source{Type: TypeHTTP, Repo: "o/r", Bin: []string{"x"}}, "url template is required"},
+		{"http no version", Source{Type: TypeHTTP, Repo: "o/r", URL: "https://x/y.tar.gz", Bin: []string{"x"}}, "must contain {version}"},
+		{"http scheme", Source{Type: TypeHTTP, Repo: "o/r", URL: "ftp://x/{version}.tar.gz", Bin: []string{"x"}}, "must start with https://"},
+		{"http with asset", Source{Type: TypeHTTP, Repo: "o/r", URL: "https://x/{version}.tar.gz", Asset: "a", Bin: []string{"x"}}, `asset is only valid for type "github_release"`},
 		{"repo empty", mutate(func(s *Source) { s.Repo = "" }), "invalid repo"},
 		{"repo no slash", mutate(func(s *Source) { s.Repo = "foundry" }), "invalid repo"},
 		{"repo extra slash", mutate(func(s *Source) { s.Repo = "a/b/c" }), "invalid repo"},
 		{"asset empty", mutate(func(s *Source) { s.Asset = "" }), "asset template is required"},
-		{"asset no version", mutate(func(s *Source) { s.Asset = "foundry_{os}.tar.gz" }), "must contain {version}"},
 		{"asset path", mutate(func(s *Source) { s.Asset = "dir/foundry_{version}.tar.gz" }), "bare file name"},
-		{"asset format", mutate(func(s *Source) { s.Asset = "foundry_{version}.tar.xz" }), "must end in .tar.gz, .tgz or .zip"},
 		{"bin empty", mutate(func(s *Source) { s.Bin = nil }), "bin must list"},
 		{"bin blank", mutate(func(s *Source) { s.Bin = []string{""} }), "bin entry is empty"},
 		{"bin abs", mutate(func(s *Source) { s.Bin = []string{"/usr/bin/forge"} }), "invalid bin entry"},
@@ -238,5 +246,43 @@ func TestHash(t *testing.T) {
 	}
 	if hermes().Hash() == foundry().Hash() {
 		t.Error("different recipes hash equal")
+	}
+}
+
+func TestHTTPAndRawSources(t *testing.T) {
+	t.Parallel()
+	geth := Source{Type: TypeHTTP, Repo: "ethereum/go-ethereum", URL: "https://dl/geth-{os}-{arch}-{version}-{commit}.tar.gz", StripComponents: 1, Bin: []string{"geth"}}
+	if err := geth.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !geth.NeedsCommit() || !geth.IsArchive() {
+		t.Error("NeedsCommit/IsArchive wrong for geth")
+	}
+	got, err := geth.Render(version.MustParse("1.17.5"), platform.Platform{OS: "linux", Arch: "arm64"}, "9621c6ad10934a01b5514886fb6fbd87640b6c05")
+	if err != nil || got != "https://dl/geth-linux-arm64-1.17.5-9621c6ad.tar.gz" {
+		t.Errorf("Render() = %q, %v", got, err)
+	}
+	if _, err := geth.Render(version.MustParse("1.17.5"), platform.Platform{OS: "linux", Arch: "arm64"}, ""); err == nil {
+		t.Error("Render without a commit succeeded")
+	}
+	solc := Source{Type: TypeGitHubRelease, Repo: "argotorg/solidity", Asset: "solc-{os}", OS: map[string]string{"linux": "static-linux"}, Bin: []string{"solc"}}
+	if err := solc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if solc.IsArchive() || solc.NeedsCommit() {
+		t.Error("raw executable misclassified")
+	}
+	if !IsArchiveName("a.tgz") || IsArchiveName("solc-macos") {
+		t.Error("IsArchiveName wrong")
+	}
+	a, b := geth, geth
+	b.StripComponents = 0
+	if a.Equal(b) || a.Hash() == b.Hash() {
+		t.Error("strip_components must be part of identity")
+	}
+	b = geth
+	b.URL = "https://other/{version}.tar.gz"
+	if a.Equal(b) || a.Hash() == b.Hash() {
+		t.Error("url must be part of identity")
 	}
 }

@@ -1,0 +1,18 @@
+# solc: the Solidity compiler.
+# https://github.com/argotorg/solidity (moved from ethereum/solidity)
+#
+# Releases ship single static executables rather than archives: one for
+# Linux x86_64 and one universal macOS binary. Assets carry no GitHub digest,
+# so the checksum is recorded on first download.
+name = "solc"
+
+[source]
+type = "github_release"
+repo = "argotorg/solidity"
+asset = "solc-{os}"
+platforms = ["linux/amd64", "darwin/amd64", "darwin/arm64"]
+bin = ["solc"]
+
+[source.os]
+linux = "static-linux"
+darwin = "macos"

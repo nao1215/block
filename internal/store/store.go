@@ -10,10 +10,12 @@ package store
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/nao1215/block/internal/archive"
+	"github.com/nao1215/block/internal/recipe"
 )
 
 // EnvHome overrides the store location.
@@ -61,11 +63,13 @@ func (s *Store) IsInstalled(dir string) bool {
 	return err == nil && st.IsDir()
 }
 
-// Install extracts the archive at src into dir atomically: extraction happens
-// in a sibling temp directory that is renamed into place only when every
-// entry succeeded and every expected executable exists. A concurrent or
-// earlier install of the same dir wins silently.
-func (s *Store) Install(src, assetName, dir string, bins []string) error {
+// Install places the artifact at src into dir atomically. An archive is
+// extracted (dropping strip leading components); a raw executable is copied
+// under the single name in bins. Work happens in a sibling temp directory
+// that is renamed into place only when every entry succeeded and every
+// expected executable exists. A concurrent or earlier install of the same
+// dir wins silently.
+func (s *Store) Install(src, assetName, dir string, bins []string, strip int) error {
 	if s.IsInstalled(dir) {
 		return nil
 	}
@@ -78,8 +82,17 @@ func (s *Store) Install(src, assetName, dir string, bins []string) error {
 		return err
 	}
 	defer os.RemoveAll(tmp) //nolint:errcheck // best-effort cleanup
-	if err := archive.Extract(src, tmp, assetName); err != nil {
-		return fmt.Errorf("extract %s: %w", assetName, err)
+	switch {
+	case recipe.IsArchiveName(assetName):
+		if err := archive.Extract(src, tmp, assetName, strip); err != nil {
+			return fmt.Errorf("extract %s: %w", assetName, err)
+		}
+	case len(bins) == 1:
+		if err := copyExecutable(src, filepath.Join(tmp, bins[0])); err != nil {
+			return fmt.Errorf("install %s: %w", assetName, err)
+		}
+	default:
+		return fmt.Errorf("raw executable %s needs exactly one bin name", assetName)
 	}
 	for _, b := range bins {
 		st, err := os.Stat(filepath.Join(tmp, filepath.FromSlash(b)))
@@ -97,6 +110,25 @@ func (s *Store) Install(src, assetName, dir string, bins []string) error {
 		return err
 	}
 	return nil
+}
+
+// copyExecutable copies a raw binary into place with the executable bit set.
+func copyExecutable(src, dst string) error {
+	in, err := os.Open(src) //nolint:gosec // cache path
+	if err != nil {
+		return err
+	}
+	defer in.Close() //nolint:errcheck // read-only
+	const execMode = 0o755
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, execMode) //nolint:gosec // inside the temp install dir
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // BinDirs returns the directories that must be prepended to PATH so that the

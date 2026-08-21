@@ -1,0 +1,16 @@
+# go-ethereum: the geth execution client.
+# https://github.com/ethereum/go-ethereum
+#
+# Releases are tagged vX.Y.Z on GitHub, but the prebuilt archives are not
+# release assets: they live on the project's download server, named with the
+# first 8 digits of the tagged commit, and wrap the binary in a directory of
+# the same name. macOS builds stopped after 1.15, so only Linux is listed.
+name = "geth"
+
+[source]
+type = "http"
+repo = "ethereum/go-ethereum"
+url = "https://gethstore.blob.core.windows.net/builds/geth-{os}-{arch}-{version}-{commit}.tar.gz"
+strip_components = 1
+platforms = ["linux/amd64", "linux/arm64"]
+bin = ["geth"]

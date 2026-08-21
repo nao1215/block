@@ -68,6 +68,18 @@ type Asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int64  `json:"size"`
+	// Digest is GitHub's own checksum of the upload, "sha256:<hex>", or ""
+	// for assets uploaded before GitHub started recording it.
+	Digest string `json:"digest"`
+}
+
+// SHA256 returns the hex digest when GitHub recorded a sha256 for the asset.
+func (a Asset) SHA256() string {
+	hex, ok := strings.CutPrefix(a.Digest, "sha256:")
+	if !ok {
+		return ""
+	}
+	return hex
 }
 
 // Asset returns the asset with the given file name.
@@ -118,6 +130,24 @@ func (c *Client) ReleaseByTag(ctx context.Context, repo, tag string) (*Release, 
 		return nil, err
 	}
 	return &rel, nil
+}
+
+type commit struct {
+	SHA string `json:"sha"`
+}
+
+// Commit returns the full SHA of the commit a tag (or any ref) points at.
+// GitHub dereferences annotated tags for this endpoint.
+func (c *Client) Commit(ctx context.Context, repo, ref string) (string, error) {
+	endpoint := fmt.Sprintf("%s/repos/%s/commits/%s", c.BaseURL, repo, url.PathEscape(ref))
+	var cm commit
+	if err := c.getJSON(ctx, endpoint, &cm); err != nil {
+		return "", err
+	}
+	if cm.SHA == "" {
+		return "", fmt.Errorf("github api: no commit for %s@%s", repo, ref)
+	}
+	return cm.SHA, nil
 }
 
 func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
