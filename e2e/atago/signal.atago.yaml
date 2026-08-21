@@ -44,36 +44,10 @@ scenarios:
             path: out.txt
             contains: "anvil stopping"
 
-  - name: SIGINT reaches the child too
-    skip:
-      os: windows
-    env: *t1
-    steps:
-      - fixture:
-          file: block.toml
-          content: |
-            [tools]
-            foundry = "1.7"
-      - run:
-          shell: true
-          command: block lock && block sync
-      - run:
-          shell: true
-          command: >-
-            block exec anvil --serve > out.txt 2>&1 &
-            pid=$!;
-            for i in $(seq 1 100); do grep -q ready out.txt && break; sleep 0.1; done;
-            kill -INT $pid;
-            wait $pid;
-            echo "block exited $?"
-      - assert:
-          exit_code: 0
-          stdout:
-            contains: "block exited 7"
-      - assert:
-          file:
-            path: out.txt
-            contains: "anvil stopping"
+  # SIGINT is deliberately not tested this way. A background job of a
+  # non-interactive shell inherits SIG_IGN for it, so what such a scenario
+  # measures is the shell's job control rather than block's forwarding —
+  # which is the same code path for both signals.
 
   - name: a child killed by a signal reports 128+signal, not 255
     skip:

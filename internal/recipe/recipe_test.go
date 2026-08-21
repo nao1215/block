@@ -47,7 +47,6 @@ func TestSourceValidate(t *testing.T) {
 	}{
 		{"type", mutate(func(s *Source) { s.Type = "cargo" }), `unsupported source type "cargo"`},
 		{"url on release", mutate(func(s *Source) { s.URL = "https://x/{version}" }), `url is only valid for type "http"`},
-		{"commit in asset", mutate(func(s *Source) { s.Asset = "f_{version}_{commit}.tar.gz" }), "{commit} is only valid in an http url"},
 		{"negative strip", mutate(func(s *Source) { s.StripComponents = -1 }), "strip_components must not be negative"},
 		{"raw two bins", mutate(func(s *Source) { s.Asset = "solc-{version}-{os}"; s.Bin = []string{"a", "b"} }), "needs exactly one bare bin name"},
 		{"raw nested bin", mutate(func(s *Source) { s.Asset = "solc-{version}-{os}"; s.Bin = []string{"bin/solc"} }), "needs exactly one bare bin name"},

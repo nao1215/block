@@ -72,6 +72,13 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 	if self == "" {
 		return nil, errors.New("the path of the block binary is unknown")
 	}
+	// One binary can be spelled several ways — macOS reaches the same file
+	// through /var and /private/var — and the marker below compares paths,
+	// so it is resolved once here rather than rewriting every shim whenever
+	// the spelling changes.
+	if resolved, err := filepath.EvalSymlinks(self); err == nil {
+		self = resolved
+	}
 	dir := Dir(st)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return nil, err

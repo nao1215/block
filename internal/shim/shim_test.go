@@ -177,3 +177,25 @@ func TestSameDir(t *testing.T) {
 		t.Error("SameDir() = true for a missing directory")
 	}
 }
+
+func TestEnsureIgnoresHowTheBinaryIsSpelled(t *testing.T) {
+	t.Parallel()
+	st := &store.Store{Root: t.TempDir()}
+	binary := self(t)
+	if _, err := Ensure(st, binary, []string{"forge"}); err != nil {
+		t.Fatal(err)
+	}
+	// The same file reached through a symlinked directory — which is how
+	// macOS presents /var — must not look like a different block.
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(filepath.Dir(binary), link); err != nil {
+		t.Skipf("symlinks are unavailable here: %v", err)
+	}
+	created, err := Ensure(st, filepath.Join(link, filepath.Base(binary)), []string{"forge"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 0 {
+		t.Errorf("created = %v, want the shims left alone", created)
+	}
+}
