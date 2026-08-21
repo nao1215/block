@@ -10,6 +10,15 @@ import (
 	"strings"
 )
 
+// The vocabulary itself, named so that the table below and any future
+// mapping cannot drift apart on a typo.
+const (
+	osLinux   = "linux"
+	osDarwin  = "darwin"
+	archAMD64 = "amd64"
+	archARM64 = "arm64"
+)
+
 // Platform is an OS/architecture pair written as "os/arch" (e.g. linux/amd64).
 type Platform struct {
 	OS   string
@@ -21,10 +30,10 @@ type Platform struct {
 // are developed or run in CI there, and supporting it well means more than
 // swapping the archive format.
 var supported = []Platform{ //nolint:gochecknoglobals // immutable table
-	{OS: "linux", Arch: "amd64"},
-	{OS: "linux", Arch: "arm64"},
-	{OS: "darwin", Arch: "amd64"},
-	{OS: "darwin", Arch: "arm64"},
+	{OS: osLinux, Arch: archAMD64},
+	{OS: osLinux, Arch: archARM64},
+	{OS: osDarwin, Arch: archAMD64},
+	{OS: osDarwin, Arch: archARM64},
 }
 
 // Supported returns a copy of the supported platform list, sorted.
