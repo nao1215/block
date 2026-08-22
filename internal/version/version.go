@@ -191,9 +191,6 @@ func (v Version) String() string {
 // spelling.
 func Equal(a, b Version) bool { return Compare(a, b) == 0 }
 
-// IsPrerelease reports whether the version carries pre-release identifiers.
-func (v Version) IsPrerelease() bool { return v.Pre != "" }
-
 // Compare orders two versions per semver: release parts numerically, then a
 // release sorts after any pre-release of the same core, then pre-release
 // identifiers dot-by-dot (numeric before alphanumeric).

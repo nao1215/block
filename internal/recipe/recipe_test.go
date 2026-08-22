@@ -37,6 +37,11 @@ func TestSourceValidate(t *testing.T) {
 	if err := foundry().Validate(); err != nil {
 		t.Fatalf("valid source rejected: %v", err)
 	}
+	withChannel := foundry()
+	withChannel.Channels = map[string]Channel{"nightly": {Asset: "foundry_nightly_{os}_{arch}.tar.gz"}}
+	if err := withChannel.Validate(); err != nil {
+		t.Fatalf("valid channel rejected: %v", err)
+	}
 	mutate := func(f func(*Source)) Source {
 		s := foundry()
 		f(&s)
@@ -68,6 +73,15 @@ func TestSourceValidate(t *testing.T) {
 		{"bin traversal", mutate(func(s *Source) { s.Bin = []string{"../forge"} }), "invalid bin entry"},
 		{"bin unclean", mutate(func(s *Source) { s.Bin = []string{"bin/./forge"} }), "invalid bin entry"},
 		{"platform", mutate(func(s *Source) { s.Platforms = []string{"plan9/amd64"} }), "unsupported platform"},
+		// A channel's asset template is held to the same shape as the
+		// source's own, minus {version}, which a channel release has none of.
+		{"channel name", mutate(func(s *Source) { s.Channels = map[string]Channel{"Nightly": {Asset: "f_{os}_{arch}.tar.gz"}} }), "invalid channel"},
+		{"channel on http", Source{Type: TypeHTTP, Repo: "o/r", URL: "https://x/{version}.tar.gz", Bin: []string{"x"}, Channels: map[string]Channel{"nightly": {Asset: "f_{os}_{arch}.tar.gz"}}}, `channels need type "github_release"`},
+		{"channel asset empty", mutate(func(s *Source) { s.Channels = map[string]Channel{"nightly": {}} }), `channel "nightly": asset template is required`},
+		{"channel asset path", mutate(func(s *Source) { s.Channels = map[string]Channel{"nightly": {Asset: "dir/f_{os}.tar.gz"}} }), "bare file name"},
+		{"channel asset version", mutate(func(s *Source) { s.Channels = map[string]Channel{"nightly": {Asset: "f_{version}_{os}.tar.gz"}} }), "a channel release has no version"},
+		{"channel asset target", mutate(func(s *Source) { s.Channels = map[string]Channel{"nightly": {Asset: "f_{target}.tar.gz"}} }), "uses {target} but no [source.target] table"},
+		{"channel asset kind", mutate(func(s *Source) { s.Channels = map[string]Channel{"nightly": {Asset: "f_{os}_{arch}"}} }), "is not the same kind of artifact as"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
