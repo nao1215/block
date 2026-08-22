@@ -125,6 +125,63 @@ scenarios:
           stdout:
             equals: |
               zipper 3.0.0 (fake)
+  # A channel pin is the longest install directory name block writes —
+  # "<channel>-<40 hex>-<12 hex>" — and on Windows it holds an executable
+  # named with the suffix and is served by a shim that is a copy. Nothing
+  # about that is asserted anywhere else on this platform.
+  - name: a channel pin installs under its tag and runs through a shim
+    only:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "nightly"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.foundry.source.channels.nightly]
+            asset = "foundry_nightly_{os}_{arch}.tar.gz"
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "foundry  nightly-[0-9a-f]{40}  installed"
+      - assert:
+          dir:
+            path: home/tools/foundry
+            count: 1
+            glob: "nightly-*"
+      - assert:
+          file:
+            path: home/shims/forge.exe
+            exists: true
+      - run:
+          shell: true
+          command: ls home/tools/foundry/nightly-*/forge.exe
+      - assert:
+          exit_code: 0
+      - run:
+          command: "${workdir}/home/shims/forge.exe"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^forge nightly-[0-9a-f]{40} \(fake\)\n$'
+      - run:
+          command: block status
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: 'foundry\s+nightly\s+nightly-[0-9a-f]{40}\s+nightly-[0-9a-f]{40}\s+ok'
+
   - name: a command name is matched without regard to case
     only:
       os: windows
