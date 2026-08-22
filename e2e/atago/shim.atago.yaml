@@ -90,6 +90,81 @@ scenarios:
           stdout:
             contains: "forge 1.6.0 (fake)"
 
+  # The shim directory is shared by every project on the machine, so two
+  # syncs at once is ordinary: two terminals, or a build script beside the
+  # person who started it. Both used to fail — whoever lost the race to
+  # create a file got "file exists", and the marker was written through one
+  # shared temporary name — and a rebuild emptied the directory first, so a
+  # command the other project had just put there disappeared.
+  - name: two syncs at once both finish and leave every command in place
+    env: *shimmed
+    steps:
+      - fixture:
+          file: project-a/block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - fixture:
+          file: project-b/block.toml
+          content: |
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - run:
+          shell: true
+          command: (cd project-a && block lock) && (cd project-b && block lock)
+      - assert:
+          exit_code: 0
+      # Both processes reach the shim directory at the same moment. Each exit
+      # status is checked, not just the last one.
+      - run:
+          shell: true
+          command: (cd project-a && block sync) & a=$!; (cd project-b && block sync) & b=$!; wait $a && wait $b
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: cd project-a && forge --version && cast --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "forge 1.7.4 (fake)"
+              - "cast 1.7.4 (fake)"
+      - run:
+          shell: true
+          command: cd project-b && hermes --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "hermes 1.13.0 (fake)"
+      # Nothing half-built is left where a command should be.
+      - run:
+          shell: true
+          command: 'test -z "$(ls -A home/shims | grep "^[.]block-shim-tmp" || true)"'
+      - assert:
+          exit_code: 0
+
   - name: a nested directory belongs to the project above it
     env: *shimmed
     steps:

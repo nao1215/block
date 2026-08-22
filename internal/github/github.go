@@ -158,7 +158,13 @@ func (c *Client) Tags(ctx context.Context, repo, prefix string) ([]string, error
 			tags = append(tags, name)
 			added++
 		}
-		if added == 0 || len(refs) < perPage {
+		// A page shorter than the one asked for is the last one. A page
+		// *longer* than the one asked for is the endpoint ignoring per_page
+		// and handing back every matching ref at once, which is what it does
+		// for the repositories that have many: there is no second page to
+		// ask for, and asking anyway costs one wasted request per resolution
+		// — a second copy of a list that can run to several megabytes.
+		if added == 0 || len(refs) != perPage {
 			break
 		}
 	}
@@ -212,9 +218,16 @@ func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
 		return diag.UpstreamError.Errorf("github api: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only body
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	// One byte past the limit, so that a response block refused to read whole
+	// is told apart from one that ended there. Without that, a truncated body
+	// reached the decoder and was reported as "invalid response from the API"
+	// — which blamed GitHub for a cut block made itself.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if err != nil {
 		return diag.UpstreamError.Errorf("github api: %w", err)
+	}
+	if len(body) > maxBodyBytes {
+		return diag.UpstreamError.Errorf("github api: the response from %s is larger than the %d bytes block reads", endpoint, maxBodyBytes)
 	}
 	switch {
 	case resp.StatusCode == http.StatusNotFound:

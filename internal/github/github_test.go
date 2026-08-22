@@ -213,3 +213,64 @@ func TestAssetSHA256AcceptsOnlyAHexDigest(t *testing.T) {
 		}
 	}
 }
+
+// The matching-refs endpoint answers a repository with many tags by returning
+// every one of them in a single response, whatever per_page says — sui has
+// nine thousand, in nearly four megabytes. block used to ask for a second
+// page anyway, learn nothing from it, and pay a request and another copy of
+// that list for every resolution. A response longer than the page asked for
+// is the endpoint saying there is no second page.
+func TestTagsAsksOnceWhenTheEndpointIgnoresPaging(t *testing.T) {
+	t.Parallel()
+	const total = perPage*2 + 37
+	requests := 0
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		refs := make([]string, 0, total)
+		for i := range total {
+			refs = append(refs, fmt.Sprintf(`{"ref":"refs/tags/v1.0.%d"}`, i))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, "[%s]", strings.Join(refs, ","))
+	})
+	tags, err := c.Tags(context.Background(), "o/r", "v")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != total {
+		t.Errorf("Tags() = %d tags, want %d", len(tags), total)
+	}
+	if requests != 1 {
+		t.Errorf("Tags() made %d requests, want 1: the first response already held every ref", requests)
+	}
+}
+
+// A body block declines to read whole is block's own limit, not a broken API.
+// Reported as "invalid response", it sent a reader to look at GitHub for a
+// cut block made itself.
+func TestGetJSONNamesItsOwnSizeLimit(t *testing.T) {
+	t.Parallel()
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("["))
+		ref := `{"ref":"refs/tags/v1.0.0"},`
+		const chunkRefs = 4096
+		chunk := []byte(strings.Repeat(ref, chunkRefs))
+		for written := 0; written <= maxBodyBytes; written += len(chunk) {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+		_, _ = w.Write([]byte(`{"ref":"refs/tags/v1.0.1"}]`))
+	})
+	_, err := c.Tags(context.Background(), "o/r", "v")
+	if err == nil {
+		t.Fatal("Tags() accepted a response larger than block reads")
+	}
+	if !strings.Contains(err.Error(), "larger than the") {
+		t.Errorf("error = %q, want it to name block's own size limit", err)
+	}
+	if strings.Contains(err.Error(), "invalid response") {
+		t.Errorf("error = %q, which blames the API for block's own cut", err)
+	}
+}
