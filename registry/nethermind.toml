@@ -1,0 +1,23 @@
+# Nethermind: an Ethereum execution client written in .NET.
+# https://github.com/NethermindEth/nethermind
+#
+# Tags carry no "v", and the asset name holds the eight-character commit the
+# build came from as well as the version. The archive is self-contained: the
+# runtime is inside it, so nothing else has to be installed.
+name = "nethermind"
+ecosystems = ["ethereum"]
+description = "Ethereum execution client written in .NET"
+
+[source]
+type = "github_release"
+repo = "NethermindEth/nethermind"
+tag_prefix = ""
+asset = "nethermind-{version}-{commit}-{target}.zip"
+bin = ["nethermind"]
+
+[source.target]
+"linux/amd64" = "linux-x64"
+"linux/arm64" = "linux-arm64"
+"darwin/amd64" = "macos-x64"
+"darwin/arm64" = "macos-arm64"
+"windows/amd64" = "windows-x64"

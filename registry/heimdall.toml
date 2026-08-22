@@ -1,0 +1,19 @@
+# Heimdall: an EVM bytecode toolkit.
+# https://github.com/Jon-Becker/heimdall-rs
+#
+# Releases ship one raw executable per platform and the tags carry no "v".
+# Upstream spells macOS "macos" and has no Windows build.
+name = "heimdall"
+ecosystems = ["ethereum"]
+description = "EVM bytecode toolkit: disassemble, decompile and decode transactions"
+
+[source]
+type = "github_release"
+repo = "Jon-Becker/heimdall-rs"
+tag_prefix = ""
+asset = "heimdall-{os}-{arch}"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+bin = ["heimdall"]
+
+[source.os]
+darwin = "macos"

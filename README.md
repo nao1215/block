@@ -97,7 +97,7 @@ the shim steps aside and runs the next command of that name on `PATH`.
 
 ## Which tools can I use for this chain?
 
-48 tools across 17 blockchain systems, answered offline from the registry
+51 tools across 17 blockchain systems, answered offline from the registry
 compiled into the binary — no network, no `block.toml`, no token.
 
 ![list](./doc/img/list.gif)
