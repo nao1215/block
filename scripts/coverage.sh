@@ -22,7 +22,13 @@ go test -count=1 -cover -covermode=atomic -coverpkg=./... ./... \
 	-args -test.gocoverdir="$COV/unit"
 
 echo ">> e2e coverage -> $COV/e2e"
-COVER=1 GOCOVERDIR="$COV/e2e" "$REPO_ROOT/e2e/run.sh"
+# One scenario at a time. Go's coverage runtime names the meta-data file it
+# writes at exit "tmp.covmeta.<hash><UnixNano>" — no pid — so two block
+# processes started in the same clock tick race for one name and the loser's
+# rename fails with "no such file", which lands on stderr and fails whichever
+# assertion was reading it. The suite is small enough that serial costs
+# seconds.
+COVER=1 GOCOVERDIR="$COV/e2e" "$REPO_ROOT/e2e/run.sh" --parallel 1
 
 echo ">> merging unit + e2e covdata -> cover.out"
 go tool covdata merge -i="$COV/unit,$COV/e2e" -o="$COV/merged"
