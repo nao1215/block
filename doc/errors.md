@@ -6,7 +6,7 @@ A code is `BLK` followed by four digits, and the thousands digit says what kind 
 
 | Codes | Kind | Codes assigned |
 |---|---|---|
-| `BLK1xxx` | what was asked for — block.toml, block.lock, and the names typed on the command line | 10 |
+| `BLK1xxx` | what was asked for — block.toml, block.lock, and the names typed on the command line | 11 |
 | `BLK2xxx` | resolving a version against an upstream, which only `block lock` ever does | 10 |
 | `BLK3xxx` | downloading an artifact and proving it is the one block.lock names | 3 |
 | `BLK4xxx` | installing into the store under `$BLOCK_HOME` | 5 |
@@ -36,6 +36,7 @@ Look a code up from the terminal with `block explain BLK1001`, which prints this
 | [`BLK1008`](#blk1008--the-named-tool-is-not-declared-in-blocktoml) | the named tool is not declared in block.toml | v0.1.0 |
 | [`BLK1009`](#blk1009--two-executables-would-provide-one-command) | two executables would provide one command | v0.1.0 |
 | [`BLK1010`](#blk1010--the-ecosystem-is-not-one-the-registry-knows) | the ecosystem is not one the registry knows | v0.1.0 |
+| [`BLK1011`](#blk1011--blocklock-could-not-be-written) | block.lock could not be written | v0.4.0 |
 | [`BLK2001`](#blk2001--no-upstream-version-matches-the-constraint) | no upstream version matches the constraint | v0.1.0 |
 | [`BLK2002`](#blk2002--the-matching-tags-have-no-published-release) | the matching tags have no published release | v0.1.0 |
 | [`BLK2003`](#blk2003--the-upstream-repository-tag-or-release-does-not-exist) | the upstream repository, tag or release does not exist | v0.1.0 |
@@ -147,6 +148,14 @@ Exits 1. Since v0.1.0.
 Fix: Use one of the names in the message, or run `block list` with no argument to see every tool with the systems it serves.
 
 Exits 1. Since v0.1.0.
+
+### BLK1011 — block.lock could not be written
+
+`block lock` writes block.lock by writing a temporary file beside it and renaming that into place, so a failure leaves whatever was there before. The directory refused the write: it is read-only, owned by someone else, on a full disk, or a file is where the lockfile should go.
+
+Fix: Make the project directory writable, or free the disk, and run "block lock" again. Nothing was resolved in vain: the next run reuses the artifacts already downloaded.
+
+Exits 1. Since v0.4.0.
 
 ## BLK2xxx — resolving a version against an upstream, which only `block lock` ever does
 

@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/nao1215/block/internal/diag"
@@ -125,7 +126,7 @@ func (f *Fetcher) verifyCached(want string) (bool, error) {
 func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, error) {
 	const dirMode = 0o755
 	if err := os.MkdirAll(filepath.Join(f.Dir, "sha256"), dirMode); err != nil {
-		return "", err
+		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -145,9 +146,9 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	if resp.StatusCode != http.StatusOK {
 		return "", diag.DownloadFailed.Errorf("download %s: %s", rawURL, resp.Status)
 	}
-	tmp, err := os.CreateTemp(f.Dir, ".download-*")
+	tmp, err := os.CreateTemp(f.Dir, downloadPrefix+"*")
 	if err != nil {
-		return "", err
+		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
 	}
 	tmpName := tmp.Name()
 	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpName) }
@@ -158,7 +159,7 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return "", err
+		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
 	}
 	sha := hex.EncodeToString(h.Sum(nil))
 	if want != "" && sha != want {
@@ -178,9 +179,39 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	}
 	if err := os.Rename(tmpName, f.Path(sha)); err != nil {
 		_ = os.Remove(tmpName)
-		return "", err
+		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
 	}
 	return sha, nil
+}
+
+// downloadPrefix names a download in progress. It lives in the cache
+// directory itself, beside sha256/, so nothing under sha256/ is ever a
+// partial blob.
+const downloadPrefix = ".download-"
+
+// Sweep removes downloads that were interrupted — a block killed mid-transfer
+// leaves its temporary file behind, and nothing else ever looks at it — once
+// they are older than olderThan. A download still in progress is younger than
+// that: its file is written to until it is renamed into place, so a sweep
+// running beside another fetch never takes anything from it. Errors are not
+// reported: a sweep is housekeeping, and the fetch that follows says what is
+// wrong with the cache if something is.
+func (f *Fetcher) Sweep(olderThan time.Duration) {
+	entries, err := os.ReadDir(f.Dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-olderThan)
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), downloadPrefix) || e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(f.Dir, e.Name()))
+	}
 }
 
 // CheckURL enforces block's transport policy: HTTPS everywhere, with plain

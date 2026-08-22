@@ -3,9 +3,11 @@ package lockfile
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/platform"
 )
 
@@ -289,5 +291,27 @@ func TestParseChannelPins(t *testing.T) {
 				t.Errorf("Parse(%q, %q) was accepted", bad.constraint, bad.release)
 			}
 		})
+	}
+}
+
+func TestWriteReportsAnUnwritableDirectory(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("a read-only directory is not refused here")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	err := Write(filepath.Join(dir, FileName), &Lock{Version: FormatVersion})
+	if err == nil {
+		t.Fatal("write into a read-only directory succeeded")
+	}
+	if diag.Of(err) != diag.LockUnwritable {
+		t.Fatalf("err = %v, want %s", err, diag.LockUnwritable)
+	}
+	if _, err := os.Stat(filepath.Join(dir, FileName)); !os.IsNotExist(err) {
+		t.Fatalf("a lockfile appeared: %v", err)
 	}
 }

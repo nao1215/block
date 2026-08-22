@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nao1215/block/internal/archive"
 	"github.com/nao1215/block/internal/diag"
@@ -36,6 +37,10 @@ const (
 // markerName marks an install as complete. It is the last file written before
 // the atomic rename.
 const markerName = ".block-installed"
+
+// tmpInfix is in the name of the directory an install is built in before it
+// is renamed into place: "tools/<name>/.<version>-<digest12>.tmp-<random>".
+const tmpInfix = ".tmp-"
 
 // Store is rooted at one directory.
 type Store struct {
@@ -199,7 +204,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 	// place at the end, so a failure anywhere below leaves the store exactly
 	// as it was — including an install of this very tool that is already
 	// there and working.
-	tmp, err := os.MkdirTemp(parent, "."+filepath.Base(dir)+".tmp-*")
+	tmp, err := os.MkdirTemp(parent, "."+filepath.Base(dir)+tmpInfix+"*")
 	if err != nil {
 		return diag.StoreUnwritable.Wrap(err)
 	}
@@ -317,4 +322,39 @@ func (s *Store) Verify(dir string, bins []string) error {
 		return diag.InstallDamaged.Errorf("is damaged: %w", err)
 	}
 	return nil
+}
+
+// SweepTemp removes the build directories interrupted installs left behind —
+// a block killed mid-extraction never reaches the deferred cleanup — once
+// they are older than olderThan. An install in progress is younger than
+// that, so a sweep running beside another sync never takes anything from it.
+// Errors are not reported: a sweep is housekeeping, and the install that
+// follows says what is wrong with the store if something is.
+func (s *Store) SweepTemp(olderThan time.Duration) {
+	tools, err := os.ReadDir(filepath.Join(s.Root, "tools"))
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-olderThan)
+	for _, tool := range tools {
+		if !tool.IsDir() {
+			continue
+		}
+		dir := filepath.Join(s.Root, "tools", tool.Name())
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if !e.IsDir() || !strings.HasPrefix(name, ".") || !strings.Contains(name, tmpInfix) {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil || info.ModTime().After(cutoff) {
+				continue
+			}
+			_ = os.RemoveAll(filepath.Join(dir, name))
+		}
+	}
 }

@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/fetch"
@@ -687,6 +688,10 @@ func (a *App) Sync(ctx context.Context) error {
 	if err := commandConflict(l); err != nil {
 		return err
 	}
+	// What an interrupted run left behind is cleared before this one adds
+	// to the store, so a cache kept for years holds artifacts, not leftovers.
+	a.Fetcher.Sweep(staleAfter)
+	a.Store.SweepTemp(staleAfter)
 	tw := tabwriter.NewWriter(a.Stdout, 0, 0, 2, ' ', 0) //nolint:mnd // column padding
 	for _, t := range l.Tools {
 		state, err := a.install(ctx, &t)
@@ -734,6 +739,12 @@ func (a *App) ensureShims(l *lockfile.Lock) error {
 	}
 	return nil
 }
+
+// staleAfter is how old a temporary file or directory must be before a sync
+// treats it as the leftover of a run that was killed rather than of one that
+// is still going. A download is bounded by the HTTP client's timeout and an
+// extraction by the disk, both far inside this.
+const staleAfter = 24 * time.Hour
 
 // install makes one locked tool available and reports "installed" or "cached".
 func (a *App) install(ctx context.Context, t *lockfile.Tool) (string, error) {

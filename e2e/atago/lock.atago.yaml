@@ -1176,3 +1176,34 @@ scenarios:
             created: []
             modified: []
             deleted: []
+
+  # A project directory block cannot write to gets its own code, not the one
+  # for a lockfile that is malformed — the fix for that one ("do not hand-edit
+  # block.lock") is the wrong advice here.
+  - name: a project directory that cannot be written is reported as such
+    skip:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: proj/block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: chmod a-w proj && cd proj && block lock; code=$?; chmod u+w .; exit $code
+      - assert:
+          exit_code: 1
+          stderr:
+            matches: '^block: BLK1011: writing block.lock: open .*/proj/.block.lock.[0-9]+: permission denied\n$'
+      - assert:
+          file:
+            path: proj/block.lock
+            exists: false
