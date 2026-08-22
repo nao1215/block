@@ -31,8 +31,17 @@ go run github.com/nao1215/block@latest exec forge --version
 
 Commit both files. Everyone else runs `block sync` and gets the same binaries.
 
-Foundry ships Linux and macOS builds only; on Windows, try `solc = "0.8"`
-instead. Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
+Foundry ships Linux and macOS builds only. On Windows, the same four lines with
+a tool that does:
+
+```shell
+printf '[tools]\nsolc = "0.8"\n' > block.toml
+go run github.com/nao1215/block@latest lock
+go run github.com/nao1215/block@latest sync
+go run github.com/nao1215/block@latest exec solc --version
+```
+
+Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
 
 ## Commands
 
