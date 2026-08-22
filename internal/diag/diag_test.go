@@ -167,3 +167,22 @@ func anchorOf(e diag.Entry) string {
 	}
 	return b.String()
 }
+
+// Lookup accepts the three spellings a person types — "BLK1005", "blk1005"
+// and the bare "1005" — and nothing else. strconv.Atoi would also have taken
+// "+1005" and "-1005", neither of which block has ever printed.
+func TestLookupAcceptsOnlyTheSpellingsBlockPrints(t *testing.T) {
+	t.Parallel()
+	want := diag.LockStale
+	for _, s := range []string{"BLK1005", "blk1005", "Blk1005", "1005", " 1005 ", "\t1005\n"} {
+		e, ok := diag.Lookup(s)
+		if !ok || e.Code != want {
+			t.Errorf("Lookup(%q) = %v, %v; want %s", s, e.Code, ok, want)
+		}
+	}
+	for _, s := range []string{"", "+1005", "-1005", "1005.0", "1_005", "0x3ed", "BLK+1005", "BLK", "BLK1005x", "１００５"} {
+		if e, ok := diag.Lookup(s); ok {
+			t.Errorf("Lookup(%q) = %v, want no match", s, e.Code)
+		}
+	}
+}

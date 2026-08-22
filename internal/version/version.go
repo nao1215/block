@@ -242,8 +242,43 @@ func cmpInt(a, b int) int {
 }
 
 // Sort orders versions ascending in place.
+//
+// The order is total, which [Compare] on its own is not: semver says build
+// metadata does not affect precedence, and block additionally accepts "1.2"
+// for "1.2.0", so an upstream can publish two tags that compare equal. Sorting
+// those with an unstable sort would leave their order to whatever order the
+// tags arrived in, and [Latest] would then pin a different tag — a different
+// URL, a different lockfile — for the same repository on two runs. Ties are
+// therefore broken by the spelling; see [compareTotal].
 func Sort(vs []Version) {
-	sort.Slice(vs, func(i, j int) bool { return Compare(vs[i], vs[j]) < 0 })
+	sort.Slice(vs, func(i, j int) bool { return compareTotal(vs[i], vs[j]) < 0 })
+}
+
+// compareTotal is [Compare] with its ties broken, so that no two distinct
+// spellings are interchangeable. A release and the same release carrying build
+// metadata are one release to semver, but they are two tags upstream and only
+// one of them can be pinned: the plain spelling wins, and two metadata
+// spellings are ordered against each other. Everything else falls back to the
+// spelling, which is what separates "1.2" from "1.2.0".
+func compareTotal(a, b Version) int {
+	if c := Compare(a, b); c != 0 {
+		return c
+	}
+	ab, bb := a.buildMetadata(), b.buildMetadata()
+	switch {
+	case ab == "" && bb != "":
+		return 1
+	case ab != "" && bb == "":
+		return -1
+	}
+	return strings.Compare(a.String(), b.String())
+}
+
+// buildMetadata is the "+..." part of the spelling this version was parsed
+// from, or "" for one written without any.
+func (v Version) buildMetadata() string {
+	_, build, _ := strings.Cut(v.text, "+")
+	return build
 }
 
 // Constraint is a dotted version prefix such as "1", "1.7" or "1.7.4".
@@ -306,7 +341,9 @@ func (c Constraint) Matches(v Version) bool {
 	return true
 }
 
-// Latest returns the highest version in vs that satisfies c.
+// Latest returns the highest version in vs that satisfies c. Two versions
+// semver calls equal are separated by [compareTotal], so the answer does not
+// depend on the order vs is in.
 func Latest(vs []Version, c Constraint) (Version, bool) {
 	var best Version
 	found := false
@@ -314,7 +351,7 @@ func Latest(vs []Version, c Constraint) (Version, bool) {
 		if !c.Matches(v) {
 			continue
 		}
-		if !found || Compare(v, best) > 0 {
+		if !found || compareTotal(v, best) > 0 {
 			best, found = v, true
 		}
 	}

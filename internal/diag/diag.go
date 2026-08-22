@@ -199,6 +199,11 @@ func Lookup(s string) (Entry, bool) {
 	if len(text) > len(Prefix) && strings.EqualFold(text[:len(Prefix)], Prefix) {
 		text = text[len(Prefix):]
 	}
+	// Digits and nothing else: strconv.Atoi would take "+1005" and "-1005",
+	// and neither is a spelling of a code anyone has ever seen printed.
+	if text == "" || strings.ContainsFunc(text, func(r rune) bool { return r < '0' || r > '9' }) {
+		return Entry{}, false
+	}
 	n, err := strconv.Atoi(text)
 	if err != nil {
 		return Entry{}, false

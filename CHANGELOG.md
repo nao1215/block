@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- An upstream can publish two tags that are one version to semver — "1.2" and
+  "1.2.0", or a release and the same release carrying build metadata. Which of
+  them `block lock` pinned depended on the order GitHub answered in, so the
+  same manifest against the same upstream could produce two different
+  lockfiles. Ordering is now total, and the plain spelling is the one pinned.
+- `block explain +1005` and `-1005` printed a code; only the spellings block
+  prints — `BLK1005`, `blk1005`, `1005` — are accepted now.
+- An empty `argv[0]` made block run as a shim for a command called `.`: the
+  guard against it never fired, because `filepath.Base("")` is `"."`. An
+  invocation block cannot identify is block itself.
 - `block sync` and `block exec` told a reader whose `block.toml` declares a
   `platforms` list that excludes their machine that `block.lock` was stale
   and to run `block lock` — a loop, since lock resolves exactly the platforms
