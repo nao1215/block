@@ -198,6 +198,13 @@ scenarios:
               bitcoin-core   bitcoind, bitcoin-cli, bitcoin-tx, bitcoin-util, bitcoin-wallet   Bitcoin reference implementation: full node, wallet and transaction tools
               btcd           btcd, btcctl                                                      Alternative full-node Bitcoin implementation written in Go
               ord            ord                                                               Ordinal theory index, block explorer and wallet for Bitcoin
+      # The name is matched without regard to case, as a code or a command is.
+      - run:
+          command: block list Bitcoin
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '(?m)^btcd +btcd, btcctl '
       - run:
           command: block list solana
       - assert:
