@@ -1,0 +1,25 @@
+# Grandine: an Ethereum consensus client by Grandine Tech.
+# https://github.com/grandinetech/grandine
+#
+# Releases ship one raw executable per platform, not archives, and the tags
+# carry no "v". Upstream names its platforms as one string rather than as a
+# product of an operating system and an architecture — "osx-x64", and a
+# Windows build whose extension sits at the end — so the pairs are mapped
+# whole. There is no Windows arm64 build.
+name = "grandine"
+ecosystems = ["ethereum"]
+description = "Ethereum consensus (beacon chain) client written in Rust"
+
+[source]
+type = "github_release"
+repo = "grandinetech/grandine"
+tag_prefix = ""
+asset = "grandine-{version}-{target}"
+bin = ["grandine"]
+
+[source.target]
+"linux/amd64" = "linux-x64"
+"linux/arm64" = "linux-arm64"
+"darwin/amd64" = "osx-x64"
+"darwin/arm64" = "osx-arm64"
+"windows/amd64" = "win-x64.exe"
