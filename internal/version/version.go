@@ -397,6 +397,9 @@ func (c Constraint) IsZero() bool { return c.raw == "" }
 // IsExact reports whether the constraint pins all three components.
 func (c Constraint) IsExact() bool { return len(c.parts) == components }
 
+// IsPrerelease reports whether the version carries pre-release identifiers.
+func (v Version) IsPrerelease() bool { return v.Pre != "" }
+
 // IsChannel reports whether the constraint names a release line rather than a
 // version.
 func (c Constraint) IsChannel() bool { return c.channel != "" }
