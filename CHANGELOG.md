@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-22
+
+A hardening release: two rounds of bug hunting over the paths the previous
+one did not reach — signals, channels with hyphens, an unwritable store, the
+leftovers of a killed run — with the tests that would have caught each one.
+
+### Fixed
+- One signal to `block exec` reached the child twice. The child was bound to
+  the context block cancels on SIGINT and SIGTERM while the same signal was
+  also forwarded, so a Ctrl-C arrived as SIGINT from the forwarder and
+  SIGTERM from the cancellation — and a node that shuts down on the first
+  signal and force-quits on the second was force-quit by one keystroke. A
+  child that then exited 0 was reported as `BLK5002: context canceled` with
+  status 1. The signal block receives is now forwarded exactly once, and the
+  child's own exit status is what block reports.
+- A channel whose name carries a hyphen — `pre-release` — lost half of it
+  when a pin was re-read: the commit was taken from the tag after its first
+  hyphen, so `{commit}` in the channel's asset rendered as `release-` and
+  adding a platform to the kept pin failed with BLK2004.
+- A store block cannot write to said "permission denied" with no code and no
+  path. It is now BLK4005, naming the cache directory.
+- A project directory block.lock cannot be written to was reported as
+  BLK1004 — the code for a malformed lockfile, whose advice is not to
+  hand-edit it. BLK1011 now says the directory refused the write.
+- `block list Ethereum` was refused as an unknown ecosystem. The name is
+  matched without regard to case, as a diagnostic code and a shim's command
+  name already were.
+
+### Added
+- `block sync` clears what an interrupted run left behind: a download killed
+  mid-transfer (`cache/.download-*`) and an extraction killed mid-way
+  (`tools/<name>/.<install>.tmp-*`) were never removed by anything. Entries
+  older than a day are swept before installing, so a sync running beside
+  another never touches its in-progress files.
+- BLK1011, "block.lock could not be written".
+- Tests from a mutation audit of status, channel resolution, the archive
+  link checks, the lockfile comparison, the store's install verification,
+  the transport policy and the shim marker: rows sorted across both files, a
+  hint that names `lock` before `sync`, a channel whose commit has no
+  release (BLK2010) or a draft one, a link to exactly the parent of the
+  install, a NUL in a zip link, each half of the Windows path check on its
+  own, a copied-in-place-of-link executable keeping its bit, a redirect loop
+  given up on after ten hops, and a no-op sync leaving the shim marker
+  untouched. Plus unit tests for `LookPath` on both platforms, the shim
+  fallback's loop guards, every channel validation error, and a Windows
+  scenario for a channel pin.
+- shellcheck runs over the shell scripts in CI, with `make shellcheck` for
+  the same locally.
+
 ## [0.3.0] - 2026-08-22
 
 Two things a project can now ask for that it could not before — a nightly, and
@@ -281,7 +330,8 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/nao1215/block/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nao1215/block/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nao1215/block/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nao1215/block/releases/tag/v0.1.0
