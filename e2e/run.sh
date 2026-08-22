@@ -44,11 +44,11 @@ if [ -n "${COVER:-}" ]; then
 fi
 
 echo "e2e: building block and fakegh..."
-# shellcheck disable=SC2086 # BLOCK_COVER_FLAGS must word-split into separate args.
 # .exe on Windows, empty everywhere else. block decides whether it is running
 # as itself or as a shim from its own file name, so the binary has to be
 # called "block.exe" there and not "block".
 GOEXE="$(go env GOEXE)"
+# shellcheck disable=SC2086 # BLOCK_COVER_FLAGS must word-split into separate args.
 (cd "$REPO_ROOT" && go build $BLOCK_COVER_FLAGS -ldflags '-X github.com/nao1215/block/internal/cmdinfo.Version=v0.0.0-e2e' -o "$TMP/bin/block$GOEXE" .)
 (cd "$REPO_ROOT" && go build -o "$TMP/bin/fakegh$GOEXE" ./e2e/fakegh)
 
