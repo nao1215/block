@@ -122,6 +122,9 @@ ecosystem. You pick, and `block.toml` records.
   meaning locally and on a runner. No special flag.
 - Upstream releases are detected, not catalogued. A recipe is a rule, so a new
   version of a tool needs no change anywhere.
+- Nightlies are pinned like versions. `foundry = "nightly"` resolves to the
+  release under the tag that moves, so what CI installs is a checksum in
+  `block.lock` rather than whatever was published overnight.
 - Multi-chain repositories are one toolchain. EVM and IBC tools sit in one
   manifest and one lockfile.
 

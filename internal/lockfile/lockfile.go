@@ -91,7 +91,8 @@ func (t *Tool) SetArtifact(a Artifact) {
 	sort.Slice(t.Artifacts, func(i, j int) bool { return t.Artifacts[i].Platform < t.Artifacts[j].Platform })
 }
 
-// ParsedVersion parses the pinned version.
+// ParsedVersion parses the pinned version. A channel pin records a tag rather
+// than a version, so a caller that can meet one asks the constraint first.
 func (t *Tool) ParsedVersion() (version.Version, error) {
 	return version.Parse(t.Version)
 }
@@ -157,16 +158,24 @@ func validateTool(t *Tool) error {
 	if err != nil {
 		return fmt.Errorf("tool %q: %w", t.Name, err)
 	}
-	v, err := version.Parse(t.Version)
-	if err != nil {
+	// What the pin says was resolved: a version, or — for a channel — the tag
+	// that will not move. Either way it becomes a directory name under
+	// $BLOCK_HOME, so it goes through the same closed alphabet.
+	if err := version.ValidateReleaseID(t.Version); err != nil {
 		return fmt.Errorf("tool %q: %w", t.Name, err)
 	}
-	// The pin has to be a version the constraint beside it could have chosen.
+	if !c.IsChannel() {
+		if _, err := version.Parse(t.Version); err != nil {
+			return fmt.Errorf("tool %q: %w", t.Name, err)
+		}
+	}
+	// The pin has to be something the constraint beside it could have chosen.
 	// A lockfile arrives through pull requests and hand edits, and "resolved
-	// 1.7 to 9.9.9" is exactly the edit that would otherwise install
-	// something block.toml never asked for.
-	if !c.Matches(v) {
-		return fmt.Errorf("tool %q: version %s does not satisfy the constraint %q it was resolved from", t.Name, v, t.Constraint)
+	// 1.7 to 9.9.9" — or "resolved nightly to nightly", which is a tag that
+	// moves — is exactly the edit that would otherwise install something
+	// block.toml never asked for.
+	if !c.MatchesRelease(t.Version) {
+		return fmt.Errorf("tool %q: %s does not satisfy the constraint %q it was resolved from", t.Name, t.Version, t.Constraint)
 	}
 	if len(t.Bin) == 0 {
 		return fmt.Errorf("tool %q: bin is empty", t.Name)

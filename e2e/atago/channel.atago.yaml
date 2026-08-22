@@ -1,0 +1,325 @@
+# A channel is a release line an upstream publishes under a tag that moves —
+# Foundry retags "nightly" every night. block.toml may ask for one; block.lock
+# never records one. lock dereferences the moving tag and pins the release
+# published for the commit under it, whose tag never moves again.
+# Run with: make e2e
+version: "1"
+
+suite:
+  name: block channels
+
+scenarios:
+  - name: lock pins a channel to the tag under the one that moves
+    env: &t1
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: &nightly |
+            [tools.foundry]
+            version = "nightly"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.foundry.source.channels.nightly]
+            asset = "foundry_nightly_{os}_{arch}.tar.gz"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^foundry  locked nightly-[0-9a-f]{40}\n'
+      # What was asked for is kept beside what it resolved to.
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - 'constraint = "nightly"'
+              - 'version = "nightly-'
+              - "/download/foundry-rs/foundry/nightly-"
+              - "sha256 = "
+      # The tag that moves is never what a lockfile records.
+      - assert:
+          file:
+            path: block.lock
+            not_contains:
+              - 'version = "nightly"'
+
+  - name: a locked channel installs and runs like any other pin
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *nightly
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "foundry  nightly-[0-9a-f]{40}  installed"
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "(fake)"
+      # The store holds it under the pinned tag, not under the moving one.
+      - assert:
+          dir:
+            path: home/tools/foundry
+            count: 1
+            glob: "nightly-*"
+      # A second sync installs nothing: the artifact is the one already there.
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "cached"
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: status tells the channel asked for from the release pinned
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *nightly
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      - run:
+          command: block status
+      - assert:
+          exit_code: 0
+          stdout:
+            # The column widths follow the longest cell, so what is pinned
+            # here is the report: what was asked for, what it resolved to,
+            # what is installed, and that the three agree.
+            matches: 'foundry\s+nightly\s+nightly-[0-9a-f]{40}\s+nightly-[0-9a-f]{40}\s+ok'
+
+  - name: locking again moves a channel pin only when the upstream moved
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *nightly
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      # Nothing changed upstream: the pin stays where it is.
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "block.lock is up to date"
+          changes:
+            modified: []
+      # The night moves on. The lockfile follows only because lock was run.
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}" block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "foundry  nightly-[0-9a-f]{40} -> nightly-[0-9a-f]{40}"
+          changes:
+            modified:
+              - block.lock
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}" block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "installed"
+
+  # `lock --check` answers the same question about a channel as about a
+  # version: would locking now write something else?
+  - name: check reports a channel that has moved without writing
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *nightly
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "(up-to-date)"
+          changes:
+            modified: []
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}" block lock --check
+      - assert:
+          exit_code: 2
+          stdout:
+            matches: "nightly-[0-9a-f]{40} -> nightly-[0-9a-f]{40}"
+          changes:
+            modified: []
+
+  - name: a channel the source does not publish is refused by name
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "canary"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.foundry.source.channels.nightly]
+            asset = "foundry_nightly_{os}_{arch}.tar.gz"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK2009: foundry: foundry-rs/foundry publishes no channel \"canary\" (it has nightly)\n"
+      - assert:
+          file:
+            path: block.lock
+            exists: false
+
+  - name: a source with no channels at all says so
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.hermes]
+            version = "nightly"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK2009: hermes: informalsystems/hermes publishes no channel \"nightly\"; ask for a version instead\n"
+
+  # A hand edit that floats the pin back onto the moving tag is the edit the
+  # lockfile exists to prevent.
+  - name: a lockfile floated back onto the moving tag is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *nightly
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "nightly"
+            version = "nightly"
+            bin = ["forge"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK1004: block.lock: tool \"foundry\": nightly does not satisfy the constraint \"nightly\" it was resolved from\n"
+
+  # Channels are new; versions are not. One manifest with both proves the
+  # older half still behaves.
+  - name: a channel and a version in one project keep their own semantics
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "nightly"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.foundry.source.channels.nightly]
+            asset = "foundry_nightly_{os}_{arch}.tar.gz"
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: 'hermes\s+1\.13\.0\s+installed'
+      # The version pin is exactly what it was before channels existed, and
+      # the newer upstream does not move it without a lock.
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - 'version = "1.13.0"'
+              - 'version = "nightly-'
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}" block lock --check
+      - assert:
+          exit_code: 2
+          stdout:
+            matches: 'hermes\s+1\.13\.0 -> 1\.13\.1'

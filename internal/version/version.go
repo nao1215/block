@@ -1,10 +1,17 @@
 // Package version parses the semantic versions that upstream tools publish and
 // the constraints a block.toml declares against them.
 //
-// block deliberately supports a single, tiny constraint syntax: a dotted
-// prefix. "1" means any 1.x.y, "1.7" means any 1.7.y and "1.7.4" is exact.
-// Pre-release versions never satisfy a constraint, so a project that asks for
-// "1.7" never silently receives 1.7.0-rc1.
+// block deliberately supports a tiny constraint syntax, in three forms:
+//
+//   - a dotted prefix: "1" means any 1.x.y, "1.7" means any 1.7.y and "1.7.4"
+//     is exact. A pre-release never satisfies one of these, so a project that
+//     asks for "1.7" never silently receives 1.7.0-rc1;
+//   - an exact pre-release: "1.8.0-rc1" is that release and nothing else. A
+//     pre-release is named, never floated onto;
+//   - a channel: "nightly" is a release line an upstream publishes under a tag
+//     that moves. What a channel resolves to is decided by the resolver, not
+//     here, because a moving tag has to be turned into something that does not
+//     move before it reaches a lockfile.
 //
 // Upstreams are not uniformly semver: Bitcoin Core tags "v29.0" and "v29.1rc1".
 // Parse accepts two components (patch 0) and a bare alphabetic pre-release
@@ -281,20 +288,41 @@ func (v Version) buildMetadata() string {
 	return build
 }
 
-// Constraint is a dotted version prefix such as "1", "1.7" or "1.7.4".
+// Constraint is what block.toml declares for a tool: a dotted version prefix
+// such as "1", "1.7" or "1.7.4", an exact pre-release such as "1.8.0-rc1", or
+// a channel such as "nightly".
 type Constraint struct {
 	raw   string
 	parts []int
+	// pre is the pre-release a constraint names exactly, or "".
+	pre string
+	// channel is the release line a constraint floats on, or "".
+	channel string
 }
 
-// ParseConstraint parses a constraint. Only release-number prefixes are
-// accepted: operators, ranges, wildcards and pre-release suffixes are rejected
-// so that block.toml stays trivially readable.
+// ParseConstraint parses a constraint. Operators, ranges and wildcards are
+// rejected so that block.toml stays trivially readable; what is accepted is a
+// dotted release prefix, one of those with an exact pre-release after it, or a
+// channel name.
 func ParseConstraint(s string) (Constraint, error) {
 	if s == "" {
 		return Constraint{}, errors.New("version constraint is empty")
 	}
-	parts := strings.Split(s, ".")
+	if len(s) > maxVersion {
+		return Constraint{}, fmt.Errorf("invalid version constraint: %d characters is longer than the %d a constraint may be", len(s), maxVersion)
+	}
+	// A constraint that does not start with a digit is a channel: an upstream
+	// spells its release lines in words ("nightly"), and its versions in
+	// numbers, so the first character tells the two apart with nothing to
+	// configure and no ambiguity to resolve.
+	if s[0] < '0' || s[0] > '9' {
+		if err := validateChannel(s); err != nil {
+			return Constraint{}, err
+		}
+		return Constraint{raw: s, channel: s}, nil
+	}
+	core, pre, hasPre := strings.Cut(s, "-")
+	parts := strings.Split(core, ".")
 	if len(parts) > components {
 		return Constraint{}, fmt.Errorf("invalid version constraint %q: want at most MAJOR.MINOR.PATCH", s)
 	}
@@ -306,7 +334,52 @@ func ParseConstraint(s string) (Constraint, error) {
 		}
 		nums = append(nums, n)
 	}
-	return Constraint{raw: s, parts: nums}, nil
+	if !hasPre {
+		return Constraint{raw: s, parts: nums}, nil
+	}
+	// A pre-release is named, never floated onto: "1.8.0-rc1" is that release
+	// and nothing else, so there is no way to write "the newest rc" and be
+	// given one nobody chose.
+	if len(nums) != components {
+		return Constraint{}, fmt.Errorf("invalid version constraint %q: a pre-release is pinned exactly, so it needs MAJOR.MINOR.PATCH before it", s)
+	}
+	if err := checkIdentifiers("pre-release", pre); err != nil {
+		return Constraint{}, fmt.Errorf("invalid version constraint %q: %w", s, err)
+	}
+	if err := checkAlphabet(s); err != nil {
+		return Constraint{}, err
+	}
+	return Constraint{raw: s, parts: nums, pre: pre}, nil
+}
+
+// maxChannel bounds a channel name, which becomes part of a directory name
+// under $BLOCK_HOME by way of the tag it resolves to.
+const maxChannel = 32
+
+// validateChannel holds a channel name to lower-case letters, digits and
+// hyphens, starting with a letter. That is what upstreams call their release
+// lines, and it leaves no way to write a path, a separator or something that
+// could be read as a version.
+func validateChannel(s string) error {
+	// "v1" is a version somebody wrote the tag prefix into, not a channel.
+	// Accepting it as one would trade a parse error for a resolution error
+	// about a channel the upstream has never heard of.
+	if len(s) > 1 && (s[0] == 'v' || s[0] == 'V') && s[1] >= '0' && s[1] <= '9' {
+		return fmt.Errorf("invalid version constraint %q: write the version without the tag prefix, as %q", s, s[1:])
+	}
+	if len(s) > maxChannel {
+		return fmt.Errorf("invalid channel %q: keep it under %d characters", s, maxChannel)
+	}
+	for i := range len(s) {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case i > 0 && (c >= '0' && c <= '9' || c == '-'):
+		default:
+			return fmt.Errorf("invalid version constraint %q: want a version like \"1.7\" or a channel like \"nightly\" (lower-case letters, digits and '-')", s)
+		}
+	}
+	return nil
 }
 
 // MustParseConstraint is ParseConstraint for literals; it panics on error.
@@ -327,9 +400,22 @@ func (c Constraint) IsZero() bool { return c.raw == "" }
 // IsExact reports whether the constraint pins all three components.
 func (c Constraint) IsExact() bool { return len(c.parts) == components }
 
-// Matches reports whether v satisfies the constraint. Pre-releases never match.
+// IsChannel reports whether the constraint names a release line rather than a
+// version.
+func (c Constraint) IsChannel() bool { return c.channel != "" }
+
+// Channel is the release line the constraint floats on, or "".
+func (c Constraint) Channel() string { return c.channel }
+
+// Matches reports whether v satisfies the constraint. A pre-release matches
+// only a constraint that names it exactly, and a channel matches no version at
+// all: what a channel resolves to is a release the resolver pins, not a
+// version this package can recognise.
 func (c Constraint) Matches(v Version) bool {
-	if v.IsPrerelease() || c.IsZero() {
+	if c.IsZero() || c.IsChannel() {
+		return false
+	}
+	if v.Pre != c.pre {
 		return false
 	}
 	got := []int{v.Major, v.Minor, v.Patch}
@@ -339,6 +425,38 @@ func (c Constraint) Matches(v Version) bool {
 		}
 	}
 	return true
+}
+
+// MatchesRelease reports whether an identity a lockfile records — a version
+// for a version constraint, the tag that never moves for a channel — is one
+// this constraint could have resolved to. It is what tells a hand-edited pin
+// from one block wrote.
+func (c Constraint) MatchesRelease(id string) bool {
+	if c.IsZero() {
+		return false
+	}
+	if c.IsChannel() {
+		return strings.HasPrefix(id, c.channel+"-")
+	}
+	v, err := Parse(id)
+	if err != nil {
+		return false
+	}
+	return c.Matches(v)
+}
+
+// ValidateReleaseID checks that an identity is something block can put in a
+// path and read back: the same closed alphabet [Parse] accepts, and the same
+// bound. A version goes through Parse itself; a channel release is a tag, and
+// a tag is not a version.
+func ValidateReleaseID(id string) error {
+	if id == "" {
+		return errors.New("release is empty")
+	}
+	if len(id) > maxVersion {
+		return fmt.Errorf("invalid release: %d characters is longer than the %d a release may be", len(id), maxVersion)
+	}
+	return checkAlphabet(id)
 }
 
 // Latest returns the highest version in vs that satisfies c. Two versions

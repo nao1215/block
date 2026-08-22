@@ -142,6 +142,29 @@ git tags of the repository           (GET /repos/{repo}/git/matching-refs/tags/{
 Listing tags instead of paging through `/releases` matters for projects such
 as Foundry, whose release list is dominated by hundreds of nightly builds.
 
+A channel — a release line published under a tag that moves — is resolved the
+other way round, because there is nothing to list:
+
+```text
+the moving tag                       (GET /repos/{repo}/commits/{channel})
+  → the commit it points at today
+  → the release published for that commit  (GET /repos/{repo}/releases/tags/{channel}-{commit})
+  → pick the asset named by the recipe's channel for each platform
+```
+
+That tag never moves again, so what reaches `block.lock` is as immutable as a
+version: an identity, a URL and a SHA-256. An upstream that moves a tag and
+publishes nothing for the commit beneath it cannot be pinned, and block refuses
+rather than recording a URL whose contents change.
+
+A recipe declares its channels, because a channel names its assets after
+itself rather than after a version:
+
+```toml
+[source.channels.nightly]
+asset = "foundry_nightly_{os}_{arch}.tar.gz"
+```
+
 ## Registry and source types
 
 The built-in registry is a directory of TOML recipes, one per tool, embedded

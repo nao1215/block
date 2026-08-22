@@ -90,7 +90,7 @@ func TestParseErrors(t *testing.T) {
 		{"bad constraint", "[tools]\nfoundry = \"^1\"\n", `tool "foundry": invalid version constraint "^1"`},
 		{"not a string", "[tools]\nfoundry = 1\n", `tool "foundry"`},
 		{"table without source", "[tools.foo]\nversion = \"1\"\n", "needs a [tools.foo.source] table"},
-		{"table bad constraint", "[tools.foo]\nversion = \"x\"\n[tools.foo.source]\ntype = \"github_release\"\n", `tool "foo": invalid version constraint`},
+		{"table bad constraint", "[tools.foo]\nversion = \"^1\"\n[tools.foo.source]\ntype = \"github_release\"\n", `tool "foo": invalid version constraint`},
 		{"bad source", "[tools.foo]\nversion = \"1\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"x/y\"\nasset = \"a_{version}.tar.gz\"\n", `tool "foo": bin must list`},
 		{"unknown source key", "[tools.foo]\nversion = \"1\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"x/y\"\nasset = \"a_{version}.tar.gz\"\nbin = [\"a\"]\nmirror = \"x\"\n", `unknown key "tools.foo.source.mirror"`},
 		{"bad platform", "platforms = [\"plan9/amd64\"]\n[tools]\nfoundry = \"1\"\n", `unsupported platform "plan9/amd64"`},
@@ -186,4 +186,28 @@ func FuzzParse(f *testing.F) {
 			}
 		}
 	})
+}
+
+// A channel is a constraint like any other as far as block.toml is concerned:
+// which channels a tool has is the upstream's business, and the manifest has
+// no registry in hand to check it against. The refusal for a channel nobody
+// publishes belongs to resolution, where the answer is known.
+func TestParseAcceptsAChannelConstraint(t *testing.T) {
+	t.Parallel()
+	m, err := Parse([]byte("[tools]\nfoundry = \"nightly\"\n"))
+	if err != nil {
+		t.Fatalf("Parse(nightly) = %v", err)
+	}
+	if !m.Tools[0].Constraint.IsChannel() || m.Tools[0].Constraint.Channel() != "nightly" {
+		t.Errorf("constraint = %q, channel=%v", m.Tools[0].Constraint, m.Tools[0].Constraint.IsChannel())
+	}
+	// And a project-local source can declare what that channel downloads.
+	m, err = Parse([]byte("[tools.foundry]\nversion = \"nightly\"\n[tools.foundry.source]\ntype = \"github_release\"\nrepo = \"foundry-rs/foundry\"\nasset = \"foundry_v{version}_{os}_{arch}.tar.gz\"\nbin = [\"forge\"]\n[tools.foundry.source.channels.nightly]\nasset = \"foundry_nightly_{os}_{arch}.tar.gz\"\n"))
+	if err != nil {
+		t.Fatalf("Parse(channel source) = %v", err)
+	}
+	ch, ok := m.Tools[0].Source.Channel("nightly")
+	if !ok || ch.Asset != "foundry_nightly_{os}_{arch}.tar.gz" {
+		t.Errorf("channel = %+v, %v", ch, ok)
+	}
 }

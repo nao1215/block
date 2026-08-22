@@ -30,6 +30,29 @@ $ block lock hermes       # only hermes
 
 It is the only command that moves a pin.
 
+A constraint is a dotted version prefix (`"1"`, `"1.7"`, `"1.7.4"`), one
+pre-release named exactly (`"1.8.0-rc1"`), or a channel — a release line an
+upstream publishes under a tag that moves:
+
+```toml
+[tools]
+foundry = "nightly"
+```
+
+A channel is the one input that floats, and `block.lock` never records it as
+one. lock dereferences the moving tag and pins the release published for the
+commit under it, whose tag never moves again:
+
+```console
+$ block lock
+foundry  locked nightly-5e88010a83d1b87b8f4d13058e42a2949d3e9dc0
+```
+
+From there a nightly is a pin like any other: `sync` installs that release and
+nothing else, and the pin moves when — and only when — `lock` is run again.
+Which channels a tool has is the upstream's business and the recipe's; asking
+for one it does not publish names the ones it does.
+
 ## `block lock --check`
 
 The same resolution, writing nothing and downloading nothing. It compares the

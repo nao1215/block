@@ -155,13 +155,15 @@ block exec anvil --version
 ## Choose how tightly to pin
 
 A version in `block.toml` is a dotted prefix, not an expression. There are no
-operators, no ranges, and pre-releases are never selected:
+operators and no ranges, and a pre-release is only ever selected when it is
+named:
 
 ```toml
 [tools]
-solc    = "0.8.28"   # exactly that release, forever
-foundry = "1.7"      # newest 1.7.x at the last "block lock"
-hermes  = "1"        # newest 1.x.y at the last "block lock"
+solc    = "0.8.28"     # exactly that release, forever
+foundry = "1.7"        # newest 1.7.x at the last "block lock"
+hermes  = "1"          # newest 1.x.y at the last "block lock"
+reth    = "1.9.0-rc1"  # that pre-release and no other
 ```
 
 Whichever you write, the resolved version is written to `block.lock` and that
@@ -171,6 +173,37 @@ pin, not how much freedom `sync` has — `sync` has none.
 Pin exactly when a version is part of your build's meaning: a Solidity compiler
 whose output must be reproducible, a chain binary that has to match the network
 you connect to. Pin the minor line when you want patches without a decision.
+
+## Follow a nightly without giving up the lockfile
+
+Some teams build against Foundry's nightly. Ask for the channel by name:
+
+```toml
+[tools]
+foundry = "nightly"
+```
+
+```console
+$ block lock
+foundry  locked nightly-5e88010a83d1b87b8f4d13058e42a2949d3e9dc0
+```
+
+`nightly` is a tag the upstream moves every night, and that is the one thing
+`block.lock` will not record. lock dereferences it and pins the release
+published for the commit under it — a tag that never moves again — with its URL
+and SHA-256, so everyone who runs `block sync` installs the same nightly, today
+and next month. The pin moves when you run `block lock` again, and never on its
+own:
+
+```console
+$ block lock --check
+foundry  nightly-5e88010a83d1b… -> nightly-2b2c1b6f0a94…
+$ echo $?
+2
+```
+
+Which channels a tool has is the upstream's business: asking for one that is
+not published names the ones that are.
 
 ## Lock for a platform you are not on
 

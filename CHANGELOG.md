@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   privilege block will not ask for — the target is copied instead.
 
 ### Added
+- Channels: a tool can ask for a release line an upstream publishes under a
+  tag that moves — `foundry = "nightly"` — and `block.lock` still records
+  something that does not. lock dereferences the moving tag and pins the
+  release published for the commit under it, whose tag never moves again,
+  with its URL and SHA-256. An upstream that publishes no such release cannot
+  be pinned, and block says so (BLK2010) rather than recording a URL whose
+  contents change; a channel a source does not publish is refused by name
+  (BLK2009). A recipe declares its channels, because a channel names its
+  assets after itself rather than after a version.
+- A pre-release can be pinned by naming it exactly: `reth = "1.9.0-rc1"`.
+  Dotted prefixes still never select one, so `"1.9"` cannot land on an rc.
 - `block status`: one line per tool saying what `block.toml` asks for, what
   `block.lock` pins, whether that version is installed for this machine, and
   what to do about the difference — `ok`, `missing`, `damaged` or `stale`. It

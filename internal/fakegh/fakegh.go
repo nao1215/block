@@ -41,7 +41,12 @@ import (
 
 // release is one fixture release.
 type release struct {
-	tag        string
+	tag string
+	// moves marks a tag the upstream retags — Foundry's "nightly". The commit
+	// it points at depends on the snapshot, and the release published for
+	// that commit is served under "<tag>-<commit>" without being listed:
+	// that is what real upstreams do, and it is what block pins.
+	moves      bool
 	at         int // 1 or 2: the snapshot in which the release appears
 	draft      bool
 	prerelease bool
@@ -159,7 +164,9 @@ func Fixtures() []Repo {
 			{tag: "v1.7.6", at: 2, noRelease: true},
 			foundry("v1.8.0-rc1", 1, true),
 			foundry("v1.9.0", 2, true),
-			{tag: "nightly-deadbeef", at: 1, prerelease: true, bins: foundryBins,
+			// The moving tag, and the assets it carries. Every night it
+			// points somewhere new, which is what the snapshot changes here.
+			{tag: "nightly", at: 1, moves: true, prerelease: true, bins: foundryBins,
 				assets: platformAssets("foundry_nightly_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
 		}},
 		{owner: "informalsystems", name: "hermes", digest: true, releases: []release{
@@ -373,14 +380,14 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, rest string, s
 		ref := strings.TrimPrefix(parts[2], "commits/")
 		for _, rel := range rp.releases {
 			if rel.tag == ref && rel.at <= snapshot {
-				writeJSON(w, http.StatusOK, map[string]string{"sha": commitOf(rel.tag)})
+				writeJSON(w, http.StatusOK, map[string]string{"sha": commitAt(rel, snapshot)})
 				return
 			}
 		}
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 	case strings.HasPrefix(parts[2], "releases/tags/"):
 		tag := strings.TrimPrefix(parts[2], "releases/tags/")
-		for _, rel := range rp.releases {
+		for _, rel := range releasesFor(rp, tag, snapshot) {
 			if rel.tag != tag || rel.at > snapshot || rel.noRelease || rel.draft {
 				continue
 			}
@@ -427,7 +434,7 @@ func (s *Server) serveDownload(w http.ResponseWriter, r *http.Request, rest stri
 		http.NotFound(w, r)
 		return
 	}
-	for _, rel := range rp.releases {
+	for _, rel := range releasesFor(rp, parts[2], latestSnapshot) {
 		if rel.tag != parts[2] {
 			continue
 		}
@@ -449,6 +456,56 @@ func (s *Server) serveDownload(w http.ResponseWriter, r *http.Request, rest stri
 	}
 	http.NotFound(w, r)
 }
+
+// latestSnapshot is the point in time a download is served from. Artifacts are
+// content-addressed by the tag in them, so which snapshot a pinned tag was
+// resolved at does not change what its bytes are.
+const latestSnapshot = 2
+
+// commitAt is the commit a tag points at. A tag that moves points somewhere
+// new in the later snapshot, which is what makes a nightly a nightly.
+func commitAt(rel release, snapshot int) string {
+	if !rel.moves {
+		return commitOf(rel.tag)
+	}
+	return commitOf(fmt.Sprintf("%s@%d", rel.tag, snapshot))
+}
+
+// releasesFor returns the releases a tag can name: the ones the fixture lists,
+// plus — for "<moving tag>-<commit>" — the release the upstream publishes for
+// the commit under a tag that moves. Those are not listed, exactly as they are
+// not something a fixture can enumerate: there is one per night.
+func releasesFor(rp Repo, tag string, snapshot int) []release {
+	for _, rel := range rp.releases {
+		if rel.tag == tag {
+			return rp.releases
+		}
+	}
+	channel, commit, ok := strings.Cut(tag, "-")
+	if !ok || len(commit) != commitHexLen {
+		return rp.releases
+	}
+	for _, rel := range rp.releases {
+		if !rel.moves || rel.tag != channel || rel.at > snapshot {
+			continue
+		}
+		// Only the commit this tag really points at, at some snapshot: a
+		// pinned tag block never resolved does not exist.
+		for at := 1; at <= latestSnapshot; at++ {
+			if commitAt(rel, at) != commit {
+				continue
+			}
+			pinned := rel
+			pinned.tag = tag
+			pinned.moves = false
+			return append(rp.releases, pinned)
+		}
+	}
+	return rp.releases
+}
+
+// commitHexLen is how long the fake commit SHAs are.
+const commitHexLen = 40
 
 // commitOf derives a stable fake commit SHA for a tag.
 func commitOf(tag string) string {
