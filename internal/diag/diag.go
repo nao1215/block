@@ -161,7 +161,7 @@ var registry = map[Code]Entry{} //nolint:gochecknoglobals // the closed set of c
 // sense that matters, and there is no caller to hand an error back to.
 // Every code registered so far shipped in the same release, which is why
 // since looks constant; it is a parameter because the next one will not.
-func register(code int, summary, detail, fix, since string) Code { //nolint:unparam // see above
+func register(code int, summary, detail, fix, since string) Code {
 	c := Code(code)
 	switch {
 	case c.Family() < 1 || c.Family() > 9:

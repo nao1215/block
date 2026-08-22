@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Tests for the guards a mutation audit found nothing was holding: a store
+  path component carrying a NUL, a pin kept although the project-local
+  recipe beside it changed, a release with two assets of one name, two
+  executables whose command names differ only in case, a diagnostic code
+  registered twice, and the depth guard that stops two shim directories on
+  PATH from handing a command back and forth.
+
 ### Fixed
 - Two `block sync` runs at once — two projects, or a person and a build
   script — failed each other. The shim directory is global, and whoever lost

@@ -199,10 +199,18 @@ func currentPlatform() string {
 // run executes a shim in a directory and returns its exit code and output.
 func run(t *testing.T, dir, shimPath, blockHome string, extraPath []string, args ...string) (int, string) {
 	t.Helper()
+	return runWithEnv(t, dir, shimPath, blockHome, extraPath, nil, args...)
+}
+
+// runWithEnv is run with extra environment variables, for the cases that are
+// about the environment a shim was started in.
+func runWithEnv(t *testing.T, dir, shimPath, blockHome string, extraPath, env []string, args ...string) (int, string) {
+	t.Helper()
 	cmd := exec.CommandContext(t.Context(), shimPath, args...)
 	cmd.Dir = dir
 	path := strings.Join(append(extraPath, os.Getenv("PATH")), string(os.PathListSeparator))
 	cmd.Env = append(os.Environ(), "BLOCK_HOME="+blockHome, "PATH="+path)
+	cmd.Env = append(cmd.Env, env...)
 	out, err := cmd.CombinedOutput()
 	code := 0
 	var exitErr *exec.ExitError
@@ -349,4 +357,41 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, data, 0o755)
+}
+
+// Two shim directories on PATH can hand a command back and forth: each one
+// steps aside for its own store and finds the other's copy of block, which
+// does the same. The depth a command has passed through is carried in the
+// environment, and the guard on it had nothing testing it.
+func TestShimRefusesToGoRoundInCircles(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	st := &store.Store{Root: filepath.Join(root, "home")}
+	if _, err := shim.Ensure(st, blockBinary(t), []string{"forge"}); err != nil {
+		t.Fatal(err)
+	}
+	forge := filepath.Join(shim.Dir(st), shim.FileName("forge"))
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Started as if it had already passed through the maximum number of
+	// shims, which is what a loop looks like from inside one.
+	code, out := runWithEnv(t, project, forge, st.Root, nil, []string{"BLOCK_SHIM_DEPTH=8"}, "--version")
+	if code != 1 {
+		t.Errorf("exit %d, want 1; output %q", code, out)
+	}
+	for _, want := range []string{"BLK5003", "forge", "shims are calling each other in a loop", "PATH"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output %q does not mention %q", out, want)
+		}
+	}
+
+	// One below the limit still runs: the guard stops a loop, not a command
+	// that legitimately passed through a shim on its way here.
+	code, out = runWithEnv(t, project, forge, st.Root, nil, []string{"BLOCK_SHIM_DEPTH=7"}, "--version")
+	if code == 1 && strings.Contains(out, "calling each other in a loop") {
+		t.Errorf("depth 7 was refused as a loop: %q", out)
+	}
 }
