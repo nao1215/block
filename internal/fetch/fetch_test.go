@@ -320,3 +320,27 @@ func TestDownloadReportsAnUnwritableCache(t *testing.T) {
 		t.Fatalf("err = %v, want %s", err, diag.StoreUnwritable)
 	}
 }
+
+// A server that redirects forever is given up on after ten hops, and the
+// failure says so rather than spinning until the client's timeout.
+func TestFetchGivesUpOnARedirectLoop(t *testing.T) {
+	t.Parallel()
+	var hops atomic.Int32
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hops.Add(1)
+		http.Redirect(w, r, srv.URL+"/again", http.StatusFound)
+	}))
+	defer srv.Close()
+	f := New(t.TempDir(), "block/test")
+	_, _, _, err := f.Fetch(context.Background(), srv.URL+"/a.tar.gz", "")
+	if err == nil || !strings.Contains(err.Error(), "stopped after 10 redirects") {
+		t.Fatalf("err = %v", err)
+	}
+	if diag.Of(err) != diag.DownloadFailed {
+		t.Fatalf("err = %v, want %s", err, diag.DownloadFailed)
+	}
+	if n := hops.Load(); n > 11 {
+		t.Fatalf("followed %d hops", n)
+	}
+}

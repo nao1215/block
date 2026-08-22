@@ -8,6 +8,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nao1215/block/internal/diag"
+	"github.com/nao1215/block/internal/manifest"
+	"github.com/nao1215/block/internal/platform"
 )
 
 // states renders a report the way the assertions below want to read it.
@@ -321,5 +325,30 @@ func TestStatusReportsAPinWithNoArtifactForThisMachine(t *testing.T) {
 	}
 	if report.Tools[0].Installed != "" || report.Tools[0].Dir != "" {
 		t.Errorf("an install was reported for a platform the lock has nothing for: %+v", report.Tools[0])
+	}
+}
+
+// A manifest that names platforms excludes this machine only when the list
+// is there and this machine is not on it.
+func TestPlatformNotDeclared(t *testing.T) {
+	t.Parallel()
+	here := platform.Platform{OS: "linux", Arch: "amd64"}
+	other := platform.Platform{OS: "darwin", Arch: "arm64"}
+	for _, tc := range []struct {
+		name      string
+		platforms []platform.Platform
+		wantErr   bool
+	}{
+		{"none declared", nil, false},
+		{"this machine declared", []platform.Platform{other, here}, false},
+		{"only others declared", []platform.Platform{other}, true},
+	} {
+		err := platformNotDeclared(&manifest.Manifest{Platforms: tc.platforms}, here)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("%s: err = %v, wantErr %v", tc.name, err, tc.wantErr)
+		}
+		if err != nil && (diag.Of(err) != diag.LockPlatformMissing || !strings.Contains(err.Error(), `add "linux/amd64"`)) {
+			t.Errorf("%s: err = %v", tc.name, err)
+		}
 	}
 }

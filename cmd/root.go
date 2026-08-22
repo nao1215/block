@@ -373,10 +373,14 @@ a project's own toolchain is its block.toml and block.lock.`,
 			recipes := reg.Recipes()
 			byEcosystem := len(args) == 1
 			if byEcosystem {
-				if !slices.Contains(reg.Ecosystems(), args[0]) {
+				// Matched without regard to case, as explain matches a code
+				// and a shim matches a command: "Ethereum" is not a different
+				// ecosystem from "ethereum".
+				i := slices.IndexFunc(reg.Ecosystems(), func(e string) bool { return strings.EqualFold(e, args[0]) })
+				if i < 0 {
 					return diag.UnknownEcosystem.Errorf("unknown ecosystem %q\navailable ecosystems: %s", args[0], strings.Join(reg.Ecosystems(), ", "))
 				}
-				recipes = reg.ByEcosystem(args[0])
+				recipes = reg.ByEcosystem(reg.Ecosystems()[i])
 			}
 			tw := tabwriter.NewWriter(stdout, 0, 0, 3, ' ', 0) //nolint:mnd // column padding
 			// How a tool is obtained is a registry concern, so the columns

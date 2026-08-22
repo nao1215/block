@@ -130,6 +130,12 @@ func TestVersionAndHelp(t *testing.T) { //nolint:paralleltest // t.Chdir
 			t.Errorf("list %s = %d, %q, %q", ecosystem, code, out, errOut)
 		}
 	}
+	// Case does not make another ecosystem.
+	if code, out, errOut := run(t, dir, "list", "Ethereum"); code != 0 {
+		t.Errorf("list Ethereum = %d, %q", code, errOut)
+	} else if _, ok := row(out, "foundry"); !ok {
+		t.Errorf("list Ethereum does not list foundry:\n%s", out)
+	}
 	code, _, errOut := run(t, dir, "list", "etheruem")
 	if want := "block: " + diag.UnknownEcosystem.String() + ": unknown ecosystem \"etheruem\"\navailable ecosystems: " + strings.Join(reg.Ecosystems(), ", ") + "\n"; code != 1 || errOut != want {
 		t.Errorf("list etheruem = %d, %q, want %q", code, errOut, want)

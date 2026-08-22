@@ -95,10 +95,22 @@ func TestEnsureCreatesAndReuses(t *testing.T) {
 		}
 	}
 
-	// A second sync of the same tools writes nothing.
+	// A second sync of the same tools writes nothing — not even the marker,
+	// which is rewritten only when the directory changed.
+	before, err := os.Stat(filepath.Join(Dir(st), markerName))
+	if err != nil {
+		t.Fatal(err)
+	}
 	created, err = Ensure(st, binary, []string{"forge", "cast"})
 	if err != nil || len(created) != 0 {
 		t.Errorf("Ensure(again) = %v, %v", created, err)
+	}
+	after, err := os.Stat(filepath.Join(Dir(st), markerName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Errorf("a sync that placed nothing rewrote the marker")
 	}
 	// A new tool adds only its own commands.
 	created, err = Ensure(st, binary, []string{"forge", "cast", "hermes"})
@@ -507,5 +519,36 @@ func TestMarkerRecordsEveryCommandTheDirectoryServes(t *testing.T) {
 	}
 	if strings.Join(m.commands, ",") != "cast,forge,geth" {
 		t.Errorf("marker commands = %v, want every command the directory serves", m.commands)
+	}
+}
+
+// A marker that describes another build of block is refreshed even by a
+// sync that has no commands of its own to place, so the next sync does not
+// rebuild again for nothing.
+func TestEnsureRefreshesAStaleMarkerWithNothingToPlace(t *testing.T) {
+	t.Parallel()
+	st := &store.Store{Root: t.TempDir()}
+	binary := self(t)
+	if _, err := Ensure(st, binary, []string{"forge"}); err != nil {
+		t.Fatal(err)
+	}
+	// The same path, other contents: what an upgrade in place looks like.
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Ensure(st, binary, nil); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := fileDigest(resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands, stale, err := readMarker(Dir(st), resolved, digest)
+	if err != nil || stale || strings.Join(commands, ",") != "forge" {
+		t.Fatalf("readMarker = %v, stale=%v, %v", commands, stale, err)
 	}
 }
