@@ -74,6 +74,7 @@ block.toml  ──block lock──▶  block.lock  ──block sync──▶  in
 | `block lock --check` | yes | never | never | no | no |
 | `block sync` | never | never | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | never | never | never | never | yes |
+| `block status [--json]` | never | never | never | never | no |
 | `block list [ecosystem]` | never | never | never | never | no |
 | `block explain <code>` | never | never | never | never | no |
 | `forge`, `cast`, … (a shim) | never | never | never | never | yes |

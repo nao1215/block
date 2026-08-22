@@ -18,9 +18,9 @@
 //	BLK9xxx  an internal error — a bug in block
 //
 // The digit is not the exit status: every coded diagnostic exits 1. block's
-// other non-zero exit, 2 from `block lock --check`, is a result rather than an
-// error — the lockfile would change — and carries no code, because there is
-// nothing to look up.
+// other non-zero exit, 2 from `block lock --check` and `block status`, is a
+// result rather than an error — the lockfile would change, or the toolchain is
+// not ready — and carries no code, because there is nothing to look up.
 //
 // Codes are grouped by what the reader has to fix, never one per call site.
 // Two errors share a code when the fix is the same and differ when it differs,

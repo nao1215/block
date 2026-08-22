@@ -160,8 +160,8 @@ func TestWorkflow(t *testing.T) {
 	if code, _, errOut := run(t, dir, "sync"); code != 1 || !strings.Contains(errOut, `block.lock not found; run "block lock"`) {
 		t.Errorf("sync before lock = %d, %q", code, errOut)
 	}
-	if code, _, _ := run(t, dir, "lock", "--check"); code != exitOutdated {
-		t.Errorf("lock --check before lock = %d, want %d", code, exitOutdated)
+	if code, _, _ := run(t, dir, "lock", "--check"); code != exitNeedsWork {
+		t.Errorf("lock --check before lock = %d, want %d", code, exitNeedsWork)
 	}
 	code, out, _ := run(t, dir, "lock")
 	if code != 0 || !strings.Contains(out, "foundry  locked 1.7.4") {
@@ -194,7 +194,7 @@ func TestWorkflow(t *testing.T) {
 	// Upstream publishes 1.7.5.
 	t.Setenv(github.EnvBaseURL, base)
 	code, out, _ = run(t, dir, "lock", "--check")
-	if code != exitOutdated || out != "foundry  1.7.4 -> 1.7.5\n" {
+	if code != exitNeedsWork || out != "foundry  1.7.4 -> 1.7.5\n" {
 		t.Errorf("lock --check (outdated) = %d, %q", code, out)
 	}
 	if code, out, _ := run(t, dir, "sync"); code != 0 || out != "foundry  1.7.4  cached\n" {
