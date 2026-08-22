@@ -250,6 +250,16 @@ var recipes = map[string]want{
 		},
 		bins: []string{"ethdo"},
 	},
+	"ethereal": {
+		ecosystems: []string{"ethereum"}, description: "Command-line tool for transactions, tokens and ENS on Ethereum",
+		sourceKind: recipe.TypeGitHubRelease, sample: "2.12.0",
+		artifacts: map[string]string{
+			"linux/amd64":  "ethereal-2.12.0-linux-amd64.tar.gz",
+			"linux/arm64":  "ethereal-2.12.0-linux-arm64.tar.gz",
+			"darwin/amd64": "ethereal-2.12.0-darwin-amd64.tar.gz",
+		},
+		bins: []string{"ethereal"},
+	},
 	"fabric": {
 		ecosystems: []string{"fabric"}, description: "Hyperledger Fabric peer, orderer and channel tooling",
 		sourceKind: recipe.TypeGitHubRelease, sample: "3.1.5",
@@ -311,6 +321,17 @@ var recipes = map[string]want{
 			"windows/amd64": "grandine-2.0.6-win-x64.exe",
 		},
 		bins: []string{"grandine"},
+	},
+	"heimdall": {
+		ecosystems: []string{"ethereum"}, description: "EVM bytecode toolkit: disassemble, decompile and decode transactions",
+		sourceKind: recipe.TypeGitHubRelease, sample: "0.9.3",
+		artifacts: map[string]string{
+			"linux/amd64":  "heimdall-linux-amd64",
+			"linux/arm64":  "heimdall-linux-arm64",
+			"darwin/amd64": "heimdall-macos-amd64",
+			"darwin/arm64": "heimdall-macos-arm64",
+		},
+		bins: []string{"heimdall"},
 	},
 	"hermes": {
 		ecosystems: []string{"cosmos", "ibc"}, description: "IBC relayer connecting Cosmos SDK chains, written in Rust",
@@ -374,6 +395,18 @@ var recipes = map[string]want{
 			"windows/amd64": "medusa-win-x64.tar.gz",
 		},
 		bins: []string{"medusa"},
+	},
+	"nethermind": {
+		ecosystems: []string{"ethereum"}, description: "Ethereum execution client written in .NET",
+		sourceKind: recipe.TypeGitHubRelease, sample: "1.39.3", commit: "28cbe2a0fa1e4a3b",
+		artifacts: map[string]string{
+			"linux/amd64":   "nethermind-1.39.3-28cbe2a0-linux-x64.zip",
+			"linux/arm64":   "nethermind-1.39.3-28cbe2a0-linux-arm64.zip",
+			"darwin/amd64":  "nethermind-1.39.3-28cbe2a0-macos-x64.zip",
+			"darwin/arm64":  "nethermind-1.39.3-28cbe2a0-macos-arm64.zip",
+			"windows/amd64": "nethermind-1.39.3-28cbe2a0-windows-x64.zip",
+		},
+		bins: []string{"nethermind"},
 	},
 	"near-cli": {
 		ecosystems: []string{"near"}, description: "NEAR command-line interface for accounts, contracts and transactions",

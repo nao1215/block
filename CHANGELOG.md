@@ -19,9 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   privilege block will not ask for — the target is copied instead.
 
 ### Added
-- `grandine`, the Rust Ethereum consensus client, is in the registry: 48
-  tools now. Its releases are one raw executable per platform with a
-  published SHA-256, so locking it downloads nothing.
+- Four tools in the registry, 51 now: `grandine` (Rust Ethereum consensus
+  client), `nethermind` (.NET Ethereum execution client), `ethereal`
+  (command-line Ethereum client, from the author of `ethdo`) and `heimdall`
+  (EVM bytecode toolkit). Every one of them publishes prebuilt binaries with
+  a SHA-256 beside them, so locking downloads nothing and installing builds
+  nothing.
 - Tests for the guards a mutation audit found nothing was holding: a store
   path component carrying a NUL, a pin kept although the project-local
   recipe beside it changed, a release with two assets of one name, two

@@ -1,0 +1,16 @@
+# Ethereal: a command-line Ethereum client by Weald Technology.
+# https://github.com/wealdtech/ethereal
+#
+# The Windows build is published under a name of another shape entirely
+# (ethereal-<version>-windows-exe.zip), so only the three platforms upstream
+# names the same way are claimed here. There is no macOS arm64 build.
+name = "ethereal"
+ecosystems = ["ethereum"]
+description = "Command-line tool for transactions, tokens and ENS on Ethereum"
+
+[source]
+type = "github_release"
+repo = "wealdtech/ethereal"
+asset = "ethereal-{version}-{os}-{arch}.tar.gz"
+platforms = ["linux/amd64", "linux/arm64", "darwin/amd64"]
+bin = ["ethereal"]
