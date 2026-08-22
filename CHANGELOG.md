@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `ethereal` and `heimdall` no longer claim macOS x86-64. Both upstreams
+  publish one macOS build, name it amd64, and ship an arm64 executable, so
+  an Intel Mac was installing something that could not start.
 - A tool that stopped having a `[tools.<name>.source]` of its own — promoted
   to a registry recipe and deleted from `block.toml` — left a pin that
   `sync` went on installing. The lockfile records the fingerprint of the
