@@ -1,9 +1,13 @@
 # Ethereal: a command-line Ethereum client by Weald Technology.
 # https://github.com/wealdtech/ethereal
 #
+# Upstream publishes one macOS build and calls it darwin-amd64, but the file
+# is an arm64 executable — an Intel Mac cannot run it ("bad CPU type"). The
+# platforms are therefore mapped whole: darwin/arm64 takes that asset, and
+# darwin/amd64 is not claimed, because there is nothing to give it.
+#
 # The Windows build is published under a name of another shape entirely
-# (ethereal-<version>-windows-exe.zip), so only the three platforms upstream
-# names the same way are claimed here. There is no macOS arm64 build.
+# (ethereal-<version>-windows-exe.zip) and is not claimed either.
 name = "ethereal"
 ecosystems = ["ethereum"]
 description = "Command-line tool for transactions, tokens and ENS on Ethereum"
@@ -11,6 +15,10 @@ description = "Command-line tool for transactions, tokens and ENS on Ethereum"
 [source]
 type = "github_release"
 repo = "wealdtech/ethereal"
-asset = "ethereal-{version}-{os}-{arch}.tar.gz"
-platforms = ["linux/amd64", "linux/arm64", "darwin/amd64"]
+asset = "ethereal-{version}-{target}.tar.gz"
 bin = ["ethereal"]
+
+[source.target]
+"linux/amd64" = "linux-amd64"
+"linux/arm64" = "linux-arm64"
+"darwin/arm64" = "darwin-amd64"

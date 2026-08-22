@@ -9,6 +9,6 @@
 # *.toml, sorted by name, hashed. It depends on nothing but their names and
 # bytes, so the same revision always produces the same value.
 source = "https://github.com/nao1215/block-registry"
-revision = "ae78a663f016f4547bced36e2f24717530994431"
+revision = "961336aa4cc9987c8ecf2d2b6c520d15b8fdb9e7"
 recipes = 51
-digest = "sha256:35a3494e51a235c3ffda34fb71327fc3a3acf5c9e0464997aceb1671d4402030"
+digest = "sha256:862f8390b04d605405a347f2105f6c0e34fb1cb8058bf2f13e67db95c01422b8"
