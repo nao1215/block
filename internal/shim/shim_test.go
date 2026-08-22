@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/nao1215/block/internal/store"
@@ -71,7 +72,10 @@ func TestEnsureCreatesAndReuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(created, ",") != "forge,cast" {
+	// Sorted, not in the order they were handed over: the list is the union
+	// of what this project asks for and what the directory already serves, so
+	// it has one order rather than the caller's.
+	if strings.Join(created, ",") != "cast,forge" {
 		t.Errorf("created = %v", created)
 	}
 	for _, name := range []string{"forge", "cast"} {
@@ -130,15 +134,18 @@ func TestEnsureRewritesAfterAnUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotPath, gotDigest, ok := parseMarker(string(marker))
+	got, ok := parseMarker(string(marker))
 	if !ok {
 		t.Fatalf("marker = %q, which block cannot read back", marker)
 	}
-	if gotPath != want {
-		t.Errorf("marker path = %q, want %q", gotPath, want)
+	if got.path != want {
+		t.Errorf("marker path = %q, want %q", got.path, want)
 	}
-	if !strings.HasPrefix(gotDigest, "sha256:") {
-		t.Errorf("marker digest = %q, want a sha256", gotDigest)
+	if !strings.HasPrefix(got.digest, "sha256:") {
+		t.Errorf("marker digest = %q, want a sha256", got.digest)
+	}
+	if strings.Join(got.commands, ",") != "forge" {
+		t.Errorf("marker commands = %v, want the commands the directory serves", got.commands)
 	}
 	// A shim directory left without a marker is rebuilt rather than trusted.
 	if err := os.Remove(filepath.Join(Dir(st), markerName)); err != nil {
@@ -287,9 +294,10 @@ func TestEnsureRebuildsFromAnUnreadableMarker(t *testing.T) {
 		marker string
 	}{
 		{"the previous format, a bare path", "PATH\n"},
-		{"truncated mid-write", "block-shims 2\npath=PATH\n"},
-		{"a format from the future", "block-shims 9\npath=PATH\ndigest=sha256:00\n"},
-		{"an empty digest", "block-shims 2\npath=PATH\ndigest=\n"},
+		{"the format before the command list", "block-shims 2\npath=PATH\ndigest=sha256:00\n"},
+		{"truncated mid-write", "block-shims 3\npath=PATH\ndigest=sha256:00\n"},
+		{"a format from the future", "block-shims 9\npath=PATH\ndigest=sha256:00\ncommands=forge\n"},
+		{"an empty digest", "block-shims 3\npath=PATH\ndigest=\ncommands=forge\n"},
 		{"empty", ""},
 	}
 	for _, tt := range tests {
@@ -390,5 +398,114 @@ func TestIsShimIgnoresAnArgv0ThatNamesNoCommand(t *testing.T) {
 		if IsShim(argv0) {
 			t.Errorf("IsShim(%q) = true, want false", argv0)
 		}
+	}
+}
+
+// The shim directory is shared by every project on the machine, so two syncs
+// at once — two projects, or a person and a build script — is ordinary. Both
+// used to fail: whoever lost the race to create a file got "file exists",
+// both wrote the marker through one shared temporary name so one of them
+// renamed a path the other had already moved, and the rebuild emptied the
+// directory first, so a command another project had just put there was gone.
+func TestEnsureSurvivesTwoSyncsAtOnce(t *testing.T) {
+	t.Parallel()
+	for attempt := range 20 {
+		st := &store.Store{Root: t.TempDir()}
+		old := self(t)
+		if _, err := Ensure(st, old, []string{"forge", "cast"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Ensure(st, old, []string{"geth"}); err != nil {
+			t.Fatal(err)
+		}
+		// Both projects notice the same upgrade at the same moment.
+		upgraded := self(t)
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		sets := [][]string{{"forge", "cast"}, {"hermes"}}
+		for i := range sets {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, errs[i] = Ensure(st, upgraded, sets[i])
+			}()
+		}
+		wg.Wait()
+		for i, err := range errs {
+			if err != nil {
+				t.Fatalf("attempt %d: concurrent Ensure %d = %v", attempt, i, err)
+			}
+		}
+		for _, command := range []string{"forge", "cast", "geth", "hermes"} {
+			if _, err := os.Stat(filepath.Join(Dir(st), FileName(command))); err != nil {
+				t.Errorf("attempt %d: %s is missing after two syncs at once: %v", attempt, command, err)
+			}
+		}
+		// Whatever order they finished in, the directory has settled: a third
+		// sync of everything creates nothing.
+		created, err := Ensure(st, upgraded, []string{"forge", "cast", "geth", "hermes"})
+		if err != nil || len(created) != 0 {
+			t.Errorf("attempt %d: Ensure after the race = %v, %v", attempt, created, err)
+		}
+		entries, err := os.ReadDir(Dir(st))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), tmpPrefix) {
+				t.Errorf("attempt %d: a half-built shim was left behind: %s", attempt, e.Name())
+			}
+		}
+	}
+}
+
+// A rebuild recreates the commands the marker records, so a file block did
+// not put in the directory is not turned into a shim — and, unlike the
+// rebuild that emptied the directory first, not deleted either.
+func TestEnsureLeavesAFileItDidNotPutThere(t *testing.T) {
+	t.Parallel()
+	st := &store.Store{Root: t.TempDir()}
+	if _, err := Ensure(st, self(t), []string{"forge"}); err != nil {
+		t.Fatal(err)
+	}
+	stray := filepath.Join(Dir(st), "notes.txt")
+	if err := os.WriteFile(stray, []byte("mine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	created, err := Ensure(st, self(t), []string{"forge"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(created, ",") != "forge" {
+		t.Errorf("created = %v, want only the command the marker records", created)
+	}
+	body, err := os.ReadFile(stray)
+	if err != nil || string(body) != "mine\n" {
+		t.Errorf("the stray file is now %q (%v), want it untouched", body, err)
+	}
+}
+
+// The marker carries the commands, so a directory that has been rebuilt no
+// longer has to be scanned to find out what it serves.
+func TestMarkerRecordsEveryCommandTheDirectoryServes(t *testing.T) {
+	t.Parallel()
+	st := &store.Store{Root: t.TempDir()}
+	binary := self(t)
+	if _, err := Ensure(st, binary, []string{"forge", "cast"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Ensure(st, binary, []string{"geth"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(Dir(st), markerName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, ok := parseMarker(string(data))
+	if !ok {
+		t.Fatalf("marker = %q, which block cannot read back", data)
+	}
+	if strings.Join(m.commands, ",") != "cast,forge,geth" {
+		t.Errorf("marker commands = %v, want every command the directory serves", m.commands)
 	}
 }

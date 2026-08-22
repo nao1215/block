@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Two `block sync` runs at once — two projects, or a person and a build
+  script — failed each other. The shim directory is global, and whoever lost
+  the race to create a file got "file exists", both wrote the marker through
+  one shared temporary name so one renamed a path the other had already
+  moved, and a rebuild emptied the directory first, so a command the other
+  project had just put there disappeared. Each shim is now built at a unique
+  path and renamed into place, which is atomic: both runs finish and no
+  command is ever missing in between.
+- A rebuild of the shim directory no longer deletes, or turns into a shim, a
+  file block did not put there. The marker records which commands the
+  directory serves (`block-shims 3`), so a rebuild recreates exactly those; a
+  marker from an older block is still recovered by looking at the directory.
+- `block lock` asked GitHub for a second page of tags it could not have.
+  The matching-refs endpoint answers a repository with many tags by returning
+  all of them at once whatever `per_page` says — nine thousand refs, nearly
+  four megabytes, for one such repository — and block only learned that from
+  a second identical request. A response longer than the page asked for now
+  ends the walk, halving the API calls for every repository with more than a
+  hundred tags.
+- A response larger than the 8 MiB block reads was reported as an invalid
+  response from the API. It now says it is block's own limit.
+
 ## [0.2.0] - 2026-08-22
 
 A bug-fix release. Three of these change what block accepts or says, which is
