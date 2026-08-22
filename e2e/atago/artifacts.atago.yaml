@@ -188,10 +188,12 @@ scenarios:
           exit_code: 0
           stdout:
             contains: "linked 1.0.0 (fake)"
-      # The second name resolves to the same program.
+      # The second name is there and resolves to the program: the archive
+      # names the link exactly, so it carries no executable suffix of its
+      # own, and "test -e" follows it to whatever it points at.
       - run:
           shell: true
-          command: 'test -e "$(ls -d home/tools/linked/*/)Runner${BLOCK_EXE}"'
+          command: 'test -e "$(ls -d home/tools/linked/*/)Runner"'
       - assert:
           exit_code: 0
 
