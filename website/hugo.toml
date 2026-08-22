@@ -11,7 +11,7 @@ timeZone = "UTC"
 
 [params]
 tagline = "a toolbox for blockchain development, starting with the toolchain"
-description = "block is a toolbox for blockchain development. It pins the blockchain CLI tools a project depends on — Foundry, geth, reth, Lighthouse, Agave, Hermes and 41 more — verifies every download against a lockfile, and reproduces the same toolchain locally and in CI."
+description = "block is a toolbox for blockchain development. It pins the blockchain CLI tools a project depends on — Foundry, geth, reth, Lighthouse, Agave, Hermes and 42 more — verifies every download against a lockfile, and reproduces the same toolchain locally and in CI."
 
 [markup.highlight]
 noClasses = false

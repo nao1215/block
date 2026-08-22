@@ -300,6 +300,18 @@ var recipes = map[string]want{
 		},
 		bins: []string{"abigen", "evm", "rlpdump"}, strip: 1,
 	},
+	"grandine": {
+		ecosystems: []string{"ethereum"}, description: "Ethereum consensus (beacon chain) client written in Rust",
+		sourceKind: recipe.TypeGitHubRelease, sample: "2.0.6",
+		artifacts: map[string]string{
+			"linux/amd64":   "grandine-2.0.6-linux-x64",
+			"linux/arm64":   "grandine-2.0.6-linux-arm64",
+			"darwin/amd64":  "grandine-2.0.6-osx-x64",
+			"darwin/arm64":  "grandine-2.0.6-osx-arm64",
+			"windows/amd64": "grandine-2.0.6-win-x64.exe",
+		},
+		bins: []string{"grandine"},
+	},
 	"hermes": {
 		ecosystems: []string{"cosmos", "ibc"}, description: "IBC relayer connecting Cosmos SDK chains, written in Rust",
 		sourceKind: recipe.TypeGitHubRelease, sample: "1.13.3",

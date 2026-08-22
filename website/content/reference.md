@@ -182,7 +182,7 @@ growing cannot quietly grow the set of hosts block fetches binaries from.
 | `github_release` | versions from git tags; download a release asset — a `.tar.gz` / `.tar.bz2` / `.zip` archive or a single raw executable — using GitHub's own sha256 when recorded | a release of the same repository the tags come from, and nowhere else |
 | `http` | versions from git tags; download a prebuilt artifact over HTTPS; `{commit}` and `{target}` cover vendors that name builds by commit or by their own platform strings | only a host listed in [block-registry's `policy/hosts.toml`](https://github.com/nao1215/block-registry/blob/main/policy/hosts.toml), which names the one repository each host serves and why a release asset will not do |
 
-44 of the 47 recipes take the first; three — Bitcoin Core, geth and the
+45 of the 48 recipes take the first; three — Bitcoin Core, geth and the
 go-ethereum tools — take the second, because those projects build binaries
 and publish them on their own server rather than attaching them to a GitHub
 release. A `github.com` URL wearing type `http` is refused: it would be
@@ -197,7 +197,7 @@ Go, Rust, Node or Python toolchains themselves, which is where a
 general-purpose version manager belongs; a blockchain CLI distributed only
 through npm, PyPI or crates.io is therefore not in the registry.
 
-47 tools across 17 blockchain systems are installed today with those two
+48 tools across 17 blockchain systems are installed today with those two
 types alone (`block list <ecosystem>` shows the same, from the binary):
 
 | ecosystem | tools |
@@ -237,7 +237,7 @@ therefore always pairs with a registry revision it was tested against, and
 ```console
 $ block version
 block v0.1.0
-registry 40fe35d71da6 (47 recipes from https://github.com/nao1215/block-registry)
+registry 09593c6e0254 (48 recipes from https://github.com/nao1215/block-registry)
 ```
 
 ## Non-goals
