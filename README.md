@@ -14,12 +14,7 @@
 
 ![demo](./doc/img/demo.gif)
 
-> [!IMPORTANT]
-> block does one thing today: it locks a project's toolchain, so every machine
-> and CI install the same CLI versions. The rest of the toolbox — local
-> blockchain development beyond installing tools — is not built yet.
-
-block is a toolbox for blockchain development, and the first tool in it is the toolchain: it pins the CLIs a repository depends on — Foundry, geth, Lighthouse, Agave, Gaia, an IBC relayer, whatever your chains need — and reproduces exactly the same versions on every developer machine and in CI. Tools are declared in `block.toml`, pinned by URL and SHA-256 in `block.lock`, and installed from that lockfile alone. It is a single static binary: no mise, aqua, Nix, Docker or package manager is involved.
+block is a reproducible toolchain manager for blockchain development. It pins the CLI tools a repository depends on — Foundry, geth, Lighthouse, Agave, Gaia, an IBC relayer, whatever your chains need — and reproduces exactly the same versions on every developer machine and in CI. Tools are declared in `block.toml`, pinned by URL and SHA-256 in `block.lock`, and installed from that lockfile alone. It is a single static binary: no mise, aqua, Nix, Docker or package manager is involved.
 
 Documentation: https://nao1215.github.io/block/
 
