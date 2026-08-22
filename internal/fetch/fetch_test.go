@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -298,8 +299,8 @@ func TestSweepRemovesOnlyStaleDownloads(t *testing.T) {
 
 func TestDownloadReportsAnUnwritableCache(t *testing.T) {
 	t.Parallel()
-	if os.Getuid() == 0 {
-		t.Skip("root writes anywhere")
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("a read-only directory is not refused here")
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("bytes"))
