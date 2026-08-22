@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-22
+
+A bug-fix release. Three of these change what block accepts or says, which is
+why it is a minor rather than a patch: a lockfile carrying a version like
+"1.7.4-" is now refused, a recipe whose `{target}` table is incomplete is now
+refused, and a project whose `platforms` list excludes the machine running
+`sync` gets a different diagnostic code.
+
 ### Fixed
 - An upstream can publish two tags that are one version to semver — "1.2" and
   "1.2.0", or a release and the same release carrying build metadata. Which of
@@ -64,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fuzz tests for the version constraint parser, the lockfile parse/marshal
   round trip, the manifest parser, archive member path resolution and
   lockfile `bin` entries. Their seed corpora run as ordinary unit tests.
+
+### Changed
+- The README, the documentation front page and the site tagline say what
+  block is heading toward — a Blockchain Development Toolbox for local
+  blockchain development — and that the toolchain is the only tool in it
+  today. Nothing about what block does changed.
 
 ## [0.1.0] - 2026-08-22
 
@@ -186,5 +200,6 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nao1215/block/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nao1215/block/releases/tag/v0.1.0
