@@ -350,7 +350,12 @@ scenarios:
           stderr:
             contains: "foo: the source definition changed since block.lock was resolved"
 
-  - name: sync fails when block.lock has no artifact for this platform
+  # block.toml names the platforms the project supports and this machine is
+  # not one of them. lock resolves exactly what the manifest asks for, so
+  # "block.lock is stale; run block lock" would send the reader round a loop
+  # where the command they were told to run writes the same file back. The
+  # manifest is what has to change, and that is what sync says.
+  - name: sync says to edit block.toml when it does not declare this platform
     env: *t1
     steps:
       - fixture:
@@ -372,9 +377,57 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: "foundry: block.lock has no artifact for ${env:BLOCK_PLATFORM}"
+            equals: 'block: BLK1006: block.toml declares platforms ${env:BLOCK_OTHER_PLATFORM}, and this machine is ${env:BLOCK_PLATFORM}; add "${env:BLOCK_PLATFORM}" to that list and run "block lock"
+
+'
           changes:
             modified: []
+      # exec answers the same way: both read the project the same offline way.
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK1006: block.toml declares platforms ${env:BLOCK_OTHER_PLATFORM}, and this machine is ${env:BLOCK_PLATFORM}; add "${env:BLOCK_PLATFORM}" to that list and run "block lock"
+
+'
+
+  # And where re-running lock *would* fix it — a lockfile written on another
+  # machine by a manifest that names no platforms — the answer stays "run
+  # block lock", because there the advice works.
+  - name: a lock made elsewhere without a platforms list still says to run lock
+    env: *t1
+    steps:
+      # A registry tool, so the lockfile carries no source fingerprint and the
+      # only disagreement is the platform.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "1.7.4"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_OTHER_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              block: BLK1005: block.lock is stale; run "block lock"
+                foundry: block.lock has no artifact for ${env:BLOCK_PLATFORM}
 
   - name: a checksum mismatch aborts the install and installs nothing
     env: *t1

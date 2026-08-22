@@ -315,7 +315,7 @@ func TestLockCheck(t *testing.T) {
 	h.manifest(t, "platforms = [\"linux/amd64\", \"darwin/arm64\"]\n[tools]\nfoundry = \"1.7.4\"\n")
 	h.reset()
 	err = h.Lock(ctx, nil, true)
-	if !errors.Is(err, ErrOutdated) || !strings.Contains(h.stdout.String(), "hermes  1.13.0 (no longer in block.toml)") {
+	if !errors.Is(err, ErrOutdated) || !strings.Contains(h.stdout.String(), "hermes   1.13.0 (no longer in block.toml)") {
 		t.Errorf("check(dropped) = %v, %q", err, h.stdout)
 	}
 	if h.lockText(t) != before {
@@ -969,12 +969,17 @@ func TestSyncPlatformHandling(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := h.lockText(t)
+	// The manifest names the platforms it supports and this machine is not
+	// one of them, so the lockfile has no artifact for it and re-running
+	// lock would write the same file back. What has to change is block.toml,
+	// and that is what both commands say.
+	want := `block.toml declares platforms darwin/arm64, and this machine is linux/amd64; add "linux/amd64" to that list and run "block lock"`
 	err := h.Sync(ctx)
-	if err == nil || !strings.Contains(err.Error(), "foundry: block.lock has no artifact for linux/amd64") {
-		t.Errorf("Sync() error = %v", err)
+	if err == nil || err.Error() != want {
+		t.Errorf("Sync() error = %v, want %s", err, want)
 	}
-	if _, err := h.Env(); err == nil || !strings.Contains(err.Error(), "no artifact for linux/amd64") {
-		t.Errorf("Env() error = %v", err)
+	if _, err := h.Env(); err == nil || err.Error() != want {
+		t.Errorf("Env() error = %v, want %s", err, want)
 	}
 	if h.lockText(t) != before {
 		t.Error("sync added a platform on its own")
@@ -1049,5 +1054,59 @@ func TestAssetName(t *testing.T) {
 	}
 	if got := assetName("://bad"); got != "://bad" {
 		t.Errorf("assetName(bad) = %q", got)
+	}
+}
+
+// A tool removed from block.toml loses its pin when block.lock is written.
+// check mode said so all along; the run that actually drops it has to say so
+// too, or the only report of the change is the diff of a generated file.
+func TestLockAnnouncesADroppedTool(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools]\nfoundry = \"1.7\"\nhermes = \"1.13\"\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	h.reset()
+	h.manifest(t, "[tools]\nfoundry = \"1.7\"\n")
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	want := "foundry  1.7.4\nhermes   1.13.0 (no longer in block.toml)\nwrote block.lock\n"
+	if h.stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", h.stdout, want)
+	}
+	if strings.Contains(h.lockText(t), "hermes") {
+		t.Error("the pin was announced but not dropped")
+	}
+}
+
+// Every command block runs inherits the toolchain's PATH. An inherited PATH
+// that is empty must not become a trailing separator: an empty PATH element
+// means the current directory to execvp, to the shell and to most tools, so
+// the project's own working directory would end up on the search path of
+// every command the toolchain runs.
+func TestToolchainPathNeverEndsInAnEmptyEntry(t *testing.T) {
+	sep := string(os.PathListSeparator)
+	tc := &Toolchain{dirs: []string{filepath.FromSlash("/store/a/bin"), filepath.FromSlash("/store/b/bin")}}
+	t.Setenv("PATH", "")
+	got := tc.Path()
+	if strings.HasSuffix(got, sep) || strings.Contains(got, sep+sep) {
+		t.Errorf("Path() = %q, which searches the current directory", got)
+	}
+	for _, entry := range filepath.SplitList(got) {
+		if entry == "" {
+			t.Errorf("Path() = %q has an empty entry", got)
+		}
+	}
+	t.Setenv("PATH", filepath.FromSlash("/usr/bin"))
+	if want := strings.Join(append(tc.PathDirs(), filepath.FromSlash("/usr/bin")), sep); tc.Path() != want {
+		t.Errorf("Path() = %q, want %q", tc.Path(), want)
+	}
+	// A toolchain with no directories and no PATH is empty, not a separator.
+	t.Setenv("PATH", "")
+	if got := (&Toolchain{}).Path(); got != "" {
+		t.Errorf("Path() = %q, want empty", got)
 	}
 }

@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `block sync` and `block exec` told a reader whose `block.toml` declares a
+  `platforms` list that excludes their machine that `block.lock` was stale
+  and to run `block lock` — a loop, since lock resolves exactly the platforms
+  the manifest names and would write the same file back. They now report
+  BLK1006 and name the edit that fixes it. Where re-running lock does help,
+  the advice is unchanged.
+- Every command run through `block exec` or a shim inherited a PATH ending in
+  a separator when the environment's own PATH was empty. An empty PATH entry
+  means the current directory to execvp, to the shell and to most tools, so
+  the project's working directory was on the search path of every command the
+  toolchain ran.
+- `block lock` dropped the pin of a tool removed from `block.toml` without
+  saying so; only `--check` named it. Both now print the dropped pin, in the
+  same aligned column as the tools that were kept.
+- A recipe whose artifact template uses `{target}` is now refused unless
+  `[source.target]` names every platform it claims to ship for. One that did
+  not resolved to "unsupported platform linux/arm64 (available: …,
+  linux/arm64, …)", an error contradicting itself.
+- Archive extraction is bounded as a whole (8 GiB, 200000 entries) and not
+  only per file, which is what the per-file cap alone could not do: many
+  small members fill a disk as well as one enormous one.
 - A version ending in a bare hyphen (`1.7.4-`) parsed as the release before
   it while keeping the hyphen in its spelling, so a hand-edited `block.lock`
   could pin it and install into a `1.7.4--…` directory. It is now refused

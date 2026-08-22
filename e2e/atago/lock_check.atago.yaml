@@ -174,7 +174,7 @@ scenarios:
           stdout:
             equals: |
               foundry  1.7.4 -> 1.6.0 (artifact for ${env:BLOCK_OTHER_PLATFORM} added)
-              hermes  1.13.0 (no longer in block.toml)
+              hermes   1.13.0 (no longer in block.toml)
           changes:
             modified: []
 

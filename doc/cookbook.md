@@ -199,6 +199,14 @@ block: BLK1005: block.lock is stale; run "block lock"
 deliberately, because installing something the lockfile does not name is the
 one thing `sync` must never do.
 
+The opposite mistake — a list that leaves out the machine you are standing on
+— is a different message, because re-running `lock` would resolve the same
+platforms and write the same file back:
+
+```text
+block: BLK1006: block.toml declares platforms darwin/arm64, and this machine is linux/amd64; add "linux/amd64" to that list and run "block lock"
+```
+
 Supported values: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`,
 `windows/amd64`, `windows/arm64`. Which of them a given tool actually has is
 the upstream's decision, recorded in the registry — see the Platforms column in

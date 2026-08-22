@@ -18,9 +18,44 @@ import (
 	"github.com/nao1215/block/internal/diag"
 )
 
-// maxFileBytes caps a single extracted file so a crafted archive cannot fill
-// the disk through compression.
-const maxFileBytes = 2 << 30
+// maxFileBytes caps a single extracted file, and maxTotalBytes and maxEntries
+// cap the archive as a whole, so that a crafted archive cannot fill the disk
+// through compression — neither with one enormous member nor with very many
+// small ones, which a per-file limit alone does not stop.
+//
+// The bounds are far above any real toolchain: the largest artifact in the
+// registry unpacks to a few hundred megabytes in a few hundred files.
+const (
+	maxFileBytes  = 2 << 30
+	maxTotalBytes = 8 << 30
+	maxEntries    = 200_000
+)
+
+// budget is what is left of an archive's aggregate allowance.
+type budget struct {
+	bytes   int64
+	entries int
+}
+
+func newBudget() *budget { return &budget{bytes: maxTotalBytes, entries: maxEntries} }
+
+// entry accounts for one member before it is written.
+func (b *budget) entry(name string) error {
+	b.entries--
+	if b.entries < 0 {
+		return diag.ArchiveTooLarge.Errorf("refusing to extract %q: the archive holds more than %d entries", name, maxEntries)
+	}
+	return nil
+}
+
+// wrote accounts for the bytes one member contributed.
+func (b *budget) wrote(name string, n int64) error {
+	b.bytes -= n
+	if b.bytes < 0 {
+		return diag.ArchiveTooLarge.Errorf("refusing to extract %q: the archive unpacks to more than %d bytes", name, int64(maxTotalBytes))
+	}
+	return nil
+}
 
 const (
 	dirMode  = 0o755
@@ -75,6 +110,7 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 		return err
 	}
 	tr := tar.NewReader(r)
+	left := newBudget()
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -102,7 +138,14 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 				return err
 			}
 		case tar.TypeReg:
-			if err := writeFile(target, tr, hdr.FileInfo().Mode()); err != nil {
+			if err := left.entry(hdr.Name); err != nil {
+				return err
+			}
+			n, err := writeFile(target, tr, hdr.FileInfo().Mode())
+			if err != nil {
+				return err
+			}
+			if err := left.wrote(hdr.Name, n); err != nil {
 				return err
 			}
 		case tar.TypeSymlink, tar.TypeLink:
@@ -122,6 +165,7 @@ func extractZip(src, dst string, strip int) error {
 		return diag.ArchiveUnreadable.Errorf("invalid zip archive: %w", err)
 	}
 	defer zr.Close() //nolint:errcheck // read-only
+	left := newBudget()
 	for _, zf := range zr.File {
 		name, ok := stripName(zf.Name, strip)
 		if !ok || isRoot(name) {
@@ -140,13 +184,19 @@ func extractZip(src, dst string, strip int) error {
 		case mode&os.ModeSymlink != 0:
 			return diag.UnsupportedEntry.Errorf("refusing to extract link %q: links are not supported", zf.Name)
 		case mode.IsRegular():
+			if err := left.entry(zf.Name); err != nil {
+				return err
+			}
 			rc, err := zf.Open()
 			if err != nil {
 				return err
 			}
-			err = writeFile(target, rc, mode)
+			n, err := writeFile(target, rc, mode)
 			_ = rc.Close()
 			if err != nil {
+				return err
+			}
+			if err := left.wrote(zf.Name, n); err != nil {
 				return err
 			}
 		default:
@@ -221,9 +271,10 @@ func driveLetter(name string) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-func writeFile(target string, r io.Reader, mode os.FileMode) error {
+// writeFile writes one archive member and reports how many bytes it held.
+func writeFile(target string, r io.Reader, mode os.FileMode) (int64, error) {
 	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
-		return err
+		return 0, err
 	}
 	perm := os.FileMode(fileMode)
 	if mode&0o100 != 0 {
@@ -236,20 +287,20 @@ func writeFile(target string, r io.Reader, mode os.FileMode) error {
 	// on macOS and on Linux.
 	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm) //nolint:gosec // inside the install dir
 	if errors.Is(err, os.ErrExist) {
-		return diag.DuplicateEntry.Errorf("refusing to extract %q: the archive already wrote that file (names differing only in case are one file on some filesystems)", filepath.Base(target))
+		return 0, diag.DuplicateEntry.Errorf("refusing to extract %q: the archive already wrote that file (names differing only in case are one file on some filesystems)", filepath.Base(target))
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	n, err := io.Copy(f, io.LimitReader(r, maxFileBytes+1))
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if n > maxFileBytes {
-		return diag.ArchiveTooLarge.Errorf("refusing to extract %q: file exceeds %d bytes", filepath.Base(target), maxFileBytes)
+		return 0, diag.ArchiveTooLarge.Errorf("refusing to extract %q: file exceeds %d bytes", filepath.Base(target), maxFileBytes)
 	}
-	return nil
+	return n, nil
 }

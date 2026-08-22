@@ -475,3 +475,59 @@ func FuzzValidateBin(f *testing.F) {
 		}
 	})
 }
+
+// A recipe that claims a platform its {target} table has no name for used to
+// validate, and then refuse that platform at resolution time with
+// "unsupported platform linux/arm64 (available: ..., linux/arm64, ...)" — an
+// error contradicting itself that only the recipe's author could fix.
+func TestValidateRequiresATargetForEveryPlatform(t *testing.T) {
+	t.Parallel()
+	missing := Source{
+		Type: TypeHTTP, Repo: "bitcoin/bitcoin",
+		URL:       "https://x/bitcoin-{version}-{target}.tar.gz",
+		Platforms: []string{"linux/amd64", "linux/arm64"},
+		Target:    map[string]string{"linux/amd64": "x86_64-linux-gnu"},
+		Bin:       []string{"bitcoind"},
+	}
+	err := missing.Validate()
+	if err == nil || !strings.Contains(err.Error(), "platform linux/arm64 is listed but [source.target] has no name for it") {
+		t.Fatalf("Validate() = %v, want a refusal naming the platform", err)
+	}
+	// Covered: the same recipe with the mapping filled in.
+	complete := missing
+	complete.Target = map[string]string{"linux/amd64": "x86_64-linux-gnu", "linux/arm64": "aarch64-linux-gnu"}
+	if err := complete.Validate(); err != nil {
+		t.Errorf("Validate(complete) = %v", err)
+	}
+	// And a recipe whose platforms come from the table's own keys, which is
+	// how every registry recipe using {target} is written.
+	fromKeys := complete
+	fromKeys.Platforms = nil
+	if err := fromKeys.Validate(); err != nil {
+		t.Errorf("Validate(platforms from the target keys) = %v", err)
+	}
+}
+
+// [Source.Hash] joins SupportedPlatforms and block.lock records that hash for
+// a project-local source, so the order this returns is part of the lockfile
+// format: reordering it would stale every such lockfile for no reason a
+// reader could see. It is pinned here rather than left to be noticed.
+func TestSupportedPlatformsOrderIsPartOfTheLockFormat(t *testing.T) {
+	t.Parallel()
+	base := Source{Type: TypeGitHubRelease, Repo: "o/r", Asset: "x.tar.gz", Bin: []string{"x"}}
+	if got := platform.Strings(base.SupportedPlatforms()); strings.Join(got, ",") != strings.Join(platform.Strings(platform.Supported()), ",") {
+		t.Errorf("default platforms = %v, want %v", got, platform.Supported())
+	}
+	// A declared list is sorted, whatever order it was written in.
+	declared := base
+	declared.Platforms = []string{"linux/arm64", "darwin/amd64", "linux/amd64"}
+	if got := strings.Join(platform.Strings(declared.SupportedPlatforms()), ","); got != "darwin/amd64,linux/amd64,linux/arm64" {
+		t.Errorf("declared platforms = %q, want them sorted", got)
+	}
+	// So two spellings of one list are one pin.
+	other := declared
+	other.Platforms = []string{"darwin/amd64", "linux/amd64", "linux/arm64"}
+	if declared.Hash() != other.Hash() {
+		t.Error("the order platforms are written in changed the source hash")
+	}
+}

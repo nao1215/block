@@ -108,7 +108,7 @@ Exits 1. Since v0.1.0.
 
 ### BLK1006 — block.lock has no artifact for this platform
 
-The lockfile pins the tool, but not for the operating system and architecture this machine is. That happens when the pin was made on a machine of a different kind and block.toml does not declare the platforms the project supports.
+The lockfile pins the tool, but not for the operating system and architecture this machine is. Either the pin was made on a machine of a different kind and block.toml does not declare the platforms the project supports, or block.toml declares a list that does not include this one — in which case re-running lock would write the same lockfile back, and what has to change is the manifest.
 
 Fix: Add every platform the project builds on to the "platforms" list in block.toml and run "block lock" again, so one lockfile covers the whole team and CI.
 
