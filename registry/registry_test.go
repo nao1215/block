@@ -254,9 +254,11 @@ var recipes = map[string]want{
 		ecosystems: []string{"ethereum"}, description: "Command-line tool for transactions, tokens and ENS on Ethereum",
 		sourceKind: recipe.TypeGitHubRelease, sample: "2.12.0",
 		artifacts: map[string]string{
-			"linux/amd64":  "ethereal-2.12.0-linux-amd64.tar.gz",
-			"linux/arm64":  "ethereal-2.12.0-linux-arm64.tar.gz",
-			"darwin/amd64": "ethereal-2.12.0-darwin-amd64.tar.gz",
+			"linux/amd64": "ethereal-2.12.0-linux-amd64.tar.gz",
+			"linux/arm64": "ethereal-2.12.0-linux-arm64.tar.gz",
+			// Upstream's one macOS build is named amd64 and is an arm64
+			// executable, so that is the platform it is claimed for.
+			"darwin/arm64": "ethereal-2.12.0-darwin-amd64.tar.gz",
 		},
 		bins: []string{"ethereal"},
 	},
@@ -326,9 +328,10 @@ var recipes = map[string]want{
 		ecosystems: []string{"ethereum"}, description: "EVM bytecode toolkit: disassemble, decompile and decode transactions",
 		sourceKind: recipe.TypeGitHubRelease, sample: "0.9.3",
 		artifacts: map[string]string{
-			"linux/amd64":  "heimdall-linux-amd64",
-			"linux/arm64":  "heimdall-linux-arm64",
-			"darwin/amd64": "heimdall-macos-amd64",
+			"linux/amd64": "heimdall-linux-amd64",
+			"linux/arm64": "heimdall-linux-arm64",
+			// Both macOS executables are arm64, the one named amd64
+			// included, so only the one named correctly is claimed.
 			"darwin/arm64": "heimdall-macos-arm64",
 		},
 		bins: []string{"heimdall"},

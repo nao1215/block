@@ -2,7 +2,9 @@
 # https://github.com/Jon-Becker/heimdall-rs
 #
 # Releases ship one raw executable per platform and the tags carry no "v".
-# Upstream spells macOS "macos" and has no Windows build.
+# Upstream spells macOS "macos" and has no Windows build. Both of its macOS
+# executables are arm64 — the one named macos-amd64 included — so an Intel Mac
+# has nothing to install and darwin/amd64 is not claimed.
 name = "heimdall"
 ecosystems = ["ethereum"]
 description = "EVM bytecode toolkit: disassemble, decompile and decode transactions"
@@ -12,7 +14,7 @@ type = "github_release"
 repo = "Jon-Becker/heimdall-rs"
 tag_prefix = ""
 asset = "heimdall-{os}-{arch}"
-platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+platforms = ["linux/amd64", "linux/arm64", "darwin/arm64"]
 bin = ["heimdall"]
 
 [source.os]
