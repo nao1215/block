@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -26,6 +27,9 @@ const statusManifest = "[tools.foundry]\nversion = \"1.7\"\n[tools.foundry.sourc
 
 func TestStatusReportsWhatEachToolIsDoing(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
 	h := newHarness(t, "/t1")
 	h.manifest(t, statusManifest)
 	ctx := context.Background()
@@ -106,6 +110,9 @@ func TestStatusReportsWhatEachToolIsDoing(t *testing.T) {
 // command that moves the pin rather than the one that installs it.
 func TestStatusPutsTheLockAheadOfTheStore(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
 	h := newHarness(t, "/t1")
 	h.manifest(t, statusManifest)
 	ctx := context.Background()
@@ -186,6 +193,9 @@ func TestStatusNotesAManifestThatExcludesThisMachine(t *testing.T) {
 // second half.
 func TestStatusChangesNothingAndAsksNobody(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
 	h := newHarness(t, "/t1")
 	h.manifest(t, statusManifest)
 	ctx := context.Background()
