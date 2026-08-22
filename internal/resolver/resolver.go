@@ -205,8 +205,10 @@ func ExactTag(ctx context.Context, rel Releases, src recipe.Source, channel, tag
 	}
 	res := Resolution{Channel: channel, Tag: tag, Release: r}
 	// The commit is in the tag block wrote, so a template that needs one does
-	// not cost a lookup: "nightly-<sha>" is where it came from.
-	if _, sha, ok := strings.Cut(tag, "-"); ok {
+	// not cost a lookup: "nightly-<sha>" is where it came from. The channel
+	// itself may carry hyphens ("pre-release"), so strip it as a whole rather
+	// than cutting at the first one.
+	if sha, ok := strings.CutPrefix(tag, channel+"-"); ok && sha != "" {
 		res.Commit = sha
 	}
 	return res, nil

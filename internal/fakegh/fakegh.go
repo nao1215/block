@@ -264,6 +264,14 @@ func Fixtures() []Repo {
 			{tag: "v1.17.4", at: 1, bins: []string{"geth"}},
 			{tag: "v1.17.5", at: 2, bins: []string{"geth"}},
 		}},
+		{owner: "example", name: "stamped", releases: []release{
+			// A release line whose name carries a hyphen, stamping the commit
+			// into the asset name the way vyper and Nethermind do. Pinning
+			// it has to keep the whole commit, not what follows the first
+			// hyphen of the tag.
+			{tag: "pre-release", at: 1, moves: true, prerelease: true, bins: []string{"stamped"},
+				assets: platformAssets("stamped_{commit}_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
+		}},
 		{owner: "example", name: "bare", releases: []release{
 			// Tags without the "v" prefix, for tag_prefix = "".
 			{tag: "2.5.0", at: 1, bins: []string{"bare"},
@@ -481,12 +489,11 @@ func releasesFor(rp Repo, tag string, snapshot int) []release {
 			return rp.releases
 		}
 	}
-	channel, commit, ok := strings.Cut(tag, "-")
-	if !ok || len(commit) != commitHexLen {
-		return rp.releases
-	}
 	for _, rel := range rp.releases {
-		if !rel.moves || rel.tag != channel || rel.at > snapshot {
+		// The moving tag itself may carry a hyphen ("pre-release"), so the
+		// commit is what follows the whole tag, not the first hyphen.
+		commit, ok := strings.CutPrefix(tag, rel.tag+"-")
+		if !ok || !rel.moves || len(commit) != commitHexLen || rel.at > snapshot {
 			continue
 		}
 		// Only the commit this tag really points at, at some snapshot: a
@@ -498,6 +505,12 @@ func releasesFor(rp Repo, tag string, snapshot int) []release {
 			pinned := rel
 			pinned.tag = tag
 			pinned.moves = false
+			// An upstream that stamps the commit into its asset names
+			// publishes this night's under this night's commit.
+			pinned.assets = make(map[string]string, len(rel.assets))
+			for p, name := range rel.assets {
+				pinned.assets[p] = strings.ReplaceAll(name, "{commit}", commit[:8])
+			}
 			return append(rp.releases, pinned)
 		}
 	}

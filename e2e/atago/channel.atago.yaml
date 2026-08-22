@@ -323,3 +323,114 @@ scenarios:
           exit_code: 2
           stdout:
             matches: 'hermes\s+1\.13\.0 -> 1\.13\.1'
+
+  # A channel's name may carry a hyphen, and its asset may carry the commit.
+  # Locking another tool keeps this pin; adding a platform then re-reads the
+  # release by the tag the lockfile records, and the commit it stamps into
+  # the new asset name has to be the whole one — not whatever follows the
+  # tag's first hyphen.
+  - name: adding a platform to a kept hyphenated channel pin keeps the commit whole
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.stamped]
+            version = "pre-release"
+
+            [tools.stamped.source]
+            type = "github_release"
+            repo = "example/stamped"
+            asset = "stamped_v{version}_{os}_{arch}.tar.gz"
+            bin = ["stamped"]
+
+            [tools.stamped.source.channels.pre-release]
+            asset = "stamped_{commit}_{os}_{arch}.tar.gz"
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: 'stamped  locked pre-release-[0-9a-f]{40}\n'
+      # The asset is named after the first eight digits of the commit the
+      # pin records.
+      - run:
+          shell: true
+          command: sha=$(grep -oE 'pre-release-[0-9a-f]{40}' block.lock | head -1 | cut -c13-20) && grep -c "/stamped_${sha}_" block.lock
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "1\n"
+      - fixture:
+          file: block.toml
+          content: |
+            platforms = ["${env:BLOCK_PLATFORM}", "${env:BLOCK_OTHER_PLATFORM}"]
+
+            [tools.stamped]
+            version = "pre-release"
+
+            [tools.stamped.source]
+            type = "github_release"
+            repo = "example/stamped"
+            asset = "stamped_v{version}_{os}_{arch}.tar.gz"
+            bin = ["stamped"]
+
+            [tools.stamped.source.channels.pre-release]
+            asset = "stamped_{commit}_{os}_{arch}.tar.gz"
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - run:
+          command: block lock hermes
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: 'stamped  pre-release-[0-9a-f]{40} \(.*${env:BLOCK_OTHER_PLATFORM} added'
+      # The pin did not move, and both artifacts are named after its commit.
+      - run:
+          shell: true
+          command: sha=$(grep -oE 'pre-release-[0-9a-f]{40}' block.lock | head -1 | cut -c13-20) && grep -c "/stamped_${sha}_" block.lock
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "2\n"
+      - run:
+          shell: true
+          command: block sync && block exec stamped --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "(fake)"
