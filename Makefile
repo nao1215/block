@@ -1,4 +1,4 @@
-.PHONY: build test e2e doc doc-check demo favicon registry-verify registry-sync registry-live examples-live docs-smoke coverage clean vet fmt lint website website-serve changelog help
+.PHONY: build test e2e doc doc-check demo favicon registry-verify registry-sync registry-live examples-live docs-smoke coverage clean vet fmt lint shellcheck website website-serve changelog help
 
 APP         = block
 VERSION     = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -82,6 +82,9 @@ fmt: ## Format go source code
 
 lint: ## Run golangci-lint (requires golangci-lint v2)
 	golangci-lint run ./...
+
+shellcheck: ## Lint the shell scripts (requires shellcheck)
+	shellcheck scripts/*.sh e2e/run.sh
 
 .DEFAULT_GOAL := help
 help:
