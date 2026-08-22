@@ -46,6 +46,9 @@ func OpenToolchain(dir string, p platform.Platform, st *store.Store) (*Toolchain
 		}
 		return nil, err
 	}
+	if err := platformNotDeclared(m, p); err != nil {
+		return nil, err
+	}
 	if reasons := Check(m, l, []platform.Platform{p}); len(reasons) > 0 {
 		return nil, staleError(reasons)
 	}
@@ -115,8 +118,18 @@ func (t *Toolchain) PathDirs() []string {
 }
 
 // Path returns PATH with the toolchain in front of the inherited entries.
+//
+// An inherited PATH that is empty is left out rather than joined as an empty
+// entry: POSIX execvp, the shell and most tools read an empty PATH element as
+// the current directory, so a trailing separator would quietly put the
+// project's own working directory on the search path of every command the
+// toolchain runs.
 func (t *Toolchain) Path() string {
-	return strings.Join(append(t.PathDirs(), os.Getenv("PATH")), string(os.PathListSeparator))
+	dirs := t.PathDirs()
+	if inherited := os.Getenv("PATH"); inherited != "" {
+		dirs = append(dirs, inherited)
+	}
+	return strings.Join(dirs, string(os.PathListSeparator))
 }
 
 // Command prepares a command to run inside the toolchain: the project's tools

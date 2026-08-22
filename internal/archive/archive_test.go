@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nao1215/block/internal/diag"
 )
 
 type member struct {
@@ -346,4 +348,63 @@ func FuzzSafePath(f *testing.F) {
 			t.Fatalf("safePath(%q) = %q carries a NUL", name, target)
 		}
 	})
+}
+
+// The per-file cap alone does not stop an archive from filling the disk: many
+// small members do it just as well as one enormous one. The aggregate budget
+// is what makes the package's stated invariant true, so it is checked at its
+// own boundary rather than by unpacking two hundred thousand files.
+func TestBudgetRefusesAnArchiveThatIsTooLargeAsAWhole(t *testing.T) {
+	t.Parallel()
+	left := newBudget()
+	for range maxEntries {
+		if err := left.entry("f"); err != nil {
+			t.Fatalf("entry within the allowance = %v", err)
+		}
+	}
+	err := left.entry("one-too-many")
+	if err == nil || !strings.Contains(err.Error(), "more than") || diag.Of(err) != diag.ArchiveTooLarge {
+		t.Errorf("entry past the allowance = %v (%v)", err, diag.Of(err))
+	}
+
+	left = newBudget()
+	if err := left.wrote("big", maxTotalBytes); err != nil {
+		t.Fatalf("wrote the whole allowance = %v", err)
+	}
+	err = left.wrote("one-byte-more", 1)
+	if err == nil || !strings.Contains(err.Error(), "more than") || diag.Of(err) != diag.ArchiveTooLarge {
+		t.Errorf("wrote past the allowance = %v (%v)", err, diag.Of(err))
+	}
+
+	// Many members that are individually small still spend the same budget:
+	// a per-file limit would let every one of these through.
+	left = newBudget()
+	var err2 error
+	for i := 0; err2 == nil && i < 16; i++ {
+		err2 = left.wrote("chunk", maxTotalBytes/8)
+	}
+	if err2 == nil {
+		t.Error("sixteen half-gigabyte members fit in the whole-archive allowance")
+	}
+}
+
+// Extraction of an ordinary archive spends the budget without tripping it.
+func TestExtractStaysWithinTheBudget(t *testing.T) {
+	t.Parallel()
+	src := tarGz(t,
+		member{name: "forge", content: "#!/bin/sh\n", mode: 0o755},
+		member{name: "bin/cast", content: "#!/bin/sh\n", mode: 0o755},
+	)
+	dst := filepath.Join(t.TempDir(), "dst")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Extract(src, dst, "a.tar.gz", 0); err != nil {
+		t.Fatalf("Extract() = %v", err)
+	}
+	for _, name := range []string{"forge", filepath.Join("bin", "cast")} {
+		if _, err := os.Stat(filepath.Join(dst, name)); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
 }

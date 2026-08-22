@@ -154,8 +154,20 @@ func (s Source) Validate() error {
 			return err
 		}
 	}
-	if strings.Contains(s.ArtifactTemplate(), "{target}") && len(s.Target) == 0 {
-		return fmt.Errorf("template %q uses {target} but no [source.target] table is defined", s.ArtifactTemplate())
+	if strings.Contains(s.ArtifactTemplate(), "{target}") {
+		if len(s.Target) == 0 {
+			return fmt.Errorf("template %q uses {target} but no [source.target] table is defined", s.ArtifactTemplate())
+		}
+		// Every platform the recipe claims must have something to expand
+		// {target} to. Without this, a recipe can say it ships for a platform
+		// and then refuse it at resolution time with "unsupported platform
+		// linux/arm64 (available: ..., linux/arm64, ...)" — an error that
+		// contradicts itself and that only the recipe's author can fix.
+		for _, p := range s.SupportedPlatforms() {
+			if _, ok := s.Target[p.String()]; !ok {
+				return fmt.Errorf("platform %s is listed but [source.target] has no name for it", p)
+			}
+		}
 	}
 	return nil
 }
@@ -389,8 +401,14 @@ func (s Source) ParseTag(tag string) (version.Version, bool) {
 	return v, true
 }
 
-// SupportedPlatforms returns the platforms the source ships for, sorted:
-// the declared list, else the target table's keys, else every platform.
+// SupportedPlatforms returns the platforms the source ships for: the declared
+// list, else the target table's keys, else every platform block supports.
+//
+// A declared list and a target table come back sorted; the default comes back
+// in [platform.Supported]'s own reading order. The difference is deliberate
+// and pinned by a test: [Source.Hash] joins this list, that hash is recorded
+// in block.lock for a project-local source, and reordering it would make
+// every such lockfile stale for no reason a reader could see.
 func (s Source) SupportedPlatforms() []platform.Platform {
 	names := s.Platforms
 	if len(names) == 0 {

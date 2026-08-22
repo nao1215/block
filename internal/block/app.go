@@ -199,10 +199,7 @@ func (a *App) Lock(ctx context.Context, names []string, check bool) error {
 	}
 	dropped := droppedTools(old, next)
 	if check {
-		a.printResults(results, "missing", true)
-		for _, t := range dropped {
-			fmt.Fprintf(a.Stdout, "%s  %s (no longer in %s)\n", t.Name, t.Version, manifest.FileName)
-		}
+		a.printResults(results, dropped, "missing", true)
 		for _, r := range results {
 			if r.differs() {
 				return ErrOutdated
@@ -217,7 +214,7 @@ func (a *App) Lock(ctx context.Context, names []string, check bool) error {
 	if err != nil {
 		return err
 	}
-	a.printResults(results, "locked", false)
+	a.printResults(results, dropped, "locked", false)
 	if changed {
 		fmt.Fprintf(a.Stdout, "wrote %s\n", lockfile.FileName)
 	} else {
@@ -497,9 +494,18 @@ func (a *App) writeLock(old, next *lockfile.Lock) (bool, error) {
 }
 
 // printResults prints one line per tool: the version it resolved to, how it
-// moved, and what else about the pin would change.
-func (a *App) printResults(results []lockResult, verb string, check bool) {
+// moved, and what else about the pin would change. The pins that are on their
+// way out are printed too, in the same column layout — a tool removed from
+// block.toml loses its pin when the file is written, and a run that says only
+// what it kept does not say what it did.
+func (a *App) printResults(results []lockResult, dropped []lockfile.Tool, verb string, check bool) {
 	tw := tabwriter.NewWriter(a.Stdout, 0, 0, 2, ' ', 0) //nolint:mnd // column padding
+	defer func() { _ = tw.Flush() }()
+	defer func() {
+		for _, t := range dropped {
+			fmt.Fprintf(tw, "%s\t%s (no longer in %s)\n", t.Name, t.Version, manifest.FileName)
+		}
+	}()
 	for _, r := range results {
 		var state string
 		switch {
@@ -518,7 +524,6 @@ func (a *App) printResults(results []lockResult, verb string, check bool) {
 		}
 		fmt.Fprintf(tw, "%s\t%s\n", r.name, state)
 	}
-	_ = tw.Flush()
 }
 
 // Check compares a manifest with a lockfile and lists every reason the
@@ -554,6 +559,22 @@ func Check(m *manifest.Manifest, l *lockfile.Lock, plats []platform.Platform) []
 	return reasons
 }
 
+// platformNotDeclared reports the error to give when block.toml names the
+// platforms the project supports and this machine is not one of them.
+//
+// The lockfile then has no artifact for this machine and never will: `block
+// lock` resolves exactly the platforms the manifest asks for, so telling the
+// reader the lock is stale would send them round a loop where the command
+// they are told to run writes the same file back. What has to change is
+// block.toml, and that is what this says.
+func platformNotDeclared(m *manifest.Manifest, p platform.Platform) error {
+	if len(m.Platforms) == 0 || slices.Contains(m.Platforms, p) {
+		return nil
+	}
+	return diag.LockPlatformMissing.Errorf("%s declares platforms %s, and this machine is %s; add %q to that list and run \"block lock\"",
+		manifest.FileName, strings.Join(platform.Strings(m.Platforms), ", "), p, p)
+}
+
 func staleError(reasons []string) error {
 	return diag.LockStale.Errorf("%s is stale; run \"block lock\"\n  %s", lockfile.FileName, strings.Join(reasons, "\n  "))
 }
@@ -575,6 +596,11 @@ func (a *App) Sync(ctx context.Context) error {
 	}
 	if !a.Platform.IsSupported() {
 		return diag.PlatformUnsupported.Errorf("unsupported platform %s", a.Platform)
+	}
+	// Asked before staleness, because a manifest that does not name this
+	// machine makes every "run block lock" answer below a wrong one.
+	if err := platformNotDeclared(m, a.Platform); err != nil {
+		return err
 	}
 	if reasons := Check(m, l, []platform.Platform{a.Platform}); len(reasons) > 0 {
 		return staleError(reasons)

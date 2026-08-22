@@ -532,8 +532,14 @@ scenarios:
           command: block lock
       - assert:
           exit_code: 0
+          # The pin it drops is named: a run that says only what it kept does
+          # not say what it did, and the diff of a generated file should not
+          # be the only report of the change.
           stdout:
-            contains: "wrote block.lock"
+            equals: |
+              foundry  1.7.4
+              hermes   1.13.0 (no longer in block.toml)
+              wrote block.lock
       - assert:
           file:
             path: block.lock

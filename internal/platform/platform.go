@@ -39,7 +39,10 @@ var supported = []Platform{ //nolint:gochecknoglobals // immutable table
 	{OS: osWindows, Arch: archARM64},
 }
 
-// Supported returns a copy of the supported platform list, sorted.
+// Supported returns a copy of the supported platform list, in the order block
+// names them: the two Linux platforms, then macOS, then Windows. That is a
+// reading order rather than an alphabetical one, and it is what a reader sees
+// in the message [Parse] gives for a platform block does not support.
 func Supported() []Platform {
 	out := make([]Platform, len(supported))
 	copy(out, supported)
