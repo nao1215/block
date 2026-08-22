@@ -355,6 +355,51 @@ scenarios:
   # "block.lock is stale; run block lock" would send the reader round a loop
   # where the command they were told to run writes the same file back. The
   # manifest is what has to change, and that is what sync says.
+  # A tool can stop having a source of its own: someone promotes their
+  # [tools.<name>.source] to a registry recipe and deletes it from block.toml.
+  # The pin beside it was resolved from the source that is gone, so it is
+  # stale — without this, sync went on installing whatever that source chose.
+  - name: a source removed from block.toml stales the pin it resolved
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.cometbft]
+            version = "1.7"
+
+            [tools.cometbft.source]
+            type = "github_release"
+            repo = "cometbft/cometbft"
+            asset = "cometbft_{version}_{os}_{arch}.tar.gz"
+            bin = ["cometbft"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      # The same tool, the same constraint, the same upstream — from the
+      # registry now rather than from block.toml.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            cometbft = "1.7"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              block: BLK1005: block.lock is stale; run "block lock"
+                cometbft: the source definition changed since block.lock was resolved
+      - run:
+          command: block status
+      - assert:
+          exit_code: 2
+          stdout:
+            contains: "stale (source changed)"
+
   - name: sync says to edit block.toml when it does not declare this platform
     env: *t1
     steps:

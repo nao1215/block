@@ -100,7 +100,7 @@ run "block sync" to install the locked toolchain
 | --- | --- |
 | 0 | every tool is `ok` |
 | 2 | something needs doing |
-| 1 | error — no `block.toml`, or a `block.lock` block cannot read |
+| 1 | error — no `block.toml`, or a `block.lock` that cannot be read |
 
 `--json` prints the same report as one object, for CI and other tools:
 

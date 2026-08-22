@@ -605,6 +605,10 @@ source = "sha256:x"
 		"foo: the source definition changed since block.lock was resolved",
 		"foo: block.lock has no artifact for linux/amd64",
 		`foundry: block.toml wants "1.7" but block.lock was resolved from "1.6"`,
+		// foundry is a registry tool in this manifest and the pin beside it
+		// carries a fingerprint, so the [tools.foundry.source] it was
+		// resolved from is gone: a change like any other.
+		"foundry: the source definition changed since block.lock was resolved",
 		"foundry: block.lock has no artifact for linux/amd64",
 		"hermes is declared in block.toml but missing from block.lock",
 		"legacy is in block.lock but not declared in block.toml",
@@ -612,7 +616,7 @@ source = "sha256:x"
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("Check() =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if reasons := Check(m, l, nil); len(reasons) != 4 {
+	if reasons := Check(m, l, nil); len(reasons) != 5 {
 		t.Errorf("Check(no platforms) = %v", reasons)
 	}
 	// A registry recipe change never stales a lock: only local sources carry
@@ -1161,5 +1165,57 @@ func TestLockDoesNotKeepAPinWhoseSourceChanged(t *testing.T) {
 	}
 	if reasons := Check(m, l, []platform.Platform{h.Platform}); len(reasons) != 0 {
 		t.Errorf("the rewritten lockfile is stale: %v", reasons)
+	}
+}
+
+// A tool that had its own [tools.<name>.source] and now takes the registry's
+// is a changed source, the same as one whose source was edited. Comparing
+// only in the other direction let the pin the removed source chose keep
+// installing: sync saw nothing wrong with it, and status called it ok.
+func TestCheckNoticesASourceThatWasRemoved(t *testing.T) {
+	t.Parallel()
+	local, err := manifest.Parse([]byte("[tools.cometbft]\nversion = \"1.7\"\n[tools.cometbft.source]\ntype = \"github_release\"\nrepo = \"cometbft/cometbft\"\nasset = \"cometbft_{version}_{os}_{arch}.tar.gz\"\nbin = [\"cometbft\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	registryTool, err := manifest.Parse([]byte("[tools]\ncometbft = \"1.7\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := local.Tools[0].Source.Hash()
+	locked := func(source string) *lockfile.Lock {
+		t.Helper()
+		text := "version = 1\n[[tools]]\nname = \"cometbft\"\nconstraint = \"1.7\"\nversion = \"1.7.4\"\nbin = [\"cometbft\"]\n"
+		if source != "" {
+			text += "source = \"" + source + "\"\n"
+		}
+		l, err := lockfile.Parse([]byte(text))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return l
+	}
+	tests := []struct {
+		name  string
+		m     *manifest.Manifest
+		l     *lockfile.Lock
+		stale bool
+	}{
+		{"the source is gone", registryTool, locked(hash), true},
+		{"the source is new", local, locked(""), true},
+		{"the source is the one it was resolved from", local, locked(hash), false},
+		{"there never was one", registryTool, locked(""), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reasons := Check(tt.m, tt.l, nil)
+			if tt.stale != (len(reasons) > 0) {
+				t.Fatalf("Check() = %v, want stale=%v", reasons, tt.stale)
+			}
+			if tt.stale && reasons[0] != "cometbft: the source definition changed since block.lock was resolved" {
+				t.Errorf("reason = %q", reasons[0])
+			}
+		})
 	}
 }

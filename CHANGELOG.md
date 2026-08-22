@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- A tool that stopped having a `[tools.<name>.source]` of its own — promoted
+  to a registry recipe and deleted from `block.toml` — left a pin that
+  `sync` went on installing. The lockfile records the fingerprint of the
+  source a pin was resolved from, and only the other direction was compared,
+  so a source that was removed was not a change. It is now.
 - An archive whose members link to each other could not be installed at all.
   Every link was refused, and real distributions rely on them — Nethermind
   ships `Nethermind.Runner` pointing at the executable beside it, and a

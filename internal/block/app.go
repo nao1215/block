@@ -591,7 +591,17 @@ func DisagreementsFor(t manifest.Tool, l *lockfile.Lock, plats []platform.Platfo
 			Long:  fmt.Sprintf("%s: %s wants %q but %s was resolved from %q", t.Name, manifest.FileName, t.Constraint, lockfile.FileName, e.Constraint),
 		})
 	}
-	if t.Source != nil && t.Source.Hash() != e.Source {
+	// The fingerprint the manifest asks for now, against the one the pin was
+	// resolved from. A registry tool has none — that is what the empty string
+	// means in a lockfile — so taking the source out of block.toml is a
+	// change like any other: without comparing both directions, a tool moved
+	// from its own [tools.x.source] to the registry would keep installing the
+	// artifact the removed source chose.
+	want := ""
+	if t.Source != nil {
+		want = t.Source.Hash()
+	}
+	if want != e.Source {
 		found = append(found, Disagreement{
 			Tool:  t.Name,
 			Short: "source changed",
