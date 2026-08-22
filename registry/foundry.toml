@@ -1,8 +1,10 @@
 # Foundry: forge, cast, anvil and chisel for EVM development.
 # https://github.com/foundry-rs/foundry
 #
-# Stable releases are tagged vX.Y.Z. Nightly builds are tagged
-# "nightly-<sha>" and are skipped because they are not semantic versions.
+# Stable releases are tagged vX.Y.Z. Nightly builds are published under a tag
+# that moves — "nightly" — with a "nightly-<sha>" tag for the commit under it,
+# which is what block pins when a project asks for the nightly channel. The
+# nightly assets are named after the channel rather than after a version.
 name = "foundry"
 ecosystems = ["ethereum"]
 description = "Fast Ethereum application toolkit: build, test, deploy and inspect contracts"
@@ -13,3 +15,6 @@ repo = "foundry-rs/foundry"
 asset = "foundry_v{version}_{os}_{arch}.tar.gz"
 platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
 bin = ["forge", "cast", "anvil", "chisel"]
+
+[source.channels.nightly]
+asset = "foundry_nightly_{os}_{arch}.tar.gz"
