@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-22
+
+Two things a project can now ask for that it could not before — a nightly, and
+a read-only look at where its toolchain stands — and the fixes found while
+hardening the parts that were already there.
+
 ### Fixed
 - `ethereal` and `heimdall` no longer claim macOS x86-64. Both upstreams
   publish one macOS build, name it amd64, and ship an arm64 executable, so
@@ -275,6 +281,7 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/nao1215/block/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nao1215/block/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nao1215/block/releases/tag/v0.1.0
