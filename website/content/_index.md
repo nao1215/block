@@ -2,15 +2,16 @@
 title: block
 ---
 
-> block is heading toward a Blockchain Development Toolbox for local
-> blockchain development. For now it does one thing: it locks a project's
-> toolchain, so every machine and CI install the same CLI versions.
+> block does one thing today: it locks a project's toolchain, so every machine
+> and CI install the same CLI versions. The rest of the toolbox — local
+> blockchain development beyond installing tools — is not built yet.
 
-A blockchain project's build depends on binaries nobody declared: whichever
-Foundry the last person installed, whichever `solc` was on that runner,
-whichever relayer the integration test found. block makes that set explicit and
-reproducible — declared in `block.toml`, pinned by checksum in `block.lock`,
-and identical on every machine and every runner.
+block is a toolbox for blockchain development. The first tool in it is the
+toolchain, because a blockchain project's build depends on binaries nobody
+declared: whichever Foundry the last person installed, whichever `solc` was on
+that runner, whichever relayer the integration test found. block makes that set
+explicit and reproducible — declared in `block.toml`, pinned by checksum in
+`block.lock`, and identical on every machine and every runner.
 
 ![block: two lines of block.toml, then lock, sync and a real tool running](/img/demo.gif)
 
