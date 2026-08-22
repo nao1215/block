@@ -374,10 +374,20 @@ func TestSortAndLatestDoNotDependOnTheOrderTagsArriveIn(t *testing.T) {
 		for i := range tags {
 			vs = append(vs, MustParse(tags[(i+rotate)%len(tags)]))
 		}
+		// Latest is asked before the list is sorted as well as after it:
+		// sorting is what resolution does, but Latest is exported on its own
+		// and its answer must not depend on the order either.
+		unsorted, ok := Latest(vs, c)
+		if !ok {
+			t.Fatalf("rotation %d: nothing matched %q", rotate, c)
+		}
 		Sort(vs)
 		got, ok := Latest(vs, c)
 		if !ok {
-			t.Fatalf("rotation %d: nothing matched %q", rotate, c)
+			t.Fatalf("rotation %d: nothing matched %q once sorted", rotate, c)
+		}
+		if unsorted.String() != got.String() {
+			t.Errorf("rotation %d: Latest = %q unsorted and %q sorted", rotate, unsorted, got)
 		}
 		if rotate == 0 {
 			want = got.String()

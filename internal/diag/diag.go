@@ -193,7 +193,10 @@ func All() []Entry {
 }
 
 // Lookup finds an entry by its printed form, however it is spelled: "BLK1005",
-// "blk1005" or the bare "1005" a person retypes from a terminal.
+// "blk1005" or the bare "1005" a person retypes from a terminal. The prefix is
+// matched without regard to case on purpose — someone reading a code off a
+// terminal and typing it back has no reason to be held to the capitalisation —
+// while the digits are exact, because they are the code itself.
 func Lookup(s string) (Entry, bool) {
 	text := strings.TrimSpace(s)
 	if len(text) > len(Prefix) && strings.EqualFold(text[:len(Prefix)], Prefix) {
