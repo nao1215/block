@@ -273,3 +273,34 @@ func TestArtifactForRefusesTwoAssetsOfOneName(t *testing.T) {
 		t.Errorf("error %q lists the assets in the order they arrived", err)
 	}
 }
+
+func TestExactTagKeepsTheWholeCommitOfAHyphenatedChannel(t *testing.T) {
+	t.Parallel()
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	for _, channel := range []string{"nightly", "pre-release", "dev-2"} {
+		t.Run(channel, func(t *testing.T) {
+			t.Parallel()
+			tag := channel + "-" + sha
+			f := &fake{releases: map[string]*github.Release{tag: rel(tag, true, "t_"+sha+"_linux_amd64.tar.gz")}}
+			res, err := ExactTag(context.Background(), f, src(), channel, tag)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Commit != sha {
+				t.Fatalf("commit = %q, want %q", res.Commit, sha)
+			}
+			if res.Tag != tag || res.Channel != channel {
+				t.Fatalf("resolution = %+v", res)
+			}
+		})
+	}
+}
+
+func TestExactTagReportsAMissingRelease(t *testing.T) {
+	t.Parallel()
+	f := &fake{releases: map[string]*github.Release{}}
+	_, err := ExactTag(context.Background(), f, src(), "nightly", "nightly-abc")
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
