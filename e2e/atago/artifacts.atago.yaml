@@ -157,7 +157,45 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            contains: 'refusing to extract link "etc-passwd": links are not supported'
+            contains: 'refusing to extract "etc-passwd": it links to the absolute path "/etc/passwd"'
+
+  # A link that stays inside the install is how real distributions ship a
+  # second name for one program — Nethermind publishes Nethermind.Runner
+  # beside nethermind that way — so it is installed, not refused. What the
+  # scenario above refuses is a link that leaves the install directory.
+  - name: an archive whose link stays inside the install is unpacked
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.linked]
+            version = "1.0"
+
+            [tools.linked.source]
+            type = "github_release"
+            repo = "example/linked"
+            asset = "linked_{version}_{os}_{arch}.tar.gz"
+            bin = ["linked"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      - run:
+          command: block exec linked --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "linked 1.0.0 (fake)"
+      # The second name is there and resolves to the program: the archive
+      # names the link exactly, so it carries no executable suffix of its
+      # own, and "test -e" follows it to whatever it points at.
+      - run:
+          shell: true
+          command: 'test -e "$(ls -d home/tools/linked/*/)Runner"'
+      - assert:
+          exit_code: 0
 
   # Every one of these is refused on every platform, so the scenarios carry no
   # "only:" gate: an archive that names a Windows drive, or ships a device

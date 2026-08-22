@@ -1023,7 +1023,7 @@ func TestSyncRefusesBadArchives(t *testing.T) {
 		name, repo, bin, want string
 	}{
 		{"traversal", "example/evil", "evil", `refusing to extract "../escape": path escapes the destination`},
-		{"symlink", "example/linky", "linky", `refusing to extract link "etc-passwd"`},
+		{"symlink out of the install", "example/linky", "linky", `refusing to extract "etc-passwd": it links to the absolute path "/etc/passwd"`},
 		{"missing bin", "example/nobin", "nobin", `executable "nobin" is missing`},
 	}
 	for _, tt := range tests {

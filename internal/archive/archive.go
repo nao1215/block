@@ -1,6 +1,6 @@
 // Package archive extracts the tar.gz and zip archives upstreams publish.
-// Extraction is defensive: every entry must stay inside the destination,
-// symlinks and hard links are refused, and only the owner-executable bit is
+// Extraction is defensive: every entry must stay inside the destination —
+// including where a link points — and only the owner-executable bit is
 // preserved from the archive's permissions.
 package archive
 
@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -148,8 +149,22 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 			if err := left.wrote(hdr.Name, n); err != nil {
 				return err
 			}
-		case tar.TypeSymlink, tar.TypeLink:
-			return diag.UnsupportedEntry.Errorf("refusing to extract link %q: links are not supported", hdr.Name)
+		case tar.TypeSymlink:
+			if err := symlink(dst, target, hdr.Linkname, hdr.Name); err != nil {
+				return err
+			}
+		case tar.TypeLink:
+			// A hard link names another member by the name it has in the
+			// archive, so the components dropped from that name have to be
+			// dropped from this one too, or the two stop referring to the
+			// same file.
+			name, ok := stripName(hdr.Linkname, strip)
+			if !ok {
+				return diag.PathEscape.Errorf("refusing to extract %q: it links to %q, which is not in the archive", hdr.Name, hdr.Linkname)
+			}
+			if err := hardlink(dst, target, name, hdr.Name); err != nil {
+				return err
+			}
 		default:
 			// Character and block devices, FIFOs, sockets: a tool
 			// distribution has no use for any of them, and each is a way to
@@ -182,7 +197,20 @@ func extractZip(src, dst string, strip int) error {
 				return err
 			}
 		case mode&os.ModeSymlink != 0:
-			return diag.UnsupportedEntry.Errorf("refusing to extract link %q: links are not supported", zf.Name)
+			// A zip symlink is a file whose contents are the target path.
+			rc, err := zf.Open()
+			if err != nil {
+				return err
+			}
+			const maxLinkBytes = 4096
+			link, err := io.ReadAll(io.LimitReader(rc, maxLinkBytes))
+			_ = rc.Close()
+			if err != nil {
+				return diag.ArchiveUnreadable.Errorf("invalid zip archive: %w", err)
+			}
+			if err := symlink(dst, target, string(link), zf.Name); err != nil {
+				return err
+			}
 		case mode.IsRegular():
 			if err := left.entry(zf.Name); err != nil {
 				return err
@@ -206,6 +234,113 @@ func extractZip(src, dst string, strip int) error {
 		}
 	}
 	return nil
+}
+
+// symlink creates the link an archive member describes, once its target is
+// known to stay inside dst.
+//
+// A link is where an archive gets to name a path block never checked: the
+// entry is inside the destination and the thing it points at need not be.
+// Real distributions rely on them — Nethermind ships Nethermind.Runner
+// pointing at nethermind beside it, and versioned shared libraries are almost
+// always a name and a link — so they are extracted, and the target is held to
+// the same rule every other path is: it resolves inside dst or it is refused.
+//
+// A dangling link is allowed. Archives list members in their own order, and a
+// link to a file that comes later is not an error; what the link may not do
+// is leave the directory.
+func symlink(dst, target, linkname, name string) error {
+	resolved, err := linkTarget(dst, target, linkname, name)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
+		return err
+	}
+	if err := os.Symlink(filepath.FromSlash(linkname), target); err != nil {
+		// Windows needs a privilege block will not ask for. The target is
+		// inside the install directory, so a copy of it is the same thing to
+		// everything that follows — when it has been unpacked already.
+		if st, lerr := os.Lstat(resolved); lerr != nil || !st.Mode().IsRegular() {
+			return diag.UnsupportedEntry.Errorf("refusing to extract %q: this filesystem cannot link to %q (%w)", name, linkname, err)
+		}
+		return copyLinked(resolved, target)
+	}
+	return nil
+}
+
+// hardlink reproduces a hard link between two members of one archive. The
+// member it points at has to be there already, which is what an archive that
+// carries one guarantees.
+func hardlink(dst, target, linkname, name string) error {
+	resolved, err := linkTarget(dst, target, linkname, name)
+	if err != nil {
+		return err
+	}
+	// A hard link is a second name for a member the archive already wrote.
+	// One pointing at something that is not there is a broken archive, not a
+	// link, and saying which name is missing is the only useful thing to say.
+	if st, err := os.Lstat(resolved); err != nil || !st.Mode().IsRegular() {
+		return diag.UnsupportedEntry.Errorf("refusing to extract %q: it links to %q, which the archive did not write", name, linkname)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
+		return err
+	}
+	if err := os.Link(resolved, target); err != nil {
+		return copyLinked(resolved, target)
+	}
+	return nil
+}
+
+// linkTarget resolves what a link points at and refuses anything that leaves
+// dst: an absolute path, a Windows path, or a relative one with enough ".."
+// in it. A symlink's target is relative to the directory the link is in; a
+// hard link's has already been made relative to dst by the caller.
+func linkTarget(dst, target, linkname, name string) (string, error) {
+	switch {
+	case linkname == "":
+		return "", diag.PathEscape.Errorf("refusing to extract %q: it links to nothing", name)
+	case strings.ContainsRune(linkname, 0):
+		return "", diag.PathEscape.Errorf("refusing to extract %q: its link target contains a NUL", name)
+	case strings.ContainsRune(linkname, '\\'), driveLetter(linkname):
+		return "", diag.PathEscape.Errorf("refusing to extract %q: a link may not name a drive, a share or a Windows path", name)
+	case path.IsAbs(linkname), filepath.IsAbs(filepath.FromSlash(linkname)):
+		return "", diag.PathEscape.Errorf("refusing to extract %q: it links to the absolute path %q", name, linkname)
+	}
+	resolved := filepath.Join(filepath.Dir(target), filepath.FromSlash(linkname))
+	rel, err := filepath.Rel(dst, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", diag.PathEscape.Errorf("refusing to extract %q: it links to %q, which is outside the destination", name, linkname)
+	}
+	return resolved, nil
+}
+
+// copyLinked stands in for a link the filesystem would not make, by copying
+// what it points at. The caller has checked that the target is a regular file
+// inside the destination.
+func copyLinked(resolved, target string) error {
+	st, err := os.Lstat(resolved)
+	if err != nil {
+		return err
+	}
+	in, err := os.Open(resolved) //nolint:gosec // inside the destination, already checked
+	if err != nil {
+		return err
+	}
+	defer in.Close() //nolint:errcheck // read-only
+	perm := os.FileMode(fileMode)
+	if st.Mode()&0o100 != 0 {
+		perm = execMode
+	}
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm) //nolint:gosec // inside the destination
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // isRoot reports whether a member name, once cleaned, is the destination

@@ -32,6 +32,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -182,6 +183,14 @@ func Fixtures() []Repo {
 			{tag: "v1.0.0", at: 1, bins: []string{"evil"},
 				assets:  platformAssets("evil_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
 				entries: []entry{{name: "../escape", content: "outside\n", mode: 0o644}}},
+		}},
+		{owner: "example", name: "linked", releases: []release{
+			// A link beside the executable it points at, which is how real
+			// distributions ship a second name for one program: Nethermind
+			// publishes Nethermind.Runner this way.
+			{tag: "v1.0.0", at: 1, bins: []string{"linked"},
+				assets:  platformAssets("linked_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
+				entries: []entry{{name: "Runner", link: "linked"}}},
 		}},
 		{owner: "example", name: "linky", releases: []release{
 			{tag: "v1.0.0", at: 1, bins: []string{"linky"},
@@ -614,7 +623,16 @@ func buildArchive(name string, rel release) []byte {
 	// The asset name goes into the README so every platform's archive hashes
 	// differently, as real per-platform builds do.
 	members = append(members, entry{name: "README.md", content: "fake release " + rel.tag + " " + name + "\n", mode: 0o644})
-	members = append(members, rel.entries...)
+	// An entry that links to one of the executables has to follow it: where
+	// the archive names the executable "linked.exe", a link to "linked"
+	// points at nothing, which is a broken fixture rather than the thing the
+	// scenario is about.
+	for _, e := range rel.entries {
+		if e.link != "" && slices.Contains(rel.bins, e.link) {
+			e.link += suffix
+		}
+		members = append(members, e)
+	}
 	if rel.prefix != "" {
 		for i := range members {
 			members[i].name = rel.prefix + "/" + members[i].name
