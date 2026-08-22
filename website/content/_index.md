@@ -2,6 +2,10 @@
 title: block
 ---
 
+> block is heading toward a Blockchain Development Toolbox for local
+> blockchain development. For now it does one thing: it locks a project's
+> toolchain, so every machine and CI install the same CLI versions.
+
 A blockchain project's build depends on binaries nobody declared: whichever
 Foundry the last person installed, whichever `solc` was on that runner,
 whichever relayer the integration test found. block makes that set explicit and

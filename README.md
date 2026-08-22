@@ -14,6 +14,11 @@
 
 ![demo](./doc/img/demo.gif)
 
+> [!IMPORTANT]
+> block is heading toward a Blockchain Development Toolbox for local
+> blockchain development. For now it does one thing: it locks a project's
+> toolchain, so every machine and CI install the same CLI versions.
+
 block pins the blockchain CLI tools a repository depends on — Foundry, geth, Lighthouse, Agave, Gaia, an IBC relayer, whatever your chains need — and reproduces exactly the same toolchain on every developer machine and in CI. Tools are declared in `block.toml`, pinned by URL and SHA-256 in `block.lock`, and installed from that lockfile alone. It is a single static binary: no mise, aqua, Nix, Docker or package manager is involved.
 
 Documentation: https://nao1215.github.io/block/
