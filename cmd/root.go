@@ -49,7 +49,7 @@ func (e *ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code
 // toolchain the working directory's project locked.
 func Main(ctx context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(argv) > 0 && shim.IsShim(argv[0]) {
-		return runShim(ctx, argv[0], argv[1:], stdin, stdout, stderr)
+		return runShim(argv[0], argv[1:], stdin, stdout, stderr)
 	}
 	var args []string
 	if len(argv) > 1 {
@@ -253,7 +253,7 @@ exec never downloads, installs or resolves anything; run "block sync" first.`,
 			if err != nil {
 				return err
 			}
-			code, err := app.Exec(cmd.Context(), args, os.Stdin)
+			code, err := app.Exec(args, os.Stdin)
 			if err != nil {
 				return err
 			}

@@ -1,7 +1,6 @@
 package block
 
 import (
-	"context"
 	"errors"
 	"io"
 	"os"
@@ -20,7 +19,7 @@ const signalExit = 128
 // SIGTERM are forwarded to the child rather than acted on here: a node, a
 // validator or a local test network must get the chance to shut down
 // cleanly, and its own exit status is what block reports.
-func (a *App) Exec(ctx context.Context, args []string, stdin *os.File) (int, error) {
+func (a *App) Exec(args []string, stdin *os.File) (int, error) {
 	if len(args) == 0 {
 		return 0, diag.CommandNotFound.Errorf("exec needs a command to run, e.g. block exec forge --version")
 	}
@@ -28,13 +27,13 @@ func (a *App) Exec(ctx context.Context, args []string, stdin *os.File) (int, err
 	if err != nil {
 		return 0, err
 	}
-	return t.Run(ctx, args[0], args[1:], stdin, a.Stdout, a.Stderr)
+	return t.Run(args[0], args[1:], stdin, a.Stdout, a.Stderr)
 }
 
 // Run executes one command inside the toolchain and returns its exit status.
 // It is what both "block exec" and a shim end in, so the two cannot drift.
-func (t *Toolchain) Run(ctx context.Context, name string, args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
-	cmd, err := t.Command(ctx, name, args)
+func (t *Toolchain) Run(name string, args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	cmd, err := t.Command(name, args)
 	if err != nil {
 		return 0, err
 	}
@@ -43,12 +42,15 @@ func (t *Toolchain) Run(ctx context.Context, name string, args []string, stdin i
 
 // RunCommand starts a prepared command, hands it the standard streams and the
 // signals block receives, and reports its exit status.
+//
+// Forwarding is the only way block ever stops the child, and it forwards each
+// signal exactly once: the tools block runs are nodes and test networks that
+// shut down on the first signal and force-quit on the second, so a SIGINT
+// that arrived once must arrive at the child once. cmd must therefore not be
+// bound to a context that the same signal cancels — os/exec would deliver a
+// second signal of its own, and report the child's clean exit as
+// "context canceled". Block waits for as long as the child needs.
 func RunCommand(cmd *exec.Cmd, name string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
-	// A cancelled context asks the child to stop the way a SIGTERM would,
-	// instead of the default SIGKILL: the tools block runs are nodes and
-	// test networks that have shutdown work to do. Without a WaitDelay,
-	// block waits for as long as the child needs.
-	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

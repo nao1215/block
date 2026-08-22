@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -33,7 +32,7 @@ const maxDepth = 8
 // Outside a block project, or for a command this project does not lock, the
 // next command of that name on PATH runs instead, so putting the shim
 // directory on PATH cannot take a tool away from the rest of the system.
-func runShim(ctx context.Context, argv0 string, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func runShim(argv0 string, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	command := shim.CommandName(argv0)
 	depth, _ := strconv.Atoi(os.Getenv(depthEnv))
 	if depth >= maxDepth {
@@ -47,7 +46,7 @@ func runShim(ctx context.Context, argv0 string, args []string, stdin io.Reader, 
 	}
 	dir, findErr := manifest.Find(workingDir())
 	if findErr != nil {
-		return fallback(ctx, st, command, args, depth, stdin, stdout, stderr,
+		return fallback(st, command, args, depth, stdin, stdout, stderr,
 			fmt.Sprintf("block: %s: %s: no block project here and no %s elsewhere on PATH", diag.ShimNoFallback, command, command))
 	}
 	toolchain, err := block.OpenToolchain(dir, platform.Current(), st)
@@ -58,11 +57,11 @@ func runShim(ctx context.Context, argv0 string, args []string, stdin io.Reader, 
 		return exitFailure
 	}
 	if _, ok := toolchain.ResolveCommand(command); !ok {
-		return fallback(ctx, st, command, args, depth, stdin, stdout, stderr,
+		return fallback(st, command, args, depth, stdin, stdout, stderr,
 			fmt.Sprintf("block: %s: %s: %s does not lock a tool providing %q, and no %s was found elsewhere on PATH",
 				diag.ShimNoFallback, command, manifest.FileName, command, command))
 	}
-	code, err := toolchain.Run(ctx, command, args, stdin, stdout, stderr)
+	code, err := toolchain.Run(command, args, stdin, stdout, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "block: %s\n", diag.Message(err))
 		return exitFailure
@@ -72,7 +71,7 @@ func runShim(ctx context.Context, argv0 string, args []string, stdin io.Reader, 
 
 // fallback runs the next command of this name on PATH, skipping the shim
 // directory and this executable so that a shim can never call itself.
-func fallback(ctx context.Context, st *store.Store, command string, args []string, depth int,
+func fallback(st *store.Store, command string, args []string, depth int,
 	stdin io.Reader, stdout, stderr io.Writer, notFound string,
 ) int {
 	bin, ok := next(st, command)
@@ -80,7 +79,7 @@ func fallback(ctx context.Context, st *store.Store, command string, args []strin
 		fmt.Fprintln(stderr, notFound)
 		return exitFailure
 	}
-	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // the command the user typed, found on their own PATH
+	cmd := exec.Command(bin, args...) //nolint:gosec,noctx // the command the user typed, found on their own PATH; signals stop it, not a context (see block.RunCommand)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", depthEnv, depth+1))
 	code, err := block.RunCommand(cmd, command, stdin, stdout, stderr)
 	if err != nil {

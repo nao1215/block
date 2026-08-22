@@ -203,11 +203,11 @@ func TestLockHTTPSourceAndRawExecutable(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.reset()
-	if code, err := h.Exec(ctx, []string{"geth", "version"}, nil); err != nil || code != 0 || !strings.Contains(h.stdout.String(), "geth 1.17.4 (fake)") {
+	if code, err := h.Exec([]string{"geth", "version"}, nil); err != nil || code != 0 || !strings.Contains(h.stdout.String(), "geth 1.17.4 (fake)") {
 		t.Errorf("Exec(geth) = %d, %v, %q", code, err, h.stdout)
 	}
 	h.reset()
-	if code, err := h.Exec(ctx, []string{"rawbin"}, nil); err != nil || code != 0 || !strings.Contains(h.stdout.String(), "rawbin 1.0.0 (fake)") {
+	if code, err := h.Exec([]string{"rawbin"}, nil); err != nil || code != 0 || !strings.Contains(h.stdout.String(), "rawbin 1.0.0 (fake)") {
 		t.Errorf("Exec(rawbin) = %d, %v, %q", code, err, h.stdout)
 	}
 	// T2: geth 1.17.5 is tagged; the commit-named blob resolves too.
@@ -641,13 +641,13 @@ func TestSyncAndExecContract(t *testing.T) {
 	if err := h.Sync(ctx); err == nil || err.Error() != `block.lock not found; run "block lock"` {
 		t.Errorf("Sync(no lock) error = %v", err)
 	}
-	if _, err := h.Exec(ctx, []string{"forge"}, nil); err == nil || !strings.Contains(err.Error(), `block.lock not found`) {
+	if _, err := h.Exec([]string{"forge"}, nil); err == nil || !strings.Contains(err.Error(), `block.lock not found`) {
 		t.Errorf("Exec(no lock) error = %v", err)
 	}
 	if err := h.Lock(ctx, nil, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.Exec(ctx, []string{"forge"}, nil); err == nil || err.Error() != `foundry 1.7.4 is not installed; run "block sync"` {
+	if _, err := h.Exec([]string{"forge"}, nil); err == nil || err.Error() != `foundry 1.7.4 is not installed; run "block sync"` {
 		t.Errorf("Exec(before sync) error = %v", err)
 	}
 	before := h.lockText(t)
@@ -673,18 +673,18 @@ func TestSyncAndExecContract(t *testing.T) {
 		t.Errorf("Env() = %v, %v", dirs, err)
 	}
 	h.reset()
-	code, err := h.Exec(ctx, []string{"forge", "test"}, nil)
+	code, err := h.Exec([]string{"forge", "test"}, nil)
 	if err != nil || code != 0 || h.stdout.String() != "forge 1.7.4 (fake)\nargs: test\n" {
 		t.Errorf("Exec() = %d, %v, stdout %q", code, err, h.stdout)
 	}
-	code, err = h.Exec(ctx, []string{"cast", "--exit", "7"}, nil)
+	code, err = h.Exec([]string{"cast", "--exit", "7"}, nil)
 	if err != nil || code != 7 {
 		t.Errorf("Exec(exit 7) = %d, %v", code, err)
 	}
-	if _, err := h.Exec(ctx, nil, nil); err == nil {
+	if _, err := h.Exec(nil, nil); err == nil {
 		t.Error("Exec(no args) succeeded")
 	}
-	if _, err := h.Exec(ctx, []string{"no-such-command-xyz"}, nil); err == nil || !strings.Contains(err.Error(), `command "no-such-command-xyz" not found`) {
+	if _, err := h.Exec([]string{"no-such-command-xyz"}, nil); err == nil || !strings.Contains(err.Error(), `command "no-such-command-xyz" not found`) {
 		t.Errorf("Exec(missing) error = %v", err)
 	}
 
@@ -735,7 +735,7 @@ func TestExecRefusesAStaleLock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h.manifest(t, tt.manifest)
 			h.reset()
-			_, err := h.Exec(ctx, []string{"forge"}, nil)
+			_, err := h.Exec([]string{"forge"}, nil)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Exec() error = %v, want containing %q", err, tt.want)
 			}
@@ -810,7 +810,7 @@ bin = ["rawbin"]
 	if err := h.Sync(ctx); err == nil || err.Error() != want {
 		t.Errorf("Sync() error = %v, want %q", err, want)
 	}
-	if _, err := h.Exec(ctx, []string{"rawbin"}, nil); err == nil || err.Error() != want {
+	if _, err := h.Exec([]string{"rawbin"}, nil); err == nil || err.Error() != want {
 		t.Errorf("Exec() error = %v, want %q", err, want)
 	}
 }
@@ -893,7 +893,7 @@ func TestAmbiguousLockfileIsRefusedEverywhere(t *testing.T) {
 	if err := h.Sync(ctx); err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("Sync() error = %v, want it to contain %q", err, want)
 	}
-	if _, err := h.Exec(ctx, []string{"forge"}, nil); err == nil || !strings.Contains(err.Error(), want) {
+	if _, err := h.Exec([]string{"forge"}, nil); err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("Exec() error = %v, want it to contain %q", err, want)
 	}
 	if err := h.Lock(ctx, nil, false); err == nil || !strings.Contains(err.Error(), want) {
@@ -930,7 +930,7 @@ func TestSyncAndExecRejectDamagedInstalls(t *testing.T) {
 	if _, err := h.Env(); err == nil || !strings.Contains(err.Error(), `run "block sync"`) {
 		t.Errorf("Env() error = %v, want it to point at sync", err)
 	}
-	if _, err := h.Exec(ctx, []string{"forge"}, nil); err == nil {
+	if _, err := h.Exec([]string{"forge"}, nil); err == nil {
 		t.Error("exec ran from a damaged install")
 	}
 	// sync repairs it rather than calling it cached.
