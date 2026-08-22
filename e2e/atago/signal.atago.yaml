@@ -55,6 +55,50 @@ scenarios:
   # measures is the shell's job control rather than block's forwarding —
   # which is the same code path for both signals.
 
+  # One signal in, one signal out, and the child's own verdict on it. A node
+  # that shuts down on the first signal and force-quits on the second must
+  # not see a second one block invented; and when it then exits 0, block
+  # exits 0 — "context canceled" is not an exit status a user asked about.
+  - name: a signal reaches the child exactly once and a clean exit stays 0
+    skip:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      # The child names each signal it gets, then exits 0 on its own. It is
+      # sent SIGINT, so a SIGTERM in its output could only have come from
+      # block.
+      - run:
+          shell: true
+          command: >-
+            block exec sh -c 'trap "echo got INT; stop=1" INT; trap "echo got TERM; stop=1" TERM; echo ready; while [ -z "$stop" ]; do sleep 0.1; done; echo bye; exit 0' > out.txt 2>&1 &
+            pid=$!;
+            for i in $(seq 1 100); do grep -q ready out.txt && break; sleep 0.1; done;
+            kill -INT $pid;
+            wait $pid;
+            echo "block exited $?"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "block exited 0"
+      - assert:
+          file:
+            path: out.txt
+            equals: "ready\ngot INT\nbye\n"
+
   - name: a child killed by a signal reports 128+signal, not 255
     skip:
       os: windows

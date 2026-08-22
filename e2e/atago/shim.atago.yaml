@@ -378,6 +378,103 @@ scenarios:
           stdout:
             contains: "system forge"
 
+  # The fallback walks PATH for the next command of that name. Two things on
+  # PATH are never that: the shim directory, and this very binary under a
+  # copied name — a shim copied elsewhere is still block, and running it
+  # would only loop.
+  - name: a shim copied onto PATH is not its own fallback
+    skip:
+      os: windows
+    env: *shimmed
+    steps:
+      - fixture:
+          file: proj/block.toml
+          content: |
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - run:
+          shell: true
+          command: cd proj && block lock && block sync
+      - run:
+          shell: true
+          command: mkdir -p sysbin elsewhere && cp -L home/shims/hermes sysbin/hermes
+      - run:
+          shell: true
+          command: cd elsewhere && hermes --version
+          env:
+            PATH: "${workdir}/home/shims${env:BLOCK_PATH_SEP}${workdir}/sysbin${env:BLOCK_PATH_SEP}${env:PATH}"
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK5004: hermes: no block project here and no hermes elsewhere on PATH\n"
+
+  # A wrapper that falls back into the shim again is the loop the depth
+  # guard exists for. The count travels through the wrapper in the
+  # environment, so every hop is one, and the guard fires after eight.
+  - name: a fallback that calls the shim again is stopped by the depth guard
+    skip:
+      os: windows
+    env: *shimmed
+    steps:
+      - fixture:
+          file: proj/block.toml
+          content: |
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - run:
+          shell: true
+          command: cd proj && block lock && block sync
+      - fixture:
+          file: sysbin/hermes
+          content: |
+            #!/bin/sh
+            echo "wrapper depth=$BLOCK_SHIM_DEPTH"
+            exec hermes "$@"
+      - run:
+          shell: true
+          command: chmod +x sysbin/hermes && mkdir -p elsewhere
+      - run:
+          shell: true
+          command: cd elsewhere && hermes --version
+          env:
+            PATH: "${workdir}/home/shims${env:BLOCK_PATH_SEP}${workdir}/sysbin${env:BLOCK_PATH_SEP}${env:PATH}"
+      - assert:
+          exit_code: 1
+          stdout:
+            equals: "wrapper depth=1\nwrapper depth=2\nwrapper depth=3\nwrapper depth=4\nwrapper depth=5\nwrapper depth=6\nwrapper depth=7\nwrapper depth=8\n"
+          stderr:
+            equals: "block: BLK5003: hermes: shims are calling each other in a loop; check PATH for more than one block shim directory\n"
+
   # A shim and "block exec" are two doors into the same room. If they could
   # disagree — about which version, about whether the lockfile is current,
   # about what a failure exits with — then which door a script happened to use

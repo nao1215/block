@@ -1,7 +1,6 @@
 package block
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -136,7 +135,11 @@ func (t *Toolchain) Path() string {
 // come first on PATH, and a command the toolchain provides is run from the
 // install directory rather than looked up. Anything else is resolved against
 // that same PATH, so "make" or a script finds the pinned tools too.
-func (t *Toolchain) Command(ctx context.Context, name string, args []string) (*exec.Cmd, error) {
+//
+// The command is not bound to a context: the only thing that stops a child
+// is a signal block received and forwarded (see RunCommand), so there is no
+// second channel that could deliver a second signal or mask the exit status.
+func (t *Toolchain) Command(name string, args []string) (*exec.Cmd, error) {
 	path := t.Path()
 	bin, ok := t.ResolveCommand(name)
 	if !ok {
@@ -146,7 +149,7 @@ func (t *Toolchain) Command(ctx context.Context, name string, args []string) (*e
 			return nil, diag.CommandNotFound.Errorf("command %q not found in the locked toolchain or on PATH", name)
 		}
 	}
-	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // running the user's command is the point
+	cmd := exec.Command(bin, args...) //nolint:gosec,noctx // running the user's command is the point; signals stop it, not a context (see RunCommand)
 	cmd.Env = append(os.Environ(), "PATH="+path)
 	return cmd, nil
 }
