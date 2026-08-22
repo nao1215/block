@@ -14,122 +14,39 @@
 
 ![demo](./doc/img/demo.gif)
 
-block is a reproducible toolchain manager for blockchain development. It pins the CLI tools a repository depends on — Foundry, geth, Lighthouse, Agave, Gaia, an IBC relayer, whatever your chains need — and reproduces exactly the same versions on every developer machine and in CI. Tools are declared in `block.toml`, pinned by URL and SHA-256 in `block.lock`, and installed from that lockfile alone. It is a single static binary: no mise, aqua, Nix, Docker or package manager is involved.
+block is a reproducible toolchain manager for blockchain development. Declare
+the CLIs your project builds with in `block.toml`; everyone and CI install the
+same versions from `block.lock`.
 
 Documentation: https://nao1215.github.io/block/
 
 ## Try it in 30 seconds
 
-If you have Go, paste this into an empty directory:
-
 ```shell
 printf '[tools]\nfoundry = "1.7"\n' > block.toml
-go run github.com/nao1215/block@latest lock   # resolve: block.toml -> block.lock
+go run github.com/nao1215/block@latest lock   # block.toml -> block.lock
 go run github.com/nao1215/block@latest sync   # install what block.lock pins
 go run github.com/nao1215/block@latest exec forge --version
 ```
 
-Each step does one job and no more. `sync` is not optional before `exec`:
-`exec` never installs anything, so it runs the toolchain `sync` put on disk or
-it refuses.
+Commit both files. Everyone else runs `block sync` and gets the same binaries.
 
-Foundry publishes Linux and macOS builds only, and block says so rather than
-substituting something else. On Windows, the same 30 seconds with a tool that
-does ship there:
+Foundry ships Linux and macOS builds only; on Windows, try `solc = "0.8"`
+instead. Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
 
-```shell
-printf '[tools]\nsolc = "0.8"\n' > block.toml
-go run github.com/nao1215/block@latest lock
-go run github.com/nao1215/block@latest sync
-go run github.com/nao1215/block@latest exec solc --version
-```
+## Commands
 
-What each CLI ships for is in [doc/tools.md](./doc/tools.md).
+| | |
+|:--|:--|
+| `block lock [tool...]` | resolve `block.toml` into `block.lock` — the only command that moves a pin |
+| `block sync` | install what `block.lock` pins, or fail |
+| `block exec <cmd>` | run a command with the locked toolchain on `PATH` |
+| `block status [--json]` | what the two files and the store say, read-only |
+| `block list [ecosystem]` | the tools block can install |
+| `block explain <code>` | what a `BLK` error code means |
 
-Two files now say what your toolchain is. Commit both; everyone else — and CI —
-runs `block sync` and gets the same binaries, byte for byte.
-
-```console
-$ git clone <project> && cd <project>
-$ block sync
-foundry  1.7.1   installed
-hermes   1.13.3  installed
-$ block exec forge test
-```
-
-## Three lifecycle commands, one direction
-
-```text
-block.toml  ──block lock──▶  block.lock  ──block sync──▶  installed toolchain  ──block exec──▶  command
-```
-
-| Command | Resolves versions | Writes `block.lock` | Downloads | Installs | Runs your command |
-| --- | :-: | :-: | :-: | :-: | :-: |
-| `block lock [tool...]` | yes | yes | only artifacts whose upstream publishes no digest | no | no |
-| `block lock --check` | yes | never | never | no | no |
-| `block sync` | never | never | locked URLs, when not cached | yes | no |
-| `block exec <cmd>` | never | never | never | never | yes |
-| `block status [--json]` | never | never | never | never | no |
-| `block list [ecosystem]` | never | never | never | never | no |
-| `block explain <code>` | never | never | never | never | no |
-| `forge`, `cast`, … (a shim) | never | never | never | never | yes |
-
-"never" is a guarantee, not a default: no flag turns any of those cells into a
-yes. A build cannot quietly pick up a release that happened overnight, and a
-stale lockfile is an error rather than a guess.
-
-Full detail: [Commands](https://nao1215.github.io/block/commands/).
-
-## Run the tools by their own names
-
-`block sync` writes one file per command into `$BLOCK_HOME/shims`. Put that
-directory on `PATH` once, by hand, and the version follows the project you are
-standing in — no shell hook, no `eval`, no activation.
-
-![shims](./doc/img/shims.gif)
-
-Outside a block project, or for a command the current project does not lock,
-the shim steps aside and runs the next command of that name on `PATH`.
-
-## Which tools can I use for this chain?
-
-51 tools across 17 blockchain systems, answered offline from the registry
-compiled into the binary — no network, no `block.toml`, no token.
-
-![list](./doc/img/list.gif)
-
-The whole catalogue, with the commands and platforms of each tool, is in
-[doc/tools.md](./doc/tools.md), generated from the recipes themselves.
-Listing is discovery, not selection: block never derives a toolchain from an
-ecosystem. You pick, and `block.toml` records.
-
-## Supported OS (unit testing with GitHub Actions)
-
-- Linux
-- macOS
-- Windows
-
-## Why block
-
-- Blockchain CLIs, whatever their distribution. Release assets, raw
-  executables and vendor download servers alike, resolved and verified the
-  same way.
-- Project-local, not machine-global. Two repositories on one machine can use
-  different Foundry versions without fighting.
-- Lockfile-driven. `block.lock` records the artifact URL and SHA-256 for every
-  platform you care about; `sync` installs exactly that, or fails.
-- CI is a first-class user. `block sync` is the same command with the same
-  meaning locally and on a runner. No special flag.
-- Upstream releases are detected, not catalogued. A recipe is a rule, so a new
-  version of a tool needs no change anywhere.
-- Nightlies are pinned like versions. `foundry = "nightly"` resolves to the
-  release under the tag that moves, so what CI installs is a checksum in
-  `block.lock` rather than whatever was published overnight.
-- Multi-chain repositories are one toolchain. EVM and IBC tools sit in one
-  manifest and one lockfile.
-
-Where a container image is the better answer, and the numbers behind the
-choice: [Compared to Docker](https://nao1215.github.io/block/comparison/).
+`sync` never resolves, `exec` never installs, and nothing updates by itself.
+`foundry = "nightly"` works too: it pins the release under the tag that moves.
 
 ## Install
 
@@ -142,12 +59,8 @@ brew install --cask nao1215/tap/block        # macOS, Linux
 scoop bucket add nao1215 https://github.com/nao1215/block && scoop install nao1215/block
 ```
 
-The [releases page](https://github.com/nao1215/block/releases) also carries
-`.deb`, `.rpm` and `.apk` packages and archives for every supported platform.
-Signature and provenance verification, and putting the shims on `PATH`, are on
-the [install page](https://nao1215.github.io/block/install/).
-
-In GitHub Actions:
+The [releases page](https://github.com/nao1215/block/releases) also has `.deb`,
+`.rpm`, `.apk` and archives. In GitHub Actions:
 
 ```yaml
 - uses: nao1215/setup-block@v0
@@ -156,56 +69,35 @@ In GitHub Actions:
 - run: block exec forge test
 ```
 
+## Supported OS (unit testing with GitHub Actions)
+
+- Linux
+- macOS
+- Windows
+
 ## Documentation
 
 | | |
 |:--|:--|
 | [Getting started](https://nao1215.github.io/block/getting-started/) | from nothing to a pinned toolchain |
-| [Cookbook](./doc/cookbook.md) | 23 recipes indexed by task, including every refusal block can print |
-| [examples/](./examples) | ready-made `block.toml` files for eight kinds of repository |
-| [Commands](https://nao1215.github.io/block/commands/) | what each command does, and the boundaries none of them cross |
-| [Reference](https://nao1215.github.io/block/reference/) | `block.toml`, `block.lock`, the store, version resolution, the recipe format |
-| [Tools](./doc/tools.md) | every CLI block can install, by blockchain system |
-| [Error codes](https://nao1215.github.io/block/errors/) | every `BLK` code block can report, and what to do about it |
-| [CI](https://nao1215.github.io/block/ci/) | GitHub Actions, GitLab, CircleCI, Docker, and keeping pins current |
-| [Security](https://nao1215.github.io/block/security/) | what block guarantees while downloading and running third-party binaries |
-
-## Development
-
-```shell
-make test            # unit tests with -race
-make e2e             # offline end-to-end suite (needs atago)
-make lint            # golangci-lint v2
-make coverage        # unit + e2e coverage combined into cover.out
-make doc             # regenerate doc/tools.md from the registry recipes
-make demo            # re-record the README GIFs (needs vhs and ffmpeg)
-make website         # build the documentation site (needs hugo)
-make registry-live   # check every recipe against the real upstreams (network)
-make examples-live   # check that examples/*.toml still resolve (network)
-make docs-smoke      # run the quickstarts this README documents, for real (network)
-```
-
-The E2E suite ([e2e/atago](./e2e/atago)) is the CLI contract: every
-user-visible behaviour — output, exit codes, files written, error messages —
-is pinned there against the real binary and an offline fake GitHub. See
-[CONTRIBUTING.md](./CONTRIBUTING.md).
+| [Cookbook](./doc/cookbook.md) | recipes indexed by task |
+| [examples/](./examples) | ready-made `block.toml` files |
+| [Commands](https://nao1215.github.io/block/commands/) | every command, in detail |
+| [Reference](https://nao1215.github.io/block/reference/) | file formats, the store, how versions resolve |
+| [Error codes](https://nao1215.github.io/block/errors/) | every `BLK` code and what to do about it |
+| [CI](https://nao1215.github.io/block/ci/) | GitHub Actions, GitLab, CircleCI, Docker |
+| [Security](https://nao1215.github.io/block/security/) | what block guarantees while downloading binaries |
 
 ## Related
 
-- [Documentation website](https://nao1215.github.io/block/)
-- [block-registry](https://github.com/nao1215/block-registry) — the canonical source of the recipes block embeds
+- [block-registry](https://github.com/nao1215/block-registry) — where the recipes are written
 - [setup-block](https://github.com/nao1215/setup-block) — GitHub Action that installs block and caches its toolchain
-
-## The name
-
-A block is the unit a chain is made of, and to block is to hold something
-still. The tool does the second to the tools that build the first.
 
 ## Contributing
 
 Issues and pull requests are welcome; see [CONTRIBUTING.md](./CONTRIBUTING.md).
-Contributions are not only about code: a GitHub Star also motivates
-development.
+`make test`, `make e2e` and `make lint` are what CI runs. Contributions are not
+only about code: a GitHub Star also motivates development.
 
 ## LICENSE
 
