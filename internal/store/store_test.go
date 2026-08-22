@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func tarGz(t *testing.T, files map[string]string, exec bool) string {
@@ -535,4 +536,36 @@ func TestInstallDirRefusesEveryComponentThatIsNotOne(t *testing.T) {
 	if filepath.Base(dir) != "1.7.4-"+digest[:shortDigest] {
 		t.Errorf("InstallDir = %q, want the version and the short digest", dir)
 	}
+}
+
+func TestSweepTempRemovesOnlyStaleBuildDirectories(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	s := &Store{Root: root}
+	tool := filepath.Join(root, "tools", "foundry")
+	stale := filepath.Join(tool, ".1.7.4-0123456789ab.tmp-111")
+	fresh := filepath.Join(tool, ".1.7.4-0123456789ab.tmp-222")
+	install := filepath.Join(tool, "1.7.4-0123456789ab")
+	for _, d := range []string{stale, fresh, install} {
+		if err := os.MkdirAll(filepath.Join(d, "bin"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	for _, d := range []string{stale, install} {
+		if err := os.Chtimes(d, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.SweepTemp(24 * time.Hour)
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale build directory still there: %v", err)
+	}
+	for _, d := range []string{fresh, install} {
+		if _, err := os.Stat(d); err != nil {
+			t.Fatalf("%s was swept: %v", d, err)
+		}
+	}
+	// A store with no tools yet is nothing to sweep.
+	(&Store{Root: filepath.Join(root, "nope")}).SweepTemp(0)
 }

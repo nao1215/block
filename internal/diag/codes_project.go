@@ -70,6 +70,13 @@ var (
 		"Use one of the names in the message, or run `block list` with no argument to see every tool with the systems it serves.",
 		"v0.1.0")
 
+	// LockUnwritable is a block.lock that could not be written.
+	LockUnwritable = register(1011,
+		"block.lock could not be written",
+		"`block lock` writes block.lock by writing a temporary file beside it and renaming that into place, so a failure leaves whatever was there before. The directory refused the write: it is read-only, owned by someone else, on a full disk, or a file is where the lockfile should go.",
+		"Make the project directory writable, or free the disk, and run \"block lock\" again. Nothing was resolved in vain: the next run reuses the artifacts already downloaded.",
+		"v0.4.0")
+
 	// CommandConflict is one command name provided by two executables.
 	CommandConflict = register(1009,
 		"two executables would provide one command",

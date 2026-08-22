@@ -9,9 +9,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/nao1215/block/internal/diag"
 )
 
 func digest(b []byte) string {
@@ -255,5 +259,64 @@ func TestFetchMismatchKeepsBlobsThatWereAlreadyCached(t *testing.T) {
 		if strings.HasPrefix(e.Name(), ".download-") {
 			t.Errorf("temp file left behind: %s", e.Name())
 		}
+	}
+}
+
+func TestSweepRemovesOnlyStaleDownloads(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	f := New(dir, "block/test")
+	stale := filepath.Join(dir, ".download-stale")
+	fresh := filepath.Join(dir, ".download-fresh")
+	blob := filepath.Join(dir, "sha256", "deadbeef")
+	if err := os.MkdirAll(filepath.Dir(blob), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{stale, fresh, blob} {
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(blob, old, old); err != nil {
+		t.Fatal(err)
+	}
+	f.Sweep(24 * time.Hour)
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale download still there: %v", err)
+	}
+	for _, p := range []string{fresh, blob} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("%s was swept: %v", p, err)
+		}
+	}
+	// A cache directory that does not exist yet is nothing to sweep.
+	New(filepath.Join(dir, "nope"), "block/test").Sweep(0)
+}
+
+func TestDownloadReportsAnUnwritableCache(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("a read-only directory is not refused here")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("bytes"))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	f := New(dir, "block/test")
+	_, _, _, err := f.Fetch(context.Background(), srv.URL+"/a.tar.gz", "")
+	if err == nil {
+		t.Fatal("fetch into a read-only cache succeeded")
+	}
+	if diag.Of(err) != diag.StoreUnwritable {
+		t.Fatalf("err = %v, want %s", err, diag.StoreUnwritable)
 	}
 }

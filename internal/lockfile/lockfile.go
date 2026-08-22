@@ -244,26 +244,26 @@ func Write(path string, l *Lock) error {
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".block.lock.*")
 	if err != nil {
-		return diag.LockInvalid.Errorf("writing %s: %w", FileName, err)
+		return diag.LockUnwritable.Errorf("writing %s: %w", FileName, err)
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
-		return err
+		return diag.LockUnwritable.Errorf("writing %s: %w", FileName, err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return err
+		return diag.LockUnwritable.Errorf("writing %s: %w", FileName, err)
 	}
 	const mode = 0o644
 	if err := os.Chmod(tmpName, mode); err != nil {
 		_ = os.Remove(tmpName)
-		return err
+		return diag.LockUnwritable.Errorf("writing %s: %w", FileName, err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		_ = os.Remove(tmpName)
-		return err
+		return diag.LockUnwritable.Errorf("writing %s: %w", FileName, err)
 	}
 	return nil
 }
