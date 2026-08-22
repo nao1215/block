@@ -146,12 +146,24 @@ func TestExtractRefusals(t *testing.T) {
 		{"tar traversal", func(t *testing.T) string { return tarGz(t, member{name: "../x", content: "x", mode: 0o644}) }, "a.tar.gz", "path escapes the destination"},
 		{"tar nested traversal", func(t *testing.T) string { return tarGz(t, member{name: "a/../../x", content: "x", mode: 0o644}) }, "a.tar.gz", "path escapes the destination"},
 		{"tar absolute", func(t *testing.T) string { return tarGz(t, member{name: "/etc/passwd", content: "x", mode: 0o644}) }, "a.tar.gz", "path escapes the destination"},
-		{"tar symlink", func(t *testing.T) string {
+		{"tar symlink out of the destination", func(t *testing.T) string {
 			return tarGz(t, member{name: "l", typ: tar.TypeSymlink, link: "/etc/passwd"})
-		}, "a.tar.gz", "links are not supported"},
-		{"tar hardlink", func(t *testing.T) string {
+		}, "a.tar.gz", "links to the absolute path"},
+		{"tar symlink climbing out", func(t *testing.T) string {
+			return tarGz(t, member{name: "bin/l", typ: tar.TypeSymlink, link: "../../../etc/passwd"})
+		}, "a.tar.gz", "outside the destination"},
+		{"tar symlink to a windows path", func(t *testing.T) string {
+			return tarGz(t, member{name: "l", typ: tar.TypeSymlink, link: `C:\Windows\System32`})
+		}, "a.tar.gz", "may not name a drive"},
+		{"tar symlink to nothing", func(t *testing.T) string {
+			return tarGz(t, member{name: "l", typ: tar.TypeSymlink, link: ""})
+		}, "a.tar.gz", "links to nothing"},
+		{"tar hardlink to a member the archive never wrote", func(t *testing.T) string {
 			return tarGz(t, member{name: "l", typ: tar.TypeLink, link: "etc"})
-		}, "a.tar.gz", "links are not supported"},
+		}, "a.tar.gz", "the archive did not write"},
+		{"tar hardlink out of the destination", func(t *testing.T) string {
+			return tarGz(t, member{name: "l", typ: tar.TypeLink, link: "../../../etc/passwd"})
+		}, "a.tar.gz", "outside the destination"},
 		{"tar fifo", func(t *testing.T) string { return tarGz(t, member{name: "f", typ: tar.TypeFifo}) }, "a.tar.gz", "unsupported entry type"},
 		{"tar empty name", func(t *testing.T) string { return tarGz(t, member{name: "", content: "x", mode: 0o644}) }, "a.tar.gz", "empty name"},
 		{"tar character device", func(t *testing.T) string {
@@ -186,7 +198,7 @@ func TestExtractRefusals(t *testing.T) {
 				member{name: "tool", content: "second", mode: 0o644})
 		}, "a.tar.gz", "already wrote that file"},
 		{"zip traversal", func(t *testing.T) string { return zipFile(t, member{name: "../x", content: "x", mode: 0o644}) }, "a.zip", "path escapes the destination"},
-		{"zip symlink", func(t *testing.T) string { return zipFile(t, member{name: "l", link: "/etc/passwd", mode: 0o777}) }, "a.zip", "links are not supported"},
+		{"zip symlink out of the destination", func(t *testing.T) string { return zipFile(t, member{name: "l", link: "/etc/passwd", mode: 0o777}) }, "a.zip", "links to the absolute path"},
 		{"unknown format", func(t *testing.T) string { return tarGz(t, member{name: "a", content: "x", mode: 0o644}) }, "a.tar.xz", "unsupported archive format"},
 		{"not gzip", func(t *testing.T) string {
 			p := filepath.Join(t.TempDir(), "x")
@@ -406,5 +418,142 @@ func TestExtractStaysWithinTheBudget(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dst, name)); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// Real distributions link inside their own directory: Nethermind ships
+// Nethermind.Runner pointing at the executable beside it, and a versioned
+// shared library is almost always a name and a link. Refusing every link
+// meant refusing those archives outright; what has to be refused is a link
+// that leaves the destination, which the table above covers.
+func TestExtractKeepsLinksThatStayInside(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		archive func(t *testing.T) string
+		file    string
+	}{
+		{
+			"tar symlink beside its target",
+			func(t *testing.T) string {
+				return tarGz(t,
+					member{name: "nethermind", content: "#!/bin/sh\nexit 0\n", mode: 0o755},
+					member{name: "Nethermind.Runner", typ: tar.TypeSymlink, link: "nethermind"},
+				)
+			},
+			"a.tar.gz",
+		},
+		{
+			"tar symlink into a subdirectory",
+			func(t *testing.T) string {
+				return tarGz(t,
+					member{name: "lib/libfoo.so.1", content: "binary\n", mode: 0o644},
+					member{name: "bin/libfoo.so", typ: tar.TypeSymlink, link: "../lib/libfoo.so.1"},
+					member{name: "nethermind", content: "#!/bin/sh\nexit 0\n", mode: 0o755},
+					member{name: "Nethermind.Runner", typ: tar.TypeSymlink, link: "nethermind"},
+				)
+			},
+			"a.tar.gz",
+		},
+		{
+			"tar hard link to a member already written",
+			func(t *testing.T) string {
+				return tarGz(t,
+					member{name: "nethermind", content: "#!/bin/sh\nexit 0\n", mode: 0o755},
+					member{name: "Nethermind.Runner", typ: tar.TypeLink, link: "nethermind"},
+				)
+			},
+			"a.tar.gz",
+		},
+		{
+			"zip symlink beside its target",
+			func(t *testing.T) string {
+				return zipFile(t,
+					member{name: "nethermind", content: "#!/bin/sh\nexit 0\n", mode: 0o755},
+					member{name: "Nethermind.Runner", link: "nethermind", mode: 0o777},
+				)
+			},
+			"a.zip",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dst := filepath.Join(t.TempDir(), "dst")
+			if err := os.MkdirAll(dst, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := Extract(tt.archive(t), dst, tt.file, 0); err != nil {
+				t.Fatalf("Extract() = %v", err)
+			}
+			// However the platform made it — link or copy — the name resolves
+			// to the same bytes as the file it points at.
+			body, err := os.ReadFile(filepath.Join(dst, "Nethermind.Runner"))
+			if err != nil {
+				t.Fatalf("reading the link: %v", err)
+			}
+			if string(body) != "#!/bin/sh\nexit 0\n" {
+				t.Errorf("the link resolves to %q", body)
+			}
+			// And it stays inside: nothing followed it out.
+			resolved, err := filepath.EvalSymlinks(filepath.Join(dst, "Nethermind.Runner"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rel, err := filepath.Rel(dst, resolved); err != nil || strings.HasPrefix(rel, "..") {
+				t.Errorf("the link resolves to %q, outside %q", resolved, dst)
+			}
+		})
+	}
+}
+
+// A link is where an archive gets to name a path that was never checked as a
+// member, so the whole point is that the check happens anyway. A dangling
+// symlink inside the destination is fine — archives list members in their own
+// order — as long as it could not point out of it.
+func TestExtractAllowsADanglingLinkInsideTheDestination(t *testing.T) {
+	t.Parallel()
+	dst := filepath.Join(t.TempDir(), "dst")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := tarGz(t,
+		member{name: "later", typ: tar.TypeSymlink, link: "written-afterwards"},
+		member{name: "written-afterwards", content: "here\n", mode: 0o644},
+	)
+	if err := Extract(src, dst, "a.tar.gz", 0); err != nil {
+		t.Fatalf("Extract() = %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(dst, "later"))
+	if err != nil || string(body) != "here\n" {
+		t.Errorf("the link resolves to %q (%v)", body, err)
+	}
+}
+
+// A member that arrives after a link cannot be written through it: the link
+// is inside the destination, but what it points at is a directory the
+// archive never created.
+func TestExtractRefusesWritingThroughALink(t *testing.T) {
+	t.Parallel()
+	dst := filepath.Join(t.TempDir(), "dst")
+	outside := filepath.Join(filepath.Dir(dst), "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The link itself is refused, so the member behind it never gets a
+	// chance; both halves are asserted.
+	src := tarGz(t,
+		member{name: "escape", typ: tar.TypeSymlink, link: "../outside"},
+		member{name: "escape/planted", content: "owned\n", mode: 0o644},
+	)
+	err := Extract(src, dst, "a.tar.gz", 0)
+	if err == nil || !strings.Contains(err.Error(), "outside the destination") {
+		t.Fatalf("Extract() = %v, want the link refused", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "planted")); err == nil {
+		t.Error("a file was written outside the destination through a link")
 	}
 }

@@ -183,6 +183,14 @@ func Fixtures() []Repo {
 				assets:  platformAssets("evil_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
 				entries: []entry{{name: "../escape", content: "outside\n", mode: 0o644}}},
 		}},
+		{owner: "example", name: "linked", releases: []release{
+			// A link beside the executable it points at, which is how real
+			// distributions ship a second name for one program: Nethermind
+			// publishes Nethermind.Runner this way.
+			{tag: "v1.0.0", at: 1, bins: []string{"linked"},
+				assets:  platformAssets("linked_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
+				entries: []entry{{name: "Runner", link: "linked"}}},
+		}},
 		{owner: "example", name: "linky", releases: []release{
 			{tag: "v1.0.0", at: 1, bins: []string{"linky"},
 				assets:  platformAssets("linky_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),

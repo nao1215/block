@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- An archive whose members link to each other could not be installed at all.
+  Every link was refused, and real distributions rely on them — Nethermind
+  ships `Nethermind.Runner` pointing at the executable beside it, and a
+  versioned shared library is almost always a name and a link. A link is now
+  extracted when what it points at resolves inside the install directory,
+  and refused when it does not: an absolute target, a Windows path, a
+  climb out with `..`, or a hard link to a member the archive never wrote.
+  Where the filesystem will not make the link — Windows, without the
+  privilege block will not ask for — the target is copied instead.
+
 ### Added
 - `grandine`, the Rust Ethereum consensus client, is in the registry: 48
   tools now. Its releases are one raw executable per platform with a
