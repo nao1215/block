@@ -495,13 +495,21 @@ func TestExtractKeepsLinksThatStayInside(t *testing.T) {
 			if string(body) != "#!/bin/sh\nexit 0\n" {
 				t.Errorf("the link resolves to %q", body)
 			}
-			// And it stays inside: nothing followed it out.
+			// And it stays inside: nothing followed it out. Both sides are
+			// resolved before they are compared, because one directory has
+			// more than one spelling — /var is /private/var on macOS, and a
+			// Windows temporary path has an 8.3 short name as well as a long
+			// one — and the test would otherwise fail on the spelling.
 			resolved, err := filepath.EvalSymlinks(filepath.Join(dst, "Nethermind.Runner"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if rel, err := filepath.Rel(dst, resolved); err != nil || strings.HasPrefix(rel, "..") {
-				t.Errorf("the link resolves to %q, outside %q", resolved, dst)
+			root, err := filepath.EvalSymlinks(dst)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rel, err := filepath.Rel(root, resolved); err != nil || strings.HasPrefix(rel, "..") {
+				t.Errorf("the link resolves to %q, outside %q", resolved, root)
 			}
 		})
 	}
