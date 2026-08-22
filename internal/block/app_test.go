@@ -13,6 +13,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/fakegh"
 	"github.com/nao1215/block/internal/fetch"
 	"github.com/nao1215/block/internal/github"
@@ -1217,5 +1218,99 @@ func TestCheckNoticesASourceThatWasRemoved(t *testing.T) {
 				t.Errorf("reason = %q", reasons[0])
 			}
 		})
+	}
+}
+
+// A channel is a tag the upstream moves, and a lockfile may not record one.
+// lock dereferences it and pins the release published for the commit under
+// it, whose tag never moves again — so the same lockfile installs the same
+// bytes tomorrow, and re-locking is what moves it.
+func TestLockPinsAChannelToSomethingThatDoesNotMove(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools.foundry]\nversion = \"nightly\"\n[tools.foundry.source]\ntype = \"github_release\"\nrepo = \"foundry-rs/foundry\"\nasset = \"foundry_v{version}_{os}_{arch}.tar.gz\"\nbin = [\"forge\"]\n[tools.foundry.source.channels.nightly]\nasset = \"foundry_nightly_{os}_{arch}.tar.gz\"\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	l, err := lockfile.Parse([]byte(h.lockText(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin, _ := l.Tool("foundry")
+	if pin.Constraint != "nightly" {
+		t.Errorf("constraint = %q, want what block.toml asked for", pin.Constraint)
+	}
+	// What was asked for floats; what was written down does not.
+	if pin.Version == "nightly" || !strings.HasPrefix(pin.Version, "nightly-") {
+		t.Fatalf("version = %q, want the tag under the moving one", pin.Version)
+	}
+	first := pin.Version
+	art, ok := pin.Artifact(h.Platform)
+	if !ok {
+		t.Fatal("no artifact for this platform")
+	}
+	if !strings.Contains(art.URL, first) {
+		t.Errorf("url = %q, want the pinned tag in it", art.URL)
+	}
+	if art.SHA256 == "" {
+		t.Error("a channel pin recorded no checksum")
+	}
+
+	// Locking again with the upstream unchanged moves nothing.
+	h.reset()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.stdout.String(), "up to date") {
+		t.Errorf("second lock said %q", h.stdout)
+	}
+
+	// sync installs it, and exec runs it.
+	if err := h.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Env(); err != nil {
+		t.Errorf("Env() = %v", err)
+	}
+
+	// The night moves on: the same constraint resolves to a new pin, and only
+	// because lock was asked to.
+	h.later()
+	h.reset()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	l, err = lockfile.Parse([]byte(h.lockText(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, _ := l.Tool("foundry")
+	if moved.Version == first {
+		t.Error("the pin did not move after the upstream retagged")
+	}
+	if !strings.HasPrefix(moved.Version, "nightly-") {
+		t.Errorf("version = %q", moved.Version)
+	}
+}
+
+// A channel block.toml asks for and the source does not publish is refused by
+// name, with the ones it does publish in the message.
+func TestLockRefusesAChannelTheSourceDoesNotPublish(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools.foundry]\nversion = \"canary\"\n[tools.foundry.source]\ntype = \"github_release\"\nrepo = \"foundry-rs/foundry\"\nasset = \"foundry_v{version}_{os}_{arch}.tar.gz\"\nbin = [\"forge\"]\n[tools.foundry.source.channels.nightly]\nasset = \"foundry_nightly_{os}_{arch}.tar.gz\"\n")
+	err := h.Lock(context.Background(), nil, false)
+	if err == nil || !strings.Contains(err.Error(), `publishes no channel "canary" (it has nightly)`) {
+		t.Fatalf("Lock() = %v", err)
+	}
+	if diag.Of(err) != diag.NoSuchChannel {
+		t.Errorf("code = %v, want %v", diag.Of(err), diag.NoSuchChannel)
+	}
+	if _, err := os.Stat(h.LockPath()); err == nil {
+		t.Error("a refused lock wrote block.lock")
 	}
 }

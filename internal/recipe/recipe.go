@@ -73,6 +73,32 @@ type Source struct {
 	// Bin lists the executables inside the extracted archive, relative to its
 	// root. They become available to `block exec`.
 	Bin []string `toml:"bin"`
+	// Channels are the release lines an upstream publishes under a tag that
+	// moves — Foundry's "nightly" — keyed by the name block.toml asks for.
+	// They are declared because their assets are named differently from the
+	// versioned ones: what block does with a channel is the same for all of
+	// them, and is described at [Channel].
+	Channels map[string]Channel `toml:"channels,omitempty"`
+}
+
+// Channel is one moving release line of a source.
+//
+// A channel is a tag that points somewhere new every day, which is the one
+// thing a lockfile may not record. block resolves it the way the upstream
+// makes possible: the moving tag is dereferenced to the commit it points at,
+// and the release tagged "<channel>-<commit>" — the tag that will never move
+// again — is what gets pinned. That model is Foundry's, and it is the only one
+// in the registry today; an upstream that publishes a moving tag without a
+// tag for the commit under it cannot be pinned, and block says so rather than
+// recording something that will change.
+type Channel struct {
+	// Asset is the release asset file name template for this channel. It
+	// exists because a channel names its assets after the channel rather than
+	// after a version — "foundry_nightly_linux_amd64.tar.gz" — so the source's
+	// own template cannot render them. {os}, {arch}, {target} and {commit}
+	// mean what they mean everywhere else; {version} has no meaning here,
+	// because a channel release has no version.
+	Asset string `toml:"asset"`
 }
 
 // Recipe is a named Source plus the metadata that describes the tool to a
@@ -154,6 +180,9 @@ func (s Source) Validate() error {
 			return err
 		}
 	}
+	if err := s.validateChannels(); err != nil {
+		return err
+	}
 	if strings.Contains(s.ArtifactTemplate(), "{target}") {
 		if len(s.Target) == 0 {
 			return fmt.Errorf("template %q uses {target} but no [source.target] table is defined", s.ArtifactTemplate())
@@ -187,6 +216,63 @@ func validRepoPart(part string) bool {
 		}
 	}
 	return true
+}
+
+// validateChannels checks the moving release lines a source declares.
+func (s Source) validateChannels() error {
+	for name, ch := range s.Channels {
+		if err := ValidateChannelName(name); err != nil {
+			return err
+		}
+		if s.Type != TypeGitHubRelease {
+			return fmt.Errorf("channel %q: channels need type %q, because pinning one needs the release the moving tag points at", name, TypeGitHubRelease)
+		}
+		switch {
+		case ch.Asset == "":
+			return fmt.Errorf("channel %q: asset template is required", name)
+		case strings.ContainsAny(ch.Asset, "/\\"):
+			return fmt.Errorf("channel %q: asset template %q must be a bare file name", name, ch.Asset)
+		case strings.Contains(ch.Asset, "{version}"):
+			return fmt.Errorf("channel %q: asset template %q uses {version}, and a channel release has no version", name, ch.Asset)
+		case strings.Contains(ch.Asset, "{target}") && len(s.Target) == 0:
+			return fmt.Errorf("channel %q: asset template %q uses {target} but no [source.target] table is defined", name, ch.Asset)
+		case IsArchiveName(ch.Asset) != s.IsArchive():
+			// One tool, one shape: bin and strip_components describe what is
+			// inside the artifact, and there is one of each.
+			return fmt.Errorf("channel %q: asset %q is not the same kind of artifact as %q", name, ch.Asset, s.ArtifactTemplate())
+		}
+	}
+	return nil
+}
+
+// ValidateChannelName accepts the names an upstream gives a release line:
+// lower-case letters, digits and '-', starting with a letter. It is the same
+// alphabet a constraint accepts, so a channel a recipe declares is one
+// block.toml can ask for.
+func ValidateChannelName(name string) error {
+	if name == "" {
+		return errors.New("channel name is empty")
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case i > 0 && (r >= '0' && r <= '9' || r == '-'):
+		default:
+			return fmt.Errorf("invalid channel name %q: use lower-case letters, digits and '-'", name)
+		}
+	}
+	return nil
+}
+
+// Channel returns the declared channel by name.
+func (s Source) Channel(name string) (Channel, bool) {
+	ch, ok := s.Channels[name]
+	return ch, ok
+}
+
+// ChannelNames lists the channels the source declares, sorted.
+func (s Source) ChannelNames() []string {
+	return slices.Sorted(maps.Keys(s.Channels))
 }
 
 func (s Source) validateAsset() error {
@@ -452,6 +538,13 @@ func (s Source) Render(v version.Version, p platform.Platform, commit string) (s
 	if s.NeedsCommit() && len(commit) < commitLen {
 		return "", fmt.Errorf("template %q needs a commit but none was resolved", s.ArtifactTemplate())
 	}
+	return s.expand(s.ArtifactTemplate(), v.String(), p, commit)
+}
+
+// expand substitutes the placeholders of one template. It is shared by the
+// versioned artifact and by a channel's, so the two cannot come to spell
+// {os} or {target} differently.
+func (s Source) expand(tmpl, version string, p platform.Platform, commit string) (string, error) {
 	os, arch := p.OS, p.Arch
 	if m, ok := s.OS[os]; ok {
 		os = m
@@ -464,11 +557,24 @@ func (s Source) Render(v version.Version, p platform.Platform, commit string) (s
 		short = short[:commitLen]
 	}
 	target, ok := s.Target[p.String()]
-	if !ok && strings.Contains(s.ArtifactTemplate(), "{target}") {
+	if !ok && strings.Contains(tmpl, "{target}") {
 		return "", &UnsupportedPlatformError{Platform: p, Supported: s.SupportedPlatforms()}
 	}
-	r := strings.NewReplacer("{version}", v.String(), "{os}", os, "{arch}", arch, "{commit}", short, "{target}", target)
-	return r.Replace(s.ArtifactTemplate()), nil
+	r := strings.NewReplacer("{version}", version, "{os}", os, "{arch}", arch, "{commit}", short, "{target}", target)
+	return r.Replace(tmpl), nil
+}
+
+// RenderChannel expands a channel's asset template for a platform and the
+// commit its moving tag pointed at.
+func (s Source) RenderChannel(name string, p platform.Platform, commit string) (string, error) {
+	ch, ok := s.Channel(name)
+	if !ok {
+		return "", fmt.Errorf("no channel %q", name)
+	}
+	if !s.Supports(p) {
+		return "", &UnsupportedPlatformError{Platform: p, Supported: s.SupportedPlatforms()}
+	}
+	return s.expand(ch.Asset, "", p, commit)
 }
 
 // AssetName renders the release asset file name for a version and platform.
@@ -485,7 +591,8 @@ func (s Source) Equal(o Source) bool {
 	return s.Type == o.Type && s.Repo == o.Repo && s.EffectiveTagPrefix() == o.EffectiveTagPrefix() &&
 		s.Asset == o.Asset && s.URL == o.URL && s.StripComponents == o.StripComponents &&
 		maps.Equal(s.OS, o.OS) && maps.Equal(s.Arch, o.Arch) && maps.Equal(s.Target, o.Target) &&
-		sameSet(s.Platforms, o.Platforms) && slices.Equal(s.Bin, o.Bin)
+		sameSet(s.Platforms, o.Platforms) && slices.Equal(s.Bin, o.Bin) &&
+		maps.Equal(s.Channels, o.Channels)
 }
 
 // sameSet compares two lists without regard to order, leaving the originals
@@ -526,6 +633,10 @@ func (s Source) Hash() string {
 	writeMap(s.Target)
 	b.WriteString(strings.Join(platform.Strings(s.SupportedPlatforms()), ",") + "\n")
 	b.WriteString(strings.Join(s.Bin, ",") + "\n")
+	for _, name := range s.ChannelNames() {
+		b.WriteString(name + "=" + s.Channels[name].Asset + "\n")
+	}
+	b.WriteString("--\n")
 	sum := sha256.Sum256([]byte(b.String()))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }

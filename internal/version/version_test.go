@@ -121,7 +121,7 @@ func TestParseConstraint(t *testing.T) {
 			t.Errorf("String() = %q, want %q", c.String(), ok)
 		}
 	}
-	for _, bad := range []string{"", "^1.7", "~1.7", ">=1", "1.7.x", "1.*", "v1.7", "1.7.4.2", "1.7.4-rc1", "latest", "1.07"} {
+	for _, bad := range []string{"", "^1.7", "~1.7", ">=1", "1.7.x", "1.*", "v1.7", "V1", "1.7.4.2", "1.07", "1.8-rc1", "1.8.0-", "1.8.0-rc 1", "Nightly", "-nightly", "night ly", "nightly/x", strings.Repeat("n", 40)} {
 		if _, err := ParseConstraint(bad); err == nil {
 			t.Errorf("ParseConstraint(%q) accepted", bad)
 		}
@@ -327,6 +327,23 @@ func FuzzParseConstraint(f *testing.F) {
 		if c.IsZero() || c.String() != s {
 			t.Fatalf("ParseConstraint(%q) = %q", s, c)
 		}
+		if c.IsChannel() {
+			// A channel matches the tags of its own line and no version.
+			if c.Channel() != s || !c.MatchesRelease(s+"-abc") || c.MatchesRelease("other-abc") {
+				t.Fatalf("channel %q matches the wrong releases", s)
+			}
+			if c.Matches(MustParse("1.0.0")) {
+				t.Fatalf("channel %q matched a version", s)
+			}
+			return
+		}
+		if strings.Contains(s, "-") {
+			// An exact pre-release: it matches itself and nothing near it.
+			if !c.MatchesRelease(s) || c.MatchesRelease(strings.SplitN(s, "-", 2)[0]) {
+				t.Fatalf("pre-release constraint %q matches the wrong releases", s)
+			}
+			return
+		}
 		// A constraint is a prefix of the versions it admits: the version
 		// written the same way (padded to three components) must match, and
 		// so must the same numbers with a different patch unless the
@@ -417,6 +434,82 @@ func TestSortAndLatestDoNotDependOnTheOrderTagsArriveIn(t *testing.T) {
 	for i := range first {
 		if first[i].String() != reversed[i].String() {
 			t.Fatalf("sorting is not deterministic: %v vs %v", first, reversed)
+		}
+	}
+}
+
+// Beside a dotted prefix, a constraint can name one pre-release exactly or a
+// channel to float on. The two are told apart by the first character, because
+// upstreams spell versions in numbers and release lines in words.
+func TestParseConstraintAcceptsPreReleasesAndChannels(t *testing.T) {
+	t.Parallel()
+
+	rc, err := ParseConstraint("1.8.0-rc1")
+	if err != nil {
+		t.Fatalf("ParseConstraint(1.8.0-rc1) = %v", err)
+	}
+	if rc.IsChannel() || !rc.IsExact() || rc.String() != "1.8.0-rc1" {
+		t.Errorf("1.8.0-rc1: channel=%v exact=%v string=%q", rc.IsChannel(), rc.IsExact(), rc)
+	}
+	// It matches that pre-release and nothing else: not the release it
+	// precedes, and not the next candidate on the same line.
+	if !rc.Matches(MustParse("1.8.0-rc1")) {
+		t.Error("1.8.0-rc1 does not match itself")
+	}
+	for _, other := range []string{"1.8.0", "1.8.0-rc2", "1.8.1-rc1"} {
+		if rc.Matches(MustParse(other)) {
+			t.Errorf("1.8.0-rc1 matched %s", other)
+		}
+	}
+	// And a plain version constraint still refuses every pre-release.
+	stable := MustParseConstraint("1.8")
+	for _, pre := range []string{"1.8.0-rc1", "1.8.0-beta.2", "1.8.1rc1"} {
+		if stable.Matches(MustParse(pre)) {
+			t.Errorf("1.8 matched the pre-release %s", pre)
+		}
+	}
+	if !stable.Matches(MustParse("1.8.2")) {
+		t.Error("1.8 stopped matching 1.8.2")
+	}
+
+	nightly, err := ParseConstraint("nightly")
+	if err != nil {
+		t.Fatalf("ParseConstraint(nightly) = %v", err)
+	}
+	if !nightly.IsChannel() || nightly.Channel() != "nightly" || nightly.String() != "nightly" {
+		t.Errorf("nightly: channel=%v %q", nightly.IsChannel(), nightly.Channel())
+	}
+	// A channel resolves to a tag, so what it matches is a tag on its line.
+	for _, id := range []string{"nightly-5e88010a83d1b87b8f4d13058e42a2949d3e9dc0", "nightly-2026-04-28"} {
+		if !nightly.MatchesRelease(id) {
+			t.Errorf("nightly does not match %q", id)
+		}
+	}
+	// Not the moving tag itself: a lockfile records what does not move.
+	for _, id := range []string{"nightly", "nightlyx-1", "1.8.0", "other-abc"} {
+		if nightly.MatchesRelease(id) {
+			t.Errorf("nightly matched %q", id)
+		}
+	}
+	// A version constraint answers the same question about a version.
+	if !MustParseConstraint("1.8").MatchesRelease("1.8.2") || MustParseConstraint("1.8").MatchesRelease("nightly-abc") {
+		t.Error("MatchesRelease is wrong for a version constraint")
+	}
+}
+
+// A release identity reaches $BLOCK_HOME as a directory name, and a channel
+// release is a tag rather than a version, so it is held to the same closed
+// alphabet by a check of its own.
+func TestValidateReleaseID(t *testing.T) {
+	t.Parallel()
+	for _, ok := range []string{"1.8.0", "nightly-5e88010a", "nightly-2026-04-28", "1.8.0-rc1"} {
+		if err := ValidateReleaseID(ok); err != nil {
+			t.Errorf("ValidateReleaseID(%q) = %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "nightly/../etc", `nightly\x`, "nightly\x00", "nightly rc", strings.Repeat("n", 200)} {
+		if err := ValidateReleaseID(bad); err == nil {
+			t.Errorf("ValidateReleaseID(%q) accepted", bad)
 		}
 	}
 }

@@ -1145,7 +1145,7 @@ scenarios:
       - assert:
           exit_code: 1
           stderr:
-            equals: 'block: BLK1004: block.lock: tool "foundry": version 9.9.9 does not satisfy the constraint "1.7" it was resolved from
+            equals: 'block: BLK1004: block.lock: tool "foundry": 9.9.9 does not satisfy the constraint "1.7" it was resolved from
 
 '
           changes:

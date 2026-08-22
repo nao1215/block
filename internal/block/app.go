@@ -31,6 +31,7 @@ import (
 	"github.com/nao1215/block/internal/resolver"
 	"github.com/nao1215/block/internal/shim"
 	"github.com/nao1215/block/internal/store"
+	"github.com/nao1215/block/internal/version"
 	"github.com/nao1215/block/registry"
 )
 
@@ -312,19 +313,21 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 			}
 		}
 	default:
-		r, err := resolver.Resolve(ctx, a.Releases, src, t.Constraint)
+		r, err := a.resolve(ctx, src, t.Constraint)
 		if err != nil {
 			return nil, err
 		}
 		resolution, resolved = r, true
-		entry.Version = r.Version.String()
+		// What the lockfile records is never the thing block.toml asked for
+		// when that thing moves: a channel resolves to the tag under it.
+		entry.Version = r.Identity()
 	}
 	for _, p := range plats {
 		if _, ok := entry.Artifact(p); ok {
 			continue
 		}
 		if !resolved {
-			r, err := a.resolveExact(ctx, src, entry)
+			r, err := a.resolveExact(ctx, src, t.Constraint, entry)
 			if err != nil {
 				return nil, err
 			}
@@ -369,9 +372,24 @@ func (a *App) digestFor(ctx context.Context, prev *lockfile.Tool, p platform.Pla
 	return sha, nil
 }
 
-// resolveExact re-resolves an already pinned version, needed when a new
-// platform is added to a pin that is otherwise kept.
-func (a *App) resolveExact(ctx context.Context, src recipe.Source, entry *lockfile.Tool) (resolver.Resolution, error) {
+// resolve turns a constraint into a release: the newest version it allows, or
+// — for a channel — whatever that channel points at right now, pinned to the
+// tag under it.
+func (a *App) resolve(ctx context.Context, src recipe.Source, c version.Constraint) (resolver.Resolution, error) {
+	if c.IsChannel() {
+		return resolver.ResolveChannel(ctx, a.Releases, src, c.Channel())
+	}
+	return resolver.Resolve(ctx, a.Releases, src, c)
+}
+
+// resolveExact re-resolves an already pinned release, needed when a new
+// platform is added to a pin that is otherwise kept. It never moves the pin:
+// a channel is re-read by the tag the lockfile records, not by the tag that
+// moves.
+func (a *App) resolveExact(ctx context.Context, src recipe.Source, c version.Constraint, entry *lockfile.Tool) (resolver.Resolution, error) {
+	if c.IsChannel() {
+		return resolver.ExactTag(ctx, a.Releases, src, c.Channel(), entry.Version)
+	}
 	v, err := entry.ParsedVersion()
 	if err != nil {
 		return resolver.Resolution{}, err

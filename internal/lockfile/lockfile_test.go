@@ -143,7 +143,7 @@ func TestParseErrors(t *testing.T) {
 		// chosen: "resolved 1.7 to 9.9.9" installs what nobody asked for.
 		{"version does not satisfy its constraint", valid(func(s string) string {
 			return strings.Replace(s, `version = "1.7.1"`, `version = "9.9.9"`, 1)
-		}), `tool "foundry": version 9.9.9 does not satisfy the constraint "1.7"`},
+		}), `tool "foundry": 9.9.9 does not satisfy the constraint "1.7"`},
 		{"version is a pre-release its constraint excludes", valid(func(s string) string {
 			return strings.Replace(s, `version = "1.7.1"`, `version = "1.7.2-rc.1"`, 1)
 		}), `does not satisfy the constraint`},
@@ -257,4 +257,37 @@ func FuzzParseMarshalRoundTrip(f *testing.F) {
 			}
 		}
 	})
+}
+
+// A channel pin records the tag that will not move, so the lockfile holds
+// "nightly-<commit>" where a version pin holds a version. What it may never
+// hold is the channel itself: that tag points somewhere new every night.
+func TestParseChannelPins(t *testing.T) {
+	t.Parallel()
+	const commit = "5e88010a83d1b87b8f4d13058e42a2949d3e9dc0"
+	lock := func(constraint, release string) []byte {
+		return []byte("version = 1\n[[tools]]\nname = \"foundry\"\nconstraint = \"" + constraint + "\"\nversion = \"" + release + "\"\nbin = [\"forge\"]\n" +
+			"[[tools.artifacts]]\nplatform = \"linux/amd64\"\nurl = \"https://example.com/f.tar.gz\"\nsha256 = \"" + sha + "\"\n")
+	}
+	l, err := Parse(lock("nightly", "nightly-"+commit))
+	if err != nil {
+		t.Fatalf("Parse(channel pin) = %v", err)
+	}
+	if got, _ := l.Tool("foundry"); got.Version != "nightly-"+commit {
+		t.Errorf("version = %q", got.Version)
+	}
+	for _, bad := range []struct{ name, constraint, release string }{
+		{"the moving tag itself", "nightly", "nightly"},
+		{"another channel's release", "nightly", "canary-" + commit},
+		{"a version under a channel constraint", "nightly", "1.7.4"},
+		{"a channel release under a version constraint", "1.7", "nightly-" + commit},
+		{"a release that could be a path", "nightly", "nightly-../../etc"},
+	} {
+		t.Run(bad.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := Parse(lock(bad.constraint, bad.release)); err == nil {
+				t.Errorf("Parse(%q, %q) was accepted", bad.constraint, bad.release)
+			}
+		})
+	}
 }

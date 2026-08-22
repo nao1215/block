@@ -53,6 +53,22 @@ var (
 		"Retry. If it persists, check whether the service is up and whether a proxy is in the way; the message carries the URL and the status.",
 		"v0.1.0")
 
+	// NoSuchChannel is a constraint naming a release line the upstream does
+	// not publish.
+	NoSuchChannel = register(2009,
+		"the upstream publishes no such release channel",
+		"block.toml asks for a channel — a release line an upstream publishes under a tag that moves, such as Foundry's \"nightly\" — and the recipe declares none by that name. A channel has to be declared, because its assets are named after the channel rather than after a version, and block cannot guess that name.",
+		"Ask for a version instead, or use one of the channels in the message. For a registry tool whose upstream publishes a channel block does not carry yet, report it at https://github.com/nao1215/block-registry/issues.",
+		"v0.3.0")
+
+	// ChannelNotPinnable is a channel whose moving tag leads to nothing that
+	// stays put.
+	ChannelNotPinnable = register(2010,
+		"the channel cannot be pinned to anything immutable",
+		"A channel is a tag the upstream moves. block pins one by dereferencing that tag and taking the release published for the commit under it, whose tag never moves again. This upstream moves the tag but publishes no such release, so the only thing to record would be a URL whose contents change — which is the one thing a lockfile may not hold.",
+		"Ask for a version instead. If the upstream has changed how it publishes this channel, report it at https://github.com/nao1215/block-registry/issues so the recipe can follow.",
+		"v0.3.0")
+
 	// PlatformUnsupported is a source that ships nothing for a platform.
 	PlatformUnsupported = register(2007,
 		"the upstream ships no build for this platform",

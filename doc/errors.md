@@ -7,7 +7,7 @@ A code is `BLK` followed by four digits, and the thousands digit says what kind 
 | Codes | Kind | Codes assigned |
 |---|---|---|
 | `BLK1xxx` | what was asked for — block.toml, block.lock, and the names typed on the command line | 10 |
-| `BLK2xxx` | resolving a version against an upstream, which only `block lock` ever does | 8 |
+| `BLK2xxx` | resolving a version against an upstream, which only `block lock` ever does | 10 |
 | `BLK3xxx` | downloading an artifact and proving it is the one block.lock names | 3 |
 | `BLK4xxx` | installing into the store under `$BLOCK_HOME` | 5 |
 | `BLK5xxx` | running a command with the locked toolchain, through `block exec` or a shim | 4 |
@@ -44,6 +44,8 @@ Look a code up from the terminal with `block explain BLK1001`, which prints this
 | [`BLK2006`](#blk2006--the-upstream-could-not-be-reached-or-did-not-answer-usefully) | the upstream could not be reached or did not answer usefully | v0.1.0 |
 | [`BLK2007`](#blk2007--the-upstream-ships-no-build-for-this-platform) | the upstream ships no build for this platform | v0.1.0 |
 | [`BLK2008`](#blk2008--the-release-carries-the-asset-name-more-than-once) | the release carries the asset name more than once | v0.1.0 |
+| [`BLK2009`](#blk2009--the-upstream-publishes-no-such-release-channel) | the upstream publishes no such release channel | v0.3.0 |
+| [`BLK2010`](#blk2010--the-channel-cannot-be-pinned-to-anything-immutable) | the channel cannot be pinned to anything immutable | v0.3.0 |
 | [`BLK3001`](#blk3001--an-artifact-could-not-be-downloaded) | an artifact could not be downloaded | v0.1.0 |
 | [`BLK3002`](#blk3002--a-download-does-not-match-the-digest-in-blocklock) | a download does not match the digest in block.lock | v0.1.0 |
 | [`BLK3003`](#blk3003--a-cached-artifact-is-corrupt-and-could-not-be-replaced) | a cached artifact is corrupt and could not be replaced | v0.1.0 |
@@ -211,6 +213,22 @@ The release publishes several files with the name the recipe renders. They are d
 Fix: For a registry tool, report it at https://github.com/nao1215/block-registry/issues — the asset template needs to be specific enough to name one file. For a `[tools.<name>.source]` of your own, make the template unambiguous.
 
 Exits 1. Since v0.1.0.
+
+### BLK2009 — the upstream publishes no such release channel
+
+block.toml asks for a channel — a release line an upstream publishes under a tag that moves, such as Foundry's "nightly" — and the recipe declares none by that name. A channel has to be declared, because its assets are named after the channel rather than after a version, and block cannot guess that name.
+
+Fix: Ask for a version instead, or use one of the channels in the message. For a registry tool whose upstream publishes a channel block does not carry yet, report it at https://github.com/nao1215/block-registry/issues.
+
+Exits 1. Since v0.3.0.
+
+### BLK2010 — the channel cannot be pinned to anything immutable
+
+A channel is a tag the upstream moves. block pins one by dereferencing that tag and taking the release published for the commit under it, whose tag never moves again. This upstream moves the tag but publishes no such release, so the only thing to record would be a URL whose contents change — which is the one thing a lockfile may not hold.
+
+Fix: Ask for a version instead. If the upstream has changed how it publishes this channel, report it at https://github.com/nao1215/block-registry/issues so the recipe can follow.
+
+Exits 1. Since v0.3.0.
 
 ## BLK3xxx — downloading an artifact and proving it is the one block.lock names
 
