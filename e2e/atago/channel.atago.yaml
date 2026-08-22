@@ -234,6 +234,37 @@ scenarios:
           stderr:
             equals: "block: BLK2009: hermes: informalsystems/hermes publishes no channel \"nightly\"; ask for a version instead\n"
 
+  # An upstream that moves a tag without publishing a release for the commit
+  # beneath it leaves nothing that will not move. block says so — naming the
+  # tag it looked for — rather than recording a URL whose contents change.
+  - name: a channel with no release under its commit cannot be pinned
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.drifter]
+            version = "nightly"
+
+            [tools.drifter.source]
+            type = "github_release"
+            repo = "example/drifter"
+            asset = "drifter_v{version}_{os}_{arch}.tar.gz"
+            bin = ["drifter"]
+
+            [tools.drifter.source.channels.nightly]
+            asset = "drifter_nightly_{os}_{arch}.tar.gz"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            matches: '^block: BLK2010: drifter: example/drifter moves the tag "nightly" but publishes no release "nightly-[0-9a-f]{40}" for the commit it points at, so there is nothing that will not move to pin\n$'
+      - assert:
+          file:
+            path: block.lock
+            exists: false
+
   # A hand edit that floats the pin back onto the moving tag is the edit the
   # lockfile exists to prevent.
   - name: a lockfile floated back onto the moving tag is refused
