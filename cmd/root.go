@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,12 +27,13 @@ import (
 	"github.com/nao1215/block/registry"
 )
 
-// Exit codes. Errors exit 1 everywhere; `lock --check` additionally uses 2
-// for "block.lock would change" so CI can tell the two apart.
+// Exit codes. Errors exit 1 everywhere; 2 is not an error but a result — the
+// lockfile would change, or the toolchain is not ready — so that CI can tell
+// "there is something to do" from "block could not do its job".
 const (
-	exitOK       = 0
-	exitFailure  = 1
-	exitOutdated = 2
+	exitOK        = 0
+	exitFailure   = 1
+	exitNeedsWork = 2
 )
 
 // ExitError carries a process exit status from `block exec`.
@@ -67,8 +69,8 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	case errors.As(err, &exit):
 		return exit.Code
-	case errors.Is(err, block.ErrOutdated):
-		return exitOutdated
+	case errors.Is(err, block.ErrOutdated), errors.Is(err, block.ErrNotReady):
+		return exitNeedsWork
 	}
 	// The code goes at the front of the line, once, rather than wherever in a
 	// wrapped chain the problem was named: it is what a reader searches for
@@ -90,6 +92,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 sync never resolves. exec never installs. lock is the only operation that
 can move a pin.
 
+  block status  shows what block.toml, block.lock and the store say
   block list    shows the tools block supports, all or by ecosystem
   block explain names what one of block's BLK error codes means
 
@@ -112,6 +115,7 @@ can move a pin.
 		newLockCmd(stdout, stderr),
 		newSyncCmd(stdout, stderr),
 		newExecCmd(stdout, stderr),
+		newStatusCmd(stdout, stderr),
 		newListCmd(stdout),
 		newExplainCmd(stdout),
 		newVersionCmd(stdout),
@@ -259,6 +263,88 @@ exec never downloads, installs or resolves anything; run "block sync" first.`,
 			return nil
 		},
 	}
+}
+
+func newStatusCmd(stdout, stderr io.Writer) *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show what block.toml, block.lock and the store say",
+		Long: `status reports one line per tool: the constraint block.toml asks for, the
+version block.lock pins, whether that version is installed for this machine,
+and what to do about the difference.
+
+  ok        installed and matching block.toml
+  missing   locked, not installed          -> block sync
+  damaged   installed but not usable       -> block sync
+  stale     block.lock does not match block.toml -> block lock
+
+It changes nothing: no resolution, no network, no download, no install, no
+shims, no lockfile. It answers the same way with the network unplugged, and a
+project it reports on is in exactly the state it was before.
+
+Exit 0 when every tool is ok, 2 when something needs doing, 1 on error.
+With --json, the same report as an object for CI and other tools.`,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			app, err := newApp(stdout, stderr)
+			if err != nil {
+				return err
+			}
+			report, err := app.Status()
+			if err != nil {
+				return err
+			}
+			if err := printStatus(stdout, stderr, report, asJSON); err != nil {
+				return err
+			}
+			if !report.Ready {
+				return block.ErrNotReady
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the report as a JSON object instead of a table")
+	return cmd
+}
+
+// printStatus renders a report. The table is the whole of stdout, so that a
+// reader and a `grep` see the same thing; what is not about one tool — a
+// manifest that does not name this machine — goes to stderr, and the JSON
+// form carries it in the report instead.
+func printStatus(stdout, stderr io.Writer, report *block.Status, asJSON bool) error {
+	if asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(report)
+	}
+	tw := tabwriter.NewWriter(stdout, 0, 0, 3, ' ', 0) //nolint:mnd // column padding
+	fmt.Fprintln(tw, "TOOL\tWANTED\tLOCKED\tINSTALLED\tSTATE")
+	for _, t := range report.Tools {
+		state := string(t.State)
+		if t.Detail != "" {
+			state += " (" + t.Detail + ")"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", t.Name, orDash(t.Wanted), orDash(t.Locked), orDash(t.Installed), state)
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	if hint := report.StatusHint(); hint != "" {
+		fmt.Fprintf(stdout, "\n%s\n", hint)
+	}
+	for _, note := range report.Notes {
+		fmt.Fprintf(stderr, "note: %s\n", note)
+	}
+	return nil
+}
+
+// orDash renders an empty column the way a table says "there is none".
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func newListCmd(stdout io.Writer) *cobra.Command {

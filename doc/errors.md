@@ -14,7 +14,7 @@ A code is `BLK` followed by four digits, and the thousands digit says what kind 
 | `BLK6xxx` | a refusal on security grounds — block declining, rather than failing | 6 |
 | `BLK9xxx` | an internal error: a bug in block | 1 |
 
-The digit is not the exit status. Every coded error exits 1. block's other non-zero exit, 2 from `block lock --check`, is a result rather than an error — the lockfile would change — and carries no code, because there is nothing to look up.
+The digit is not the exit status. Every coded error exits 1. block's other non-zero exit, 2 from `block lock --check` and `block status`, is a result rather than an error — the lockfile would change, or the toolchain is not ready — and carries no code, because there is nothing to look up.
 
 Codes are grouped by what you have to fix rather than by where inside block the error was raised, so one code can be reported from several places when the answer is the same in all of them.
 

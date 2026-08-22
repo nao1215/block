@@ -1,0 +1,380 @@
+# `block status` reports what block.toml, block.lock and the store say, and
+# changes none of them. Exit codes: 0 = every tool is ok, 2 = something needs
+# doing, 1 = error. Run with: make e2e
+#
+# Every scenario here points BLOCK_GITHUB_API_URL at the fake server's
+# /ratelimited prefix, which answers every API call with a rate-limit refusal.
+# A status that resolved anything would fail loudly rather than quietly pass.
+version: "1"
+
+suite:
+  name: block status
+
+scenarios:
+  - name: status reports a toolchain that is locked and installed
+    env: &offline
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/ratelimited"
+    steps:
+      - fixture:
+          file: block.toml
+          content: &twotools |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      # Locking and syncing happen against the fake server's t1 snapshot;
+      # every status below runs with the rate-limited one.
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block lock && BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block sync
+      - assert:
+          exit_code: 0
+      - run:
+          command: block status
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              TOOL      WANTED   LOCKED   INSTALLED   STATE
+              foundry   1.7      1.7.4    1.7.4       ok
+              hermes    1.13     1.13.0   1.13.0      ok
+          stderr:
+            equals: ""
+          # A report writes nothing: not the lockfile, not the store, not the
+          # shims, not a cache entry.
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: status reports a locked tool that is not installed
+    env: *offline
+    steps:
+      - fixture:
+          file: block.toml
+          content: *twotools
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block lock
+      - assert:
+          exit_code: 0
+      - run:
+          command: block status
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: |
+              TOOL      WANTED   LOCKED   INSTALLED   STATE
+              foundry   1.7      1.7.4    -           missing
+              hermes    1.13     1.13.0   -           missing
+
+              run "block sync" to install the locked toolchain
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: status reports a project that has never been locked
+    env: *offline
+    steps:
+      - fixture:
+          file: block.toml
+          content: *twotools
+      - run:
+          command: block status
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: |
+              TOOL      WANTED   LOCKED   INSTALLED   STATE
+              foundry   1.7      -        -           stale (not in block.lock)
+              hermes    1.13     -        -           stale (not in block.lock)
+
+              run "block lock" to bring block.lock up to date with block.toml
+          # It does not write the lockfile it is reporting the absence of.
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - assert:
+          file:
+            path: block.lock
+            exists: false
+
+  - name: status reports how block.toml and block.lock disagree
+    env: *offline
+    steps:
+      - fixture:
+          file: block.toml
+          content: *twotools
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block lock && BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block sync
+      - assert:
+          exit_code: 0
+      # foundry's constraint is narrowed and hermes is removed: one pin no
+      # longer says what block.toml asks for, and one is no longer asked for
+      # at all. The installed versions are still reported beside them.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.6"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          command: block status
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: |
+              TOOL      WANTED   LOCKED   INSTALLED   STATE
+              foundry   1.6      1.7.4    1.7.4       stale (constraint changed)
+              hermes    -        1.13.0   1.13.0      stale (not in block.toml)
+
+              run "block lock" to bring block.lock up to date with block.toml
+          changes:
+            created: []
+            modified: []
+            deleted: []
+
+  - name: status reports an install that is there but unusable
+    env: *offline
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block lock && BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block sync
+      - assert:
+          exit_code: 0
+      # The executable is removed from an otherwise complete install, which is
+      # what a half-restored CI cache looks like.
+      - run:
+          shell: true
+          command: rm -f "$(ls -d home/tools/hermes/*/)hermes${BLOCK_EXE}"
+      - run:
+          command: block status
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: |
+              TOOL     WANTED   LOCKED   INSTALLED   STATE
+              hermes   1.13     1.13.0   -           damaged (executable "hermes" is missing)
+
+              run "block sync" to install the locked toolchain
+
+  - name: status says which edit fixes a manifest that does not name this machine
+    env: *offline
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            platforms = ["${env:BLOCK_OTHER_PLATFORM}"]
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block lock
+      - assert:
+          exit_code: 0
+      - run:
+          command: block status
+      - assert:
+          exit_code: 2
+          stdout:
+            equals: |
+              TOOL      WANTED   LOCKED   INSTALLED   STATE
+              foundry   1.7      1.7.4    -           stale (no artifact for ${env:BLOCK_PLATFORM})
+
+              run "block lock" to bring block.lock up to date with block.toml
+          # The row alone would send a reader to a command that cannot help,
+          # so what has to change is said beside it.
+          stderr:
+            equals: 'note: block.toml declares platforms ${env:BLOCK_OTHER_PLATFORM}, and this machine is ${env:BLOCK_PLATFORM}; add "${env:BLOCK_PLATFORM}" to that list and run "block lock"
+
+'
+
+  - name: status outside a project says so
+    env: *offline
+    steps:
+      - run:
+          command: block status
+      - assert:
+          exit_code: 1
+          stdout:
+            equals: ""
+          stderr:
+            equals: "block: BLK1001: block.toml not found in the current directory or any parent\n"
+
+  - name: status refuses a lockfile it cannot read
+    env: *offline
+    steps:
+      - fixture:
+          file: block.toml
+          content: *twotools
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "1.7.4"
+            bin = ["forge"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "nothex"
+      - run:
+          command: block status
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK1004: block.lock: tool "foundry" (${env:BLOCK_PLATFORM}): sha256 "nothex" is not a 64-character hex digest
+
+'
+
+  - name: status takes no arguments
+    env: *offline
+    steps:
+      - fixture:
+          file: block.toml
+          content: *twotools
+      - run:
+          command: block status foundry
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unknown command"
+
+  - name: status --json is the same report for a machine to read
+    env: *offline
+    steps:
+      - fixture:
+          file: block.toml
+          content: *twotools
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block lock && BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}/t1" block sync
+      - assert:
+          exit_code: 0
+      - run:
+          command: block status --json
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              - path: "$.platform"
+                equals: "${env:BLOCK_PLATFORM}"
+              - path: "$.lock_exists"
+                equals: true
+              - path: "$.ready"
+                equals: true
+              - path: "$.notes"
+                length: 0
+              - path: "$.tools"
+                length: 2
+              - path: "$.tools[0].name"
+                equals: "foundry"
+              - path: "$.tools[0].wanted"
+                equals: "1.7"
+              - path: "$.tools[0].locked"
+                equals: "1.7.4"
+              - path: "$.tools[0].installed"
+                equals: "1.7.4"
+              - path: "$.tools[0].state"
+                equals: "ok"
+              - path: "$.tools[0].detail"
+                equals: ""
+              # The row points at the install it is reporting on.
+              - path: "$.tools[0].dir"
+                matches: "1[.]7[.]4-"
+              - path: "$.tools[1].name"
+                equals: "hermes"
+              - path: "$.tools[1].locked"
+                equals: "1.13.0"
+              - path: "$.tools[1].state"
+                equals: "ok"
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      # The same run, with one tool uninstalled: the flag changes the shape of
+      # the report and nothing about what it says.
+      - run:
+          shell: true
+          command: rm -rf home/tools/hermes
+      - run:
+          command: block status --json
+      - assert:
+          exit_code: 2
+          stdout:
+            json:
+              - path: "$.ready"
+                equals: false
+              - path: "$.tools[0].state"
+                equals: "ok"
+              - path: "$.tools[0].installed"
+                equals: "1.7.4"
+              - path: "$.tools[1].name"
+                equals: "hermes"
+              - path: "$.tools[1].state"
+                equals: "missing"
+              - path: "$.tools[1].installed"
+                equals: ""
+              - path: "$.tools[1].dir"
+                equals: ""

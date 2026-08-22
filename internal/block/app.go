@@ -526,37 +526,88 @@ func (a *App) printResults(results []lockResult, dropped []lockfile.Tool, verb s
 	}
 }
 
+// Disagreement is one way a lockfile fails to describe what block.toml asks
+// for. It carries the same finding twice because two commands need it in two
+// shapes: sync and exec refuse with the whole sentence, and status has a
+// column to put it in.
+type Disagreement struct {
+	// Tool is the tool the disagreement is about.
+	Tool string
+	// Short names it in a few words, for a table cell.
+	Short string
+	// Long says the whole thing, for a refusal.
+	Long string
+}
+
 // Check compares a manifest with a lockfile and lists every reason the
 // lockfile cannot be trusted for the given platforms. An empty result means
 // the lockfile is current. It needs no network and no registry: only a
 // project-local source is fingerprinted, so registry changes never stale a
 // lock.
 func Check(m *manifest.Manifest, l *lockfile.Lock, plats []platform.Platform) []string {
-	var reasons []string
+	found := Disagreements(m, l, plats)
+	reasons := make([]string, 0, len(found))
+	for _, d := range found {
+		reasons = append(reasons, d.Long)
+	}
+	return reasons
+}
+
+// Disagreements is [Check] with the findings kept apart, so that a caller
+// reporting them per tool does not have to take them apart again.
+func Disagreements(m *manifest.Manifest, l *lockfile.Lock, plats []platform.Platform) []Disagreement {
+	var found []Disagreement
 	for _, t := range m.Tools {
-		e, ok := l.Tool(t.Name)
-		if !ok {
-			reasons = append(reasons, fmt.Sprintf("%s is declared in %s but missing from %s", t.Name, manifest.FileName, lockfile.FileName))
-			continue
-		}
-		if e.Constraint != t.Constraint.String() {
-			reasons = append(reasons, fmt.Sprintf("%s: %s wants %q but %s was resolved from %q", t.Name, manifest.FileName, t.Constraint, lockfile.FileName, e.Constraint))
-		}
-		if t.Source != nil && t.Source.Hash() != e.Source {
-			reasons = append(reasons, fmt.Sprintf("%s: the source definition changed since %s was resolved", t.Name, lockfile.FileName))
-		}
-		for _, p := range plats {
-			if _, ok := e.Artifact(p); !ok {
-				reasons = append(reasons, fmt.Sprintf("%s: %s has no artifact for %s", t.Name, lockfile.FileName, p))
-			}
-		}
+		found = append(found, DisagreementsFor(t, l, plats)...)
 	}
 	for _, e := range l.Tools {
 		if _, ok := m.Tool(e.Name); !ok {
-			reasons = append(reasons, fmt.Sprintf("%s is in %s but not declared in %s", e.Name, lockfile.FileName, manifest.FileName))
+			found = append(found, Disagreement{
+				Tool:  e.Name,
+				Short: "not in " + manifest.FileName,
+				Long:  fmt.Sprintf("%s is in %s but not declared in %s", e.Name, lockfile.FileName, manifest.FileName),
+			})
 		}
 	}
-	return reasons
+	return found
+}
+
+// DisagreementsFor lists what one declared tool disagrees with the lockfile
+// about. A tool with nothing to report is one sync can install.
+func DisagreementsFor(t manifest.Tool, l *lockfile.Lock, plats []platform.Platform) []Disagreement {
+	e, ok := l.Tool(t.Name)
+	if !ok {
+		return []Disagreement{{
+			Tool:  t.Name,
+			Short: "not in " + lockfile.FileName,
+			Long:  fmt.Sprintf("%s is declared in %s but missing from %s", t.Name, manifest.FileName, lockfile.FileName),
+		}}
+	}
+	var found []Disagreement
+	if e.Constraint != t.Constraint.String() {
+		found = append(found, Disagreement{
+			Tool:  t.Name,
+			Short: "constraint changed",
+			Long:  fmt.Sprintf("%s: %s wants %q but %s was resolved from %q", t.Name, manifest.FileName, t.Constraint, lockfile.FileName, e.Constraint),
+		})
+	}
+	if t.Source != nil && t.Source.Hash() != e.Source {
+		found = append(found, Disagreement{
+			Tool:  t.Name,
+			Short: "source changed",
+			Long:  fmt.Sprintf("%s: the source definition changed since %s was resolved", t.Name, lockfile.FileName),
+		})
+	}
+	for _, p := range plats {
+		if _, ok := e.Artifact(p); !ok {
+			found = append(found, Disagreement{
+				Tool:  t.Name,
+				Short: "no artifact for " + p.String(),
+				Long:  fmt.Sprintf("%s: %s has no artifact for %s", t.Name, lockfile.FileName, p),
+			})
+		}
+	}
+	return found
 }
 
 // platformNotDeclared reports the error to give when block.toml names the

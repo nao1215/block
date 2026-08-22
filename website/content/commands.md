@@ -10,6 +10,7 @@ toc: true
 | `block lock --check` | yes | never | never | no | no |
 | `block sync` | never | never | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | never | never | never | never | yes |
+| `block status [--json]` | never | never | never | never | no |
 | `block list [ecosystem]` | never | never | never | never | no |
 | `block explain <code>` | never | never | never | never | no |
 
@@ -72,6 +73,45 @@ It never downloads, installs or resolves — but it does check, offline, that
 the toolchain is the one `block.toml` asks for and that the install is intact.
 `SIGINT` and `SIGTERM` reach the child, so a node or a local test network
 shuts down the way it would outside block.
+
+## `block status`
+
+Reports what `block.toml`, `block.lock` and the store say about each tool, and
+changes none of them — no resolution, no network, no download, no install, no
+shims, no lockfile:
+
+```console
+$ block status
+TOOL      WANTED   LOCKED   INSTALLED   STATE
+foundry   1.7      1.7.4    1.7.4       ok
+hermes    1.13     1.13.0   -           missing
+
+run "block sync" to install the locked toolchain
+```
+
+| State | What it means | What fixes it |
+| --- | --- | --- |
+| `ok` | installed, and the pin is what `block.toml` asks for | nothing |
+| `missing` | pinned, not installed for this machine | `block sync` |
+| `damaged` | installed, but the marker or an executable is gone | `block sync` |
+| `stale` | `block.lock` does not match `block.toml` — not locked yet, a changed constraint or source, no artifact for this machine, or a pin nobody declares any more | `block lock` |
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | every tool is `ok` |
+| 2 | something needs doing |
+| 1 | error — no `block.toml`, or a `block.lock` block cannot read |
+
+`--json` prints the same report as one object, for CI and other tools:
+
+```console
+$ block status --json | jq -r '.tools[] | select(.state != "ok") | .name'
+hermes
+```
+
+Every key is always present, so a consumer can read `.ready` for the whole
+answer and `.tools[].state` for each tool without checking whether a field
+exists.
 
 ## Shims: the tools by their own names
 

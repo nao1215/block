@@ -38,7 +38,7 @@ func Markdown() []byte {
 		fmt.Fprintf(&b, "| `%s` | %s | %d |\n", f.label, f.meaning, len(entriesOf(all, f.digit)))
 	}
 	b.WriteString("\n")
-	b.WriteString("The digit is not the exit status. Every coded error exits 1. block's other non-zero exit, 2 from `block lock --check`, is a result rather than an error — the lockfile would change — and carries no code, because there is nothing to look up.\n\n")
+	b.WriteString("The digit is not the exit status. Every coded error exits 1. block's other non-zero exit, 2 from `block lock --check` and `block status`, is a result rather than an error — the lockfile would change, or the toolchain is not ready — and carries no code, because there is nothing to look up.\n\n")
 	b.WriteString("Codes are grouped by what you have to fix rather than by where inside block the error was raised, so one code can be reported from several places when the answer is the same in all of them.\n\n")
 	b.WriteString("Not every message carries one. A command line block cannot parse at all — an unknown command, an unknown flag, the wrong number of arguments — is reported by the parser, and there is nothing to look up: the message already names what you typed.\n\n")
 	b.WriteString("Look a code up from the terminal with `block explain " + all[0].Code.String() + "`, which prints this same text without a browser.\n\n")
