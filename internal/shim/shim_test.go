@@ -370,3 +370,25 @@ func TestEnsureKeepsOtherProjectsShimsAcrossAnUpgrade(t *testing.T) {
 		t.Errorf("Ensure after rebuild = %v, %v, want nothing created", created, err)
 	}
 }
+
+// filepath.Base turns an empty argv[0] into ".", so the guard that was meant
+// to catch it never fired and block ran as a shim for a command called ".".
+// An invocation block cannot identify is block.
+func TestIsShimIgnoresAnArgv0ThatNamesNoCommand(t *testing.T) {
+	t.Parallel()
+	for _, argv0 := range []string{"", ".", "..", "./", "../", string(filepath.Separator), "some/dir/.", "some/dir/.."} {
+		if IsShim(argv0) {
+			t.Errorf("IsShim(%q) = true; an argv[0] naming no command is block itself", argv0)
+		}
+	}
+	for _, argv0 := range []string{"forge", "./forge", "/usr/local/bin/cast", "hermes" + store.ExeSuffix} {
+		if !IsShim(argv0) {
+			t.Errorf("IsShim(%q) = false, want true", argv0)
+		}
+	}
+	for _, argv0 := range []string{"block", "BLOCK", "/usr/bin/block", "block" + store.ExeSuffix} {
+		if IsShim(argv0) {
+			t.Errorf("IsShim(%q) = true, want false", argv0)
+		}
+	}
+}

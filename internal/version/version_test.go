@@ -358,3 +358,65 @@ func FuzzParseConstraint(f *testing.F) {
 		}
 	})
 }
+
+// An upstream can publish two tags that are one version to semver: "1.2" and
+// "1.2.0", or a release and the same release carrying build metadata. Sorting
+// left their order to whatever order the tags arrived in, so which tag lock
+// pinned — a different URL and a different lockfile — depended on the order
+// GitHub happened to answer in.
+func TestSortAndLatestDoNotDependOnTheOrderTagsArriveIn(t *testing.T) {
+	t.Parallel()
+	tags := []string{"1.2.0", "1.2.3+b1", "1.2.1", "1.2.3", "1.2.2", "1.2.3+b2", "1.2"}
+	c := MustParseConstraint("1.2")
+	var want string
+	for rotate := range tags {
+		vs := make([]Version, 0, len(tags))
+		for i := range tags {
+			vs = append(vs, MustParse(tags[(i+rotate)%len(tags)]))
+		}
+		// Latest is asked before the list is sorted as well as after it:
+		// sorting is what resolution does, but Latest is exported on its own
+		// and its answer must not depend on the order either.
+		unsorted, ok := Latest(vs, c)
+		if !ok {
+			t.Fatalf("rotation %d: nothing matched %q", rotate, c)
+		}
+		Sort(vs)
+		got, ok := Latest(vs, c)
+		if !ok {
+			t.Fatalf("rotation %d: nothing matched %q once sorted", rotate, c)
+		}
+		if unsorted.String() != got.String() {
+			t.Errorf("rotation %d: Latest = %q unsorted and %q sorted", rotate, unsorted, got)
+		}
+		if rotate == 0 {
+			want = got.String()
+			continue
+		}
+		if got.String() != want {
+			t.Errorf("rotation %d pinned %q, rotation 0 pinned %q", rotate, got, want)
+		}
+	}
+	// The plain spelling is the one that gets pinned: build metadata is not
+	// part of precedence, and a lockfile has to name one tag.
+	if want != "1.2.3" {
+		t.Errorf("Latest = %q, want the release without build metadata", want)
+	}
+	// And sorting is a fixed point: sorting an already sorted list, or a
+	// reversed one, gives the same sequence.
+	first := make([]Version, 0, len(tags))
+	for _, s := range tags {
+		first = append(first, MustParse(s))
+	}
+	Sort(first)
+	reversed := make([]Version, len(first))
+	for i, v := range first {
+		reversed[len(first)-1-i] = v
+	}
+	Sort(reversed)
+	for i := range first {
+		if first[i].String() != reversed[i].String() {
+			t.Fatalf("sorting is not deterministic: %v vs %v", first, reversed)
+		}
+	}
+}

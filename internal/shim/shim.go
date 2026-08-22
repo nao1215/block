@@ -49,9 +49,18 @@ const (
 
 // IsShim reports whether this process was started through a shim rather than
 // as block itself.
+//
+// An argv[0] that names no command — empty, or a path whose last element is
+// "." or ".." — is not a shim. filepath.Base turns all of those into "." or
+// "..", which would otherwise be taken as the name of a command to look for,
+// and the answer for an invocation block cannot identify is to be block.
 func IsShim(argv0 string) bool {
 	name := CommandName(argv0)
-	return name != "" && !strings.EqualFold(name, "block")
+	switch name {
+	case "", ".", "..", string(filepath.Separator):
+		return false
+	}
+	return !strings.EqualFold(name, "block")
 }
 
 // Dir is the shim directory of a store.

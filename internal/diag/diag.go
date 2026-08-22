@@ -193,11 +193,19 @@ func All() []Entry {
 }
 
 // Lookup finds an entry by its printed form, however it is spelled: "BLK1005",
-// "blk1005" or the bare "1005" a person retypes from a terminal.
+// "blk1005" or the bare "1005" a person retypes from a terminal. The prefix is
+// matched without regard to case on purpose — someone reading a code off a
+// terminal and typing it back has no reason to be held to the capitalisation —
+// while the digits are exact, because they are the code itself.
 func Lookup(s string) (Entry, bool) {
 	text := strings.TrimSpace(s)
 	if len(text) > len(Prefix) && strings.EqualFold(text[:len(Prefix)], Prefix) {
 		text = text[len(Prefix):]
+	}
+	// Digits and nothing else: strconv.Atoi would take "+1005" and "-1005",
+	// and neither is a spelling of a code anyone has ever seen printed.
+	if text == "" || strings.ContainsFunc(text, func(r rune) bool { return r < '0' || r > '9' }) {
+		return Entry{}, false
 	}
 	n, err := strconv.Atoi(text)
 	if err != nil {
