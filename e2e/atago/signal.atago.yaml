@@ -84,7 +84,7 @@ scenarios:
       - run:
           shell: true
           command: >-
-            block exec sh -c 'trap "echo got INT" INT; trap "echo got TERM" TERM; echo ready; sleep 30 & wait; echo bye; exit 0' > out.txt 2>&1 &
+            block exec sh -c 'trap "echo got INT; stop=1" INT; trap "echo got TERM; stop=1" TERM; echo ready; while [ -z "$stop" ]; do sleep 0.1; done; echo bye; exit 0' > out.txt 2>&1 &
             pid=$!;
             for i in $(seq 1 100); do grep -q ready out.txt && break; sleep 0.1; done;
             kill -INT $pid;

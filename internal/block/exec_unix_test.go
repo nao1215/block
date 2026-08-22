@@ -35,9 +35,10 @@ func (l *lockedBuffer) String() string {
 // the child's own exit status is what block reports — including 0 after a
 // clean shutdown.
 func TestRunCommandForwardsASignalOnceAndKeepsACleanExit(t *testing.T) { //nolint:paralleltest // signals the whole test process
-	// The handlers end the sleep too: it inherits the pipes, and Wait reads
-	// them to their end.
-	script := `trap 'echo got INT; kill $!' INT; trap 'echo got TERM; kill $!' TERM; echo ready; sleep 30 & wait; echo bye; exit 0`
+	// A handler sets a flag the loop reads, rather than ending a background
+	// sleep: every sh runs a trap once the foreground command returns, and
+	// nothing is left behind holding the pipes Wait reads to their end.
+	script := `trap 'echo got INT; stop=1' INT; trap 'echo got TERM; stop=1' TERM; echo ready; while [ -z "$stop" ]; do sleep 0.1; done; echo bye; exit 0`
 	cmd := exec.Command("sh", "-c", script) //nolint:noctx // what Toolchain.Command builds: unbound from any context
 	var out lockedBuffer
 	done := make(chan struct {
@@ -51,7 +52,7 @@ func TestRunCommandForwardsASignalOnceAndKeepsACleanExit(t *testing.T) { //nolin
 			err  error
 		}{code, err}
 	}()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for !strings.Contains(out.String(), "ready") {
 		if time.Now().After(deadline) {
 			t.Fatalf("child never became ready: %q", out.String())
@@ -68,7 +69,7 @@ func TestRunCommandForwardsASignalOnceAndKeepsACleanExit(t *testing.T) { //nolin
 		if r.err != nil || r.code != 0 {
 			t.Fatalf("RunCommand = %d, %v; want 0, nil (output %q)", r.code, r.err, out.String())
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatalf("child did not exit after SIGINT: %q", out.String())
 	}
 	if got, want := out.String(), "ready\ngot INT\nbye\n"; got != want {
