@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/store"
@@ -192,11 +193,39 @@ func place(self, target string) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, target); err != nil {
+	if err := renameOver(tmp, target); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	return nil
+}
+
+// renameOver moves tmp onto final, retrying briefly.
+//
+// Windows refuses a rename whose destination another process holds open, with
+// "Access is denied", and two syncs replacing the same file at the same
+// moment is exactly that: both are writing the same thing, and the one that
+// arrives second only has to wait for the first to finish. A handful of
+// attempts over a tenth of a second covers it. What outlasts them is a file
+// that is genuinely in use — a shim that is running — and is reported.
+// Elsewhere a rename over an existing file does not fail this way, so the
+// loop costs nothing.
+func renameOver(tmp, final string) error {
+	const (
+		attempts = 10
+		maxDelay = 16 * time.Millisecond
+	)
+	var err error
+	for attempt, delay := 0, time.Millisecond; attempt < attempts; attempt++ {
+		if err = os.Rename(tmp, final); err == nil {
+			return nil
+		}
+		time.Sleep(delay)
+		if delay < maxDelay {
+			delay *= 2
+		}
+	}
+	return err
 }
 
 // commandsIn lists the commands the shim directory already serves, so that a
@@ -329,7 +358,7 @@ func writeMarker(dir, self, digest string, commands []string) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, filepath.Join(dir, markerName)); err != nil {
+	if err := renameOver(tmp, filepath.Join(dir, markerName)); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
