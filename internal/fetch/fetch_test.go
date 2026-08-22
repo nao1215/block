@@ -65,9 +65,10 @@ func TestFetchDownloadsVerifiesAndCaches(t *testing.T) {
 	if !strings.Contains(cerr.Error(), "checksum mismatch for "+srv.URL+"/a.tar.gz") {
 		t.Errorf("Error() = %q", cerr.Error())
 	}
-	// The mismatching download must not be left under its digest either.
-	if _, err := os.Stat(f.Path(sha)); err == nil {
-		t.Error("mismatching blob left in cache")
+	// The bytes it hashed to were already in the cache, verified, under
+	// their own digest: a bad expectation must not cost that blob.
+	if _, err := os.Stat(f.Path(sha)); err != nil {
+		t.Error("a mismatch discarded a blob that was already cached and verified")
 	}
 	entries, _ := os.ReadDir(f.Dir)
 	for _, e := range entries {
@@ -211,5 +212,48 @@ func TestFetchFollowsAllowedRedirect(t *testing.T) {
 	path, sha, _, err := New(t.TempDir(), "block/test").Fetch(context.Background(), redirector.URL+"/a.tar.gz", "")
 	if err != nil || sha != digest([]byte("payload")) {
 		t.Fatalf("Fetch() = %q, %q, %v", path, sha, err)
+	}
+}
+
+// A download whose bytes are not what the lockfile names is discarded — but
+// only when those bytes were not already in the cache. The same digest may be
+// another tool's artifact, and content-addressed storage means that blob is
+// exactly as valid after the mismatch as before it.
+func TestFetchMismatchKeepsBlobsThatWereAlreadyCached(t *testing.T) {
+	t.Parallel()
+	body := []byte("shared bytes")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+	f := New(filepath.Join(t.TempDir(), "cache"), "block/test")
+	ctx := context.Background()
+	wrong := strings.Repeat("1", 64)
+
+	// Fresh mismatching download: nothing of it may stay.
+	_, _, _, err := f.Fetch(ctx, srv.URL+"/x.tar.gz", wrong)
+	var cerr *ChecksumError
+	if !errors.As(err, &cerr) {
+		t.Fatalf("Fetch(wrong) error = %v", err)
+	}
+	if _, err := os.Stat(f.Path(digest(body))); err == nil {
+		t.Error("a fresh mismatching download was left in the cache")
+	}
+
+	// Cache the same bytes legitimately, then mismatch again.
+	if _, _, _, err := f.Fetch(ctx, srv.URL+"/x.tar.gz", digest(body)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := f.Fetch(ctx, srv.URL+"/y.tar.gz", wrong); !errors.As(err, &cerr) {
+		t.Fatalf("Fetch(wrong again) error = %v", err)
+	}
+	if got, err := os.ReadFile(f.Path(digest(body))); err != nil || string(got) != string(body) {
+		t.Errorf("the verified blob was lost to a mismatch: %q, %v", got, err)
+	}
+	entries, _ := os.ReadDir(f.Dir)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".download-") {
+			t.Errorf("temp file left behind: %s", e.Name())
+		}
 	}
 }

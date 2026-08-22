@@ -2,6 +2,8 @@ package recipe
 
 import (
 	"errors"
+	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -427,4 +429,49 @@ func TestValidateBinRejectsUnsafeEntries(t *testing.T) {
 	if err := dup.Validate(); err == nil || !strings.Contains(err.Error(), `bin "forge" is listed twice`) {
 		t.Errorf("Validate() error = %v", err)
 	}
+}
+
+// A repository is spliced into API URLs as written, so a character GitHub
+// never puts in an owner or a name is a typo to refuse here rather than a
+// "not found" from some other endpoint.
+func TestValidateRefusesRepoCharactersGitHubDoesNotUse(t *testing.T) {
+	t.Parallel()
+	for _, repo := range []string{"foundry rs/foundry", "foundry-rs/foundry?x=1", "a/b#c", "a%2Fb/c", "./x", "a/..", "ünicode/x", "a/b\n"} {
+		s := Source{Type: TypeGitHubRelease, Repo: repo, Asset: "x.tar.gz", Bin: []string{"x"}}
+		err := s.Validate()
+		if err == nil || !strings.Contains(err.Error(), "invalid repo") {
+			t.Errorf("Validate(repo %q) = %v, want an invalid repo error", repo, err)
+		}
+	}
+	for _, repo := range []string{"foundry-rs/foundry", "informalsystems/hermes", "a.b/c_d", "A1/B-2", "org/repo.js"} {
+		s := Source{Type: TypeGitHubRelease, Repo: repo, Asset: "x.tar.gz", Bin: []string{"x"}}
+		if err := s.Validate(); err != nil {
+			t.Errorf("Validate(repo %q) = %v", repo, err)
+		}
+	}
+}
+
+// ValidateBin is the whole defence between a lockfile entry and a path under
+// $BLOCK_HOME, so an accepted entry must always resolve inside the install
+// directory and never outside it.
+func FuzzValidateBin(f *testing.F) {
+	for _, s := range []string{"forge", "bin/forge", "../x", "/x", "a/../../b", "a//b", "./a", "", "a\\b", "C:x", "a\x00b", "..", "."} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, b string) {
+		if err := ValidateBin(b); err != nil {
+			return
+		}
+		if path.Clean(b) != b || path.IsAbs(b) || strings.HasPrefix(b, "../") || b == ".." || b == "." {
+			t.Fatalf("ValidateBin(%q) accepted an entry that is not a clean relative path", b)
+		}
+		rel := filepath.FromSlash(b)
+		joined := filepath.Join("root", rel)
+		if r, err := filepath.Rel("root", joined); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			t.Fatalf("ValidateBin(%q) accepted an entry that escapes the install directory: %q", b, joined)
+		}
+		if CommandName(b) == "" || CommandName(b) == "." || CommandName(b) == ".." || strings.Contains(CommandName(b), "/") {
+			t.Fatalf("ValidateBin(%q) accepted an entry with no command name (%q)", b, CommandName(b))
+		}
+	})
 }

@@ -200,3 +200,61 @@ func TestWriteAndLoad(t *testing.T) {
 		t.Error("Write into a missing directory succeeded")
 	}
 }
+
+// Whatever parses has to marshal back to bytes that parse to the same lock:
+// block.lock is rewritten from a parsed lock, so a spelling Parse accepts and
+// Marshal then changes would make `block lock` rewrite a file that was
+// already current.
+func FuzzParseMarshalRoundTrip(f *testing.F) {
+	seed, err := Marshal(sample())
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(string(seed))
+	f.Add("version = 1\n")
+	f.Add("version = 2\n")
+	f.Add("[[tools]]\nname = \"x\"\nconstraint = \"1\"\nversion = \"1.0.0\"\nbin = [\"x\"]\n")
+	f.Add("version = 1\n[[tools]]\nname = \"x\"\nconstraint = \"1\"\nversion = \"2.0.0\"\nbin = [\"x\"]\n")
+	f.Add("version = 1\n[[tools]]\nname = \"x\"\nconstraint = \"1\"\nversion = \"1.0.0\"\nbin = [\"x\", \"X\"]\n")
+	f.Fuzz(func(t *testing.T, data string) {
+		l, err := Parse([]byte(data))
+		if err != nil {
+			return
+		}
+		if l.Version != FormatVersion {
+			t.Fatalf("Parse accepted version %d", l.Version)
+		}
+		out, err := Marshal(l)
+		if err != nil {
+			t.Fatalf("Marshal of a parsed lock failed: %v", err)
+		}
+		again, err := Parse(out)
+		if err != nil {
+			t.Fatalf("Marshal wrote something Parse refuses: %v\n%s", err, out)
+		}
+		out2, err := Marshal(again)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(out) != string(out2) {
+			t.Fatalf("round trip is not a fixed point:\n%s\n---\n%s", out, out2)
+		}
+		seen := map[string]bool{}
+		for i, tool := range again.Tools {
+			if seen[tool.Name] {
+				t.Fatalf("tool %q appears twice", tool.Name)
+			}
+			seen[tool.Name] = true
+			if i > 0 && again.Tools[i-1].Name > tool.Name {
+				t.Fatalf("tools are not sorted: %q before %q", again.Tools[i-1].Name, tool.Name)
+			}
+			v, err := tool.ParsedVersion()
+			if err != nil {
+				t.Fatalf("tool %q: pinned version does not parse: %v", tool.Name, err)
+			}
+			if strings.ContainsAny(v.String(), `/\`) || strings.ContainsRune(v.String(), 0) {
+				t.Fatalf("tool %q: version %q could be a path", tool.Name, v)
+			}
+		}
+	})
+}

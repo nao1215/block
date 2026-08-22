@@ -86,16 +86,9 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL, want string) (path, sha str
 	if err := CheckURL(rawURL); err != nil {
 		return "", "", false, err
 	}
-	sha, err = f.download(ctx, rawURL)
+	sha, err = f.download(ctx, rawURL, want)
 	if err != nil {
 		return "", "", false, err
-	}
-	if want != "" && sha != want {
-		// The mismatching bytes are removed from the cache, and the blob the
-		// lockfile does name is left exactly as it was: a bad download must
-		// not cost the artifact that was already verified.
-		_ = os.Remove(f.Path(sha))
-		return "", "", false, &ChecksumError{URL: rawURL, Want: want, Got: sha}
 	}
 	return f.Path(sha), sha, false, nil
 }
@@ -123,7 +116,13 @@ func (f *Fetcher) verifyCached(want string) (bool, error) {
 	return false, nil
 }
 
-func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {
+// download fetches rawURL into the cache under its digest and reports that
+// digest. With want set, bytes that hash to anything else never reach the
+// cache: the mismatch is decided on the temporary file, so nothing is
+// published and then withdrawn, and a blob another fetch is verifying at the
+// same moment cannot disappear under it. A download whose bytes are already
+// cached under the same digest replaces nothing.
+func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, error) {
 	const dirMode = 0o755
 	if err := os.MkdirAll(filepath.Join(f.Dir, "sha256"), dirMode); err != nil {
 		return "", err
@@ -162,6 +161,21 @@ func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {
 		return "", err
 	}
 	sha := hex.EncodeToString(h.Sum(nil))
+	if want != "" && sha != want {
+		// Decided here, on the temporary file, so the cache is left exactly
+		// as it was: the blob the lockfile names, and any other tool's blob
+		// these bytes happen to equal, are untouched.
+		_ = os.Remove(tmpName)
+		return "", &ChecksumError{URL: rawURL, Want: want, Got: sha}
+	}
+	// The same bytes may already be cached under this digest — the artifact
+	// of another tool, or a previous download of this one. Content-addressed
+	// means they are the same file, so the existing one stays and the copy
+	// just made is discarded.
+	if st, err := os.Stat(f.Path(sha)); err == nil && st.Mode().IsRegular() {
+		_ = os.Remove(tmpName)
+		return sha, nil
+	}
 	if err := os.Rename(tmpName, f.Path(sha)); err != nil {
 		_ = os.Remove(tmpName)
 		return "", err

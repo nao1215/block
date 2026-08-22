@@ -313,3 +313,37 @@ func TestExtractTarBz2(t *testing.T) {
 		t.Error("a corrupt bzip2 archive was accepted")
 	}
 }
+
+// safePath is the one check between a member name in an archive somebody
+// else built and a file under $BLOCK_HOME, so any name it accepts must land
+// strictly inside the destination, whatever strip did to it first.
+func FuzzSafePath(f *testing.F) {
+	for _, s := range []string{"forge", "bin/forge", "../x", "/etc/passwd", "a/../../b", "a//b", "./a", "", "a\\b", "C:x", "..", ".", "foundry-1.0/bin/forge", "x/./y", "a/b/../../.."} {
+		f.Add(s, 0)
+		f.Add(s, 1)
+	}
+	f.Fuzz(func(t *testing.T, name string, strip int) {
+		if strip < 0 || strip > 8 {
+			return
+		}
+		dst := filepath.Join(t.TempDir(), "dst")
+		stripped, ok := stripName(name, strip)
+		if !ok {
+			return
+		}
+		target, err := safePath(dst, stripped)
+		if err != nil {
+			return
+		}
+		if stripped == "" {
+			t.Fatalf("safePath accepted the empty name stripName(%q, %d) left", name, strip)
+		}
+		rel, err := filepath.Rel(dst, target)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			t.Fatalf("safePath(%q -> %q) = %q is not strictly inside %q (rel %q)", name, stripped, target, dst, rel)
+		}
+		if strings.ContainsAny(target, "\x00") {
+			t.Fatalf("safePath(%q) = %q carries a NUL", name, target)
+		}
+	})
+}

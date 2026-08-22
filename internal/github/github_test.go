@@ -185,3 +185,31 @@ func TestNewFromEnv(t *testing.T) {
 		t.Error("GITHUB_TOKEN should win over GH_TOKEN")
 	}
 }
+
+// GitHub's digest is what a lockfile records without downloading, so it has
+// to be something the lockfile will read back: 64 lower-case hex characters.
+// Anything else is treated as no digest, and the artifact gets hashed after a
+// download instead of a value block cannot verify being written to disk.
+func TestAssetSHA256AcceptsOnlyAHexDigest(t *testing.T) {
+	t.Parallel()
+	hex := strings.Repeat("ab", 32)
+	tests := []struct {
+		digest string
+		want   string
+	}{
+		{"sha256:" + hex, hex},
+		{"sha256:" + strings.ToUpper(hex), hex},
+		{"", ""},
+		{hex, ""},
+		{"sha256:", ""},
+		{"sha256:" + hex[:63], ""},
+		{"sha256:" + hex + "0", ""},
+		{"sha256:" + strings.Repeat("zz", 32), ""},
+		{"sha512:" + hex, ""},
+	}
+	for _, tt := range tests {
+		if got := (Asset{Digest: tt.digest}).SHA256(); got != tt.want {
+			t.Errorf("Asset{Digest: %q}.SHA256() = %q, want %q", tt.digest, got, tt.want)
+		}
+	}
+}

@@ -297,3 +297,64 @@ func TestParseKeepsTheFormatsUpstreamsUse(t *testing.T) {
 		}
 	}
 }
+
+// A hyphen announces a pre-release. One that names nothing used to parse as
+// the release before it while keeping the hyphen in its spelling, so "1.7.4-"
+// satisfied the constraint "1.7.4" and then became the directory 1.7.4--…
+// under $BLOCK_HOME. An empty build field was already refused; the
+// pre-release is held to the same rule.
+func TestParseRefusesAnEmptyPreRelease(t *testing.T) {
+	t.Parallel()
+	for _, s := range []string{"1.7.4-", "1.7-", "1.7.4-+b", "1.7.4-+"} {
+		if v, err := Parse(s); err == nil {
+			t.Errorf("Parse(%q) = %q, want an error", s, v)
+		}
+	}
+}
+
+func FuzzParseConstraint(f *testing.F) {
+	for _, s := range []string{"1", "1.7", "1.7.4", "", "01", "1.", ".1", "1.7.4.1", "v1", "1.x"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		c, err := ParseConstraint(s)
+		if err != nil {
+			if !c.IsZero() {
+				t.Fatalf("ParseConstraint(%q) failed but returned a non-zero constraint %q", s, c)
+			}
+			return
+		}
+		if c.IsZero() || c.String() != s {
+			t.Fatalf("ParseConstraint(%q) = %q", s, c)
+		}
+		// A constraint is a prefix of the versions it admits: the version
+		// written the same way (padded to three components) must match, and
+		// so must the same numbers with a different patch unless the
+		// constraint pins it.
+		again, err := ParseConstraint(c.String())
+		if err != nil {
+			t.Fatalf("round trip of %q failed: %v", s, err)
+		}
+		exact := strings.Split(s, ".")
+		for len(exact) < components {
+			exact = append(exact, "0")
+		}
+		v, err := Parse(strings.Join(exact, "."))
+		if err != nil {
+			t.Fatalf("constraint %q parsed but %q is not a version: %v", s, strings.Join(exact, "."), err)
+		}
+		if !c.Matches(v) || !again.Matches(v) {
+			t.Fatalf("constraint %q does not match %s", s, v)
+		}
+		pre := v
+		pre.Pre = "rc1"
+		if c.Matches(pre) {
+			t.Fatalf("constraint %q matched a pre-release", s)
+		}
+		other := v
+		other.Major++
+		if c.Matches(other) {
+			t.Fatalf("constraint %q matched %s, a different major", s, other)
+		}
+	})
+}

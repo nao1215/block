@@ -143,3 +143,47 @@ func TestLoadAndFind(t *testing.T) {
 		t.Errorf("Load(bad) error = %v, want file-prefixed", err)
 	}
 }
+
+// Parse takes a hand-written file, so it must never panic, and what it
+// accepts must be a manifest the rest of block can act on: sorted unique
+// tool names, a parsed constraint for each, and a validated source for every
+// project-local tool.
+func FuzzParse(f *testing.F) {
+	f.Add("[tools]\nfoundry = \"1.7\"\n")
+	f.Add("platforms = [\"linux/amd64\"]\n[tools]\nfoundry = \"1.7\"\nhermes = \"1\"\n")
+	f.Add("[tools.foo]\nversion = \"1.2\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"example/foo\"\nasset = \"foo_{version}_{os}_{arch}.tar.gz\"\nbin = [\"foo\"]\n")
+	f.Add("[tools]\nfoundry = 1\n")
+	f.Add("[tools]\n")
+	f.Add("")
+	f.Add("platforms = [\"linux/amd64\", \"linux/amd64\"]\n[tools]\nx = \"1\"\n")
+	f.Fuzz(func(t *testing.T, data string) {
+		m, err := Parse([]byte(data))
+		if err != nil {
+			return
+		}
+		if len(m.Tools) == 0 {
+			t.Fatal("Parse accepted a manifest with no tools")
+		}
+		for i, tool := range m.Tools {
+			if tool.Constraint.IsZero() {
+				t.Fatalf("tool %q has no constraint", tool.Name)
+			}
+			if i > 0 && m.Tools[i-1].Name >= tool.Name {
+				t.Fatalf("tools are not sorted and unique: %q, %q", m.Tools[i-1].Name, tool.Name)
+			}
+			if tool.Source != nil {
+				if err := tool.Source.Validate(); err != nil {
+					t.Fatalf("tool %q: accepted source does not validate: %v", tool.Name, err)
+				}
+			}
+		}
+		for i, p := range m.Platforms {
+			if !p.IsSupported() {
+				t.Fatalf("platform %s is not supported", p)
+			}
+			if i > 0 && m.Platforms[i-1].String() >= p.String() {
+				t.Fatalf("platforms are not sorted and unique: %s, %s", m.Platforms[i-1], p)
+			}
+		}
+	})
+}

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- A version ending in a bare hyphen (`1.7.4-`) parsed as the release before
+  it while keeping the hyphen in its spelling, so a hand-edited `block.lock`
+  could pin it and install into a `1.7.4--…` directory. It is now refused
+  as an empty pre-release, the way an empty build field already was.
+- After a block upgrade, rebuilding the global shim directory recreated only
+  the commands of the project that noticed the upgrade; every other
+  project's shims disappeared until that project synced again. The rebuild
+  now recreates every command the directory already served.
+- A download whose digest did not match the lockfile removed the blob it
+  hashed to from the cache even when that blob was already there, verified,
+  as another tool's artifact. Only a freshly written blob is discarded.
+- A GitHub asset digest that is not 64 hex characters is no longer copied
+  into `block.lock` — which would then have refused to read it — but
+  treated as absent, so the artifact is downloaded and hashed instead.
+- An archive member whose name carries a NUL byte is refused by name, with
+  the member named in the error, instead of failing with the operating
+  system's "invalid argument".
+- A repository in a project-local source is checked for the characters
+  GitHub allows in an owner or a name, so a typo is reported at the manifest
+  instead of surfacing as a "not found" from the wrong API endpoint.
+
+### Added
+- Fuzz tests for the version constraint parser, the lockfile parse/marshal
+  round trip, the manifest parser, archive member path resolution and
+  lockfile `bin` entries. Their seed corpora run as ordinary unit tests.
+
 ## [0.1.0] - 2026-08-22
 
 The first release. Everything below is new, so this entry describes what block

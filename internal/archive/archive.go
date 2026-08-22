@@ -87,7 +87,9 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 			continue
 		}
 		name, ok := stripName(hdr.Name, strip)
-		if !ok {
+		if !ok || isRoot(name) {
+			// "./" — the entry tar writes for the directory it was run in —
+			// names the destination itself, which already exists.
 			continue
 		}
 		target, err := safePath(dst, name)
@@ -122,7 +124,7 @@ func extractZip(src, dst string, strip int) error {
 	defer zr.Close() //nolint:errcheck // read-only
 	for _, zf := range zr.File {
 		name, ok := stripName(zf.Name, strip)
-		if !ok {
+		if !ok || isRoot(name) {
 			continue
 		}
 		target, err := safePath(dst, name)
@@ -156,11 +158,24 @@ func extractZip(src, dst string, strip int) error {
 	return nil
 }
 
+// isRoot reports whether a member name, once cleaned, is the destination
+// itself rather than something inside it.
+func isRoot(name string) bool {
+	return name != "" && filepath.Clean(filepath.FromSlash(name)) == "."
+}
+
 // safePath resolves an archive member name inside dst, rejecting absolute
 // names and any traversal outside dst.
 func safePath(dst, name string) (string, error) {
 	if name == "" {
 		return "", diag.PathEscape.Errorf("archive entry has an empty name")
+	}
+	// A NUL cannot be part of a file name on any platform block runs on. It
+	// is refused by name rather than left to the operating system, whose
+	// "invalid argument" would not say which member of the archive was
+	// wrong — and the archive is somebody else's, so it has to be said.
+	if strings.ContainsRune(name, 0) {
+		return "", diag.PathEscape.Errorf("refusing to extract %q: an archive entry may not contain a NUL", name)
 	}
 	// tar and zip member names are slash-separated by specification, so a
 	// backslash, a drive letter or a UNC prefix is never a legitimate one.
@@ -175,13 +190,15 @@ func safePath(dst, name string) (string, error) {
 	clean := filepath.Clean(filepath.FromSlash(name))
 	// A leading separator is rejected explicitly: on Windows "\etc" is not
 	// absolute in filepath's terms, but it is never a legitimate member name.
-	if filepath.IsAbs(clean) || strings.HasPrefix(clean, string(filepath.Separator)) ||
+	// The destination itself is not a member either: "." names nothing
+	// inside dst, and the callers skip the directory entry that spells it.
+	if clean == "." || filepath.IsAbs(clean) || strings.HasPrefix(clean, string(filepath.Separator)) ||
 		strings.HasPrefix(clean, "..") || filepath.VolumeName(clean) != "" {
 		return "", diag.PathEscape.Errorf("refusing to extract %q: path escapes the destination", name)
 	}
 	target := filepath.Join(dst, clean)
 	rel, err := filepath.Rel(dst, target)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", diag.PathEscape.Errorf("refusing to extract %q: path escapes the destination", name)
 	}
 	// Refuse to follow a symlink that an earlier entry could not have created
