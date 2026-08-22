@@ -250,3 +250,76 @@ func snapshotTree(t *testing.T, roots ...string) string {
 	}
 	return b.String()
 }
+
+// Rows are sorted by name across both files: a pin block.toml no longer
+// declares sorts among the declared ones rather than trailing them.
+func TestStatusSortsRowsAcrossBothFiles(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	h.manifest(t, statusManifest+"[tools.bare]\nversion = \"2.5\"\n[tools.bare.source]\ntype = \"github_release\"\nrepo = \"example/bare\"\ntag_prefix = \"\"\nasset = \"bare_{version}_{os}_{arch}.tar.gz\"\nbin = [\"bare\"]\n")
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	h.manifest(t, statusManifest)
+	report, err := h.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := states(report); got != "bare=stale(not in block.toml) foundry=missing" {
+		t.Errorf("states = %s", got)
+	}
+}
+
+// The hint names the command that moves the report forward, and a stale pin
+// has to be locked before installing anything means something — whichever
+// row comes first.
+func TestHintPutsLockAheadOfSync(t *testing.T) {
+	t.Parallel()
+	lock := `run "block lock" to bring block.lock up to date with block.toml`
+	sync := `run "block sync" to install the locked toolchain`
+	for _, tc := range []struct {
+		states []State
+		want   string
+	}{
+		{nil, ""},
+		{[]State{StateOK, StateOK}, ""},
+		{[]State{StateOK, StateMissing}, sync},
+		{[]State{StateDamaged, StateOK}, sync},
+		{[]State{StateMissing, StateStale}, lock},
+		{[]State{StateStale, StateDamaged}, lock},
+		{[]State{StateDamaged, StateMissing, StateStale, StateOK}, lock},
+	} {
+		s := &Status{}
+		for _, st := range tc.states {
+			s.Tools = append(s.Tools, ToolStatus{State: st})
+		}
+		if got := s.Hint(); got != tc.want {
+			t.Errorf("Hint(%v) = %q, want %q", tc.states, got, tc.want)
+		}
+	}
+}
+
+// A lockfile with no artifact for this machine is a disagreement, and the
+// store is not consulted about an install that cannot exist.
+func TestStatusReportsAPinWithNoArtifactForThisMachine(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	h.manifest(t, "platforms = [\"darwin/arm64\", \"linux/arm64\"]\n"+statusManifest)
+	ctx := context.Background()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	h.manifest(t, statusManifest)
+	report, err := h.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "foundry=stale(no artifact for " + h.Platform.String() + ")"
+	if got := states(report); got != want {
+		t.Errorf("states = %s, want %s", got, want)
+	}
+	if report.Tools[0].Installed != "" || report.Tools[0].Dir != "" {
+		t.Errorf("an install was reported for a platform the lock has nothing for: %+v", report.Tools[0])
+	}
+}

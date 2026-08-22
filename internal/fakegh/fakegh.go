@@ -64,6 +64,10 @@ type release struct {
 	// time, at a different URL: the ambiguity block must refuse rather than
 	// resolve by taking whichever the API answered with first.
 	twice bool
+	// unpinnable marks a moving tag the upstream retags without publishing
+	// a release for the commit under it: nothing that will not move, so
+	// nothing block can pin.
+	unpinnable bool
 }
 
 type entry struct {
@@ -263,6 +267,12 @@ func Fixtures() []Repo {
 		{owner: "ethereum", name: "go-ethereum", blobs: true, releases: []release{
 			{tag: "v1.17.4", at: 1, bins: []string{"geth"}},
 			{tag: "v1.17.5", at: 2, bins: []string{"geth"}},
+		}},
+		{owner: "example", name: "drifter", releases: []release{
+			// A moving tag and nothing else: the upstream retags "nightly"
+			// but never publishes a release for the commit beneath it.
+			{tag: "nightly", at: 1, moves: true, unpinnable: true, prerelease: true, bins: []string{"drifter"},
+				assets: platformAssets("drifter_nightly_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
 		}},
 		{owner: "example", name: "stamped", releases: []release{
 			// A release line whose name carries a hyphen, stamping the commit
@@ -493,7 +503,7 @@ func releasesFor(rp Repo, tag string, snapshot int) []release {
 		// The moving tag itself may carry a hyphen ("pre-release"), so the
 		// commit is what follows the whole tag, not the first hyphen.
 		commit, ok := strings.CutPrefix(tag, rel.tag+"-")
-		if !ok || !rel.moves || len(commit) != commitHexLen || rel.at > snapshot {
+		if !ok || !rel.moves || rel.unpinnable || len(commit) != commitHexLen || rel.at > snapshot {
 			continue
 		}
 		// Only the commit this tag really points at, at some snapshot: a

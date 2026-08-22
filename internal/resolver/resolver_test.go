@@ -17,7 +17,10 @@ type fake struct {
 	tags     []string
 	releases map[string]*github.Release
 	err      error
-	lookups  []string
+	// relErr is what ReleaseByTag fails with, when the upstream is down
+	// rather than merely missing a release.
+	relErr  error
+	lookups []string
 }
 
 func (f *fake) Tags(_ context.Context, _, prefix string) ([]string, error) {
@@ -44,6 +47,9 @@ func (f *fake) Commit(_ context.Context, _, ref string) (string, error) {
 
 func (f *fake) ReleaseByTag(_ context.Context, _, tag string) (*github.Release, error) {
 	f.lookups = append(f.lookups, tag)
+	if f.relErr != nil {
+		return nil, f.relErr
+	}
 	r, ok := f.releases[tag]
 	if !ok {
 		return nil, github.ErrNotFound
@@ -303,4 +309,40 @@ func TestExactTagReportsAMissingRelease(t *testing.T) {
 	if !errors.Is(err, github.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
+}
+
+func TestResolveChannelRefusesWhatCannotBePinned(t *testing.T) {
+	t.Parallel()
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	s := src()
+	s.Channels = map[string]recipe.Channel{"nightly": {Asset: "t_nightly_{os}_{arch}.tar.gz"}}
+	t.Run("no release under the commit", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{tags: []string{"nightly"}, releases: map[string]*github.Release{}}
+		_, err := ResolveChannel(context.Background(), f, s, "nightly")
+		if diag.Of(err) != diag.ChannelNotPinnable {
+			t.Fatalf("err = %v, want %s", err, diag.ChannelNotPinnable)
+		}
+		if !strings.Contains(err.Error(), "nightly-"+sha) {
+			t.Fatalf("err = %v, want the tag it looked for", err)
+		}
+	})
+	t.Run("a draft under the commit", func(t *testing.T) {
+		t.Parallel()
+		r := rel("nightly-"+sha, true, "t_nightly_linux_amd64.tar.gz")
+		r.Draft = true
+		f := &fake{tags: []string{"nightly"}, releases: map[string]*github.Release{r.TagName: r}}
+		_, err := ResolveChannel(context.Background(), f, s, "nightly")
+		if diag.Of(err) != diag.ChannelNotPinnable || !strings.Contains(err.Error(), "draft") {
+			t.Fatalf("err = %v, want %s about a draft", err, diag.ChannelNotPinnable)
+		}
+	})
+	t.Run("an upstream error is not a refusal", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{tags: []string{"nightly"}, relErr: errors.New("boom")}
+		_, err := ResolveChannel(context.Background(), f, s, "nightly")
+		if err == nil || diag.Of(err) == diag.ChannelNotPinnable || !strings.Contains(err.Error(), "boom") {
+			t.Fatalf("err = %v, want a plain failure", err)
+		}
+	})
 }
