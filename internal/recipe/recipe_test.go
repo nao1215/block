@@ -531,3 +531,28 @@ func TestSupportedPlatformsOrderIsPartOfTheLockFormat(t *testing.T) {
 		t.Error("the order platforms are written in changed the source hash")
 	}
 }
+
+// Windows resolves a command on PATH without regard to case, so "foo" and
+// "FOO" are one command there and two everywhere else. A lockfile is
+// committed and read on every platform, so the collision is refused
+// everywhere — found by whoever runs lock, not by whoever runs Windows.
+func TestValidateBinsRefusesCommandsDifferingOnlyInCase(t *testing.T) {
+	t.Parallel()
+	err := ValidateBins([]string{"forge", "FORGE"})
+	if err == nil || !strings.Contains(err.Error(), "both the command") {
+		t.Fatalf("ValidateBins(forge, FORGE) = %v, want a refusal", err)
+	}
+	// Two paths ending in the same name, differing only in case, are the
+	// same collision.
+	if err := ValidateBins([]string{"bin/cast", "sbin/CAST"}); err == nil {
+		t.Error("ValidateBins accepted bin/cast beside sbin/CAST")
+	}
+	// And CommandKey is what decides, so it folds case and nothing else.
+	if CommandKey("bin/Forge") != "forge" || CommandKey("forge") != CommandKey("FORGE") {
+		t.Errorf("CommandKey folds something other than case: %q", CommandKey("bin/Forge"))
+	}
+	// Commands that really are different are still allowed.
+	if err := ValidateBins([]string{"forge", "cast", "bin/anvil"}); err != nil {
+		t.Errorf("ValidateBins(distinct commands) = %v", err)
+	}
+}

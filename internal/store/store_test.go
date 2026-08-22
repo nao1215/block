@@ -494,3 +494,45 @@ func TestInstallLosingTheRaceIsNotAnError(t *testing.T) {
 		t.Errorf("temporary directories were left behind: %v", entries)
 	}
 }
+
+// A tool name or a version reaches InstallDir from block.lock, and the result
+// is a directory this package creates, populates and removes. Everything that
+// could make it something other than one path component below the store is
+// refused here as well as upstream, because the cost of being wrong is
+// os.RemoveAll on a path outside $BLOCK_HOME.
+func TestInstallDirRefusesEveryComponentThatIsNotOne(t *testing.T) {
+	t.Parallel()
+	st := &Store{Root: t.TempDir()}
+	const digest = "0123456789abcdef"
+	tests := []struct{ name, tool, version string }{
+		{"empty name", "", "1.0.0"},
+		{"empty version", "foundry", ""},
+		{"name is a directory reference", ".", "1.0.0"},
+		{"version is a parent reference", "foundry", ".."},
+		{"unix separator in the name", "a/b", "1.0.0"},
+		{"unix separator in the version", "foundry", "1.0.0/x"},
+		{"windows separator in the name", `a\b`, "1.0.0"},
+		{"windows separator in the version", "foundry", `1.0.0\x`},
+		{"NUL in the name", "foun\x00dry", "1.0.0"},
+		{"NUL in the version", "foundry", "1.0\x000"},
+		{"absolute name", "/etc/passwd", "1.0.0"},
+		{"traversal in the version", "foundry", "../../../outside"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir, err := st.InstallDir(tt.tool, tt.version, digest)
+			if err == nil {
+				t.Fatalf("InstallDir(%q, %q) = %q, want a refusal", tt.tool, tt.version, dir)
+			}
+		})
+	}
+	// And the shape that is allowed still is.
+	dir, err := st.InstallDir("foundry", "1.7.4", digest)
+	if err != nil {
+		t.Fatalf("InstallDir(valid) = %v", err)
+	}
+	if filepath.Base(dir) != "1.7.4-"+digest[:shortDigest] {
+		t.Errorf("InstallDir = %q, want the version and the short digest", dir)
+	}
+}

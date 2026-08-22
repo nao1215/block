@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/github"
 	"github.com/nao1215/block/internal/platform"
 	"github.com/nao1215/block/internal/recipe"
@@ -234,4 +235,41 @@ type failingReleases struct{ *fake }
 
 func (f *failingReleases) ReleaseByTag(context.Context, string, string) (*github.Release, error) {
 	return nil, errors.New("boom")
+}
+
+// A release carrying two files of one name is not something to resolve by
+// taking the first: they are different downloads, and which one a lockfile
+// pinned would depend on the order the API answered in.
+func TestArtifactForRefusesTwoAssetsOfOneName(t *testing.T) {
+	t.Parallel()
+	src := recipe.Source{
+		Type: recipe.TypeGitHubRelease, Repo: "example/dup",
+		Asset: "dup_{version}_{os}_{arch}.tar.gz", Bin: []string{"dup"},
+	}
+	p := platform.Platform{OS: "linux", Arch: "amd64"}
+	name := "dup_1.0.0_linux_amd64.tar.gz"
+	res := Resolution{
+		Version: version.MustParse("1.0.0"),
+		Release: &github.Release{TagName: "v1.0.0", Assets: []github.Asset{
+			{Name: name, BrowserDownloadURL: "https://example.com/second/" + name},
+			{Name: name, BrowserDownloadURL: "https://example.com/first/" + name},
+		}},
+	}
+	_, err := ArtifactFor(res, src, p)
+	if err == nil {
+		t.Fatal("ArtifactFor chose between two assets of one name")
+	}
+	if diag.Of(err) != diag.AmbiguousAsset {
+		t.Errorf("code = %v, want %v", diag.Of(err), diag.AmbiguousAsset)
+	}
+	// Both URLs are named, in a fixed order, so the message does not depend
+	// on the order the API answered in either.
+	for _, want := range []string{"https://example.com/first/", "https://example.com/second/"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %s", err, want)
+		}
+	}
+	if strings.Index(err.Error(), "/first/") > strings.Index(err.Error(), "/second/") {
+		t.Errorf("error %q lists the assets in the order they arrived", err)
+	}
 }

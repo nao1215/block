@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -1108,5 +1109,57 @@ func TestToolchainPathNeverEndsInAnEmptyEntry(t *testing.T) {
 	t.Setenv("PATH", "")
 	if got := (&Toolchain{}).Path(); got != "" {
 		t.Errorf("Path() = %q, want empty", got)
+	}
+}
+
+// `block lock <tool>` re-resolves the tools it names and keeps the other
+// pins. A pin can only be kept if it is still a pin of the same thing: when
+// the project-local recipe beside it changed, keeping it would leave the
+// lockfile recording the new source fingerprint against artifacts resolved
+// from the old recipe — a lockfile that passes every check and installs
+// something nobody asked for.
+func TestLockDoesNotKeepAPinWhoseSourceChanged(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	const foundry = "[tools.foundry]\nversion = \"1.7\"\n[tools.foundry.source]\ntype = \"github_release\"\nrepo = \"foundry-rs/foundry\"\nasset = \"foundry_v{version}_{os}_{arch}.tar.gz\"\nbin = %s\n"
+	const hermes = "[tools.hermes]\nversion = \"1.13\"\n[tools.hermes.source]\ntype = \"github_release\"\nrepo = \"informalsystems/hermes\"\nasset = \"hermes-v{version}-{arch}-{os}.tar.gz\"\nbin = [\"hermes\"]\n[tools.hermes.source.os]\nlinux = \"unknown-linux-gnu\"\ndarwin = \"apple-darwin\"\nwindows = \"pc-windows-msvc\"\n[tools.hermes.source.arch]\namd64 = \"x86_64\"\narm64 = \"aarch64\"\n"
+	ctx := context.Background()
+	h.manifest(t, fmt.Sprintf(foundry, `["forge", "cast", "anvil", "chisel"]`)+hermes)
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.lockText(t), "chisel") {
+		t.Fatal("the first lock did not record the executables")
+	}
+
+	// foundry's recipe changes; the command line names only hermes.
+	h.manifest(t, fmt.Sprintf(foundry, `["forge", "cast"]`)+hermes)
+	h.reset()
+	if err := h.Lock(ctx, []string{"hermes"}, false); err != nil {
+		t.Fatal(err)
+	}
+	locked := h.lockText(t)
+	if strings.Contains(locked, "chisel") {
+		t.Error("the pin was kept although its source changed:\n" + locked)
+	}
+	l, err := lockfile.Parse([]byte(locked))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool, ok := l.Tool("foundry")
+	if !ok {
+		t.Fatal("foundry is not in the lockfile")
+	}
+	if strings.Join(tool.Bin, ",") != "forge,cast" {
+		t.Errorf("bin = %v, want the executables the recipe lists now", tool.Bin)
+	}
+	// And what the lockfile records as the source is the recipe it was
+	// actually resolved from, so a later check agrees.
+	m, err := manifest.Parse([]byte(fmt.Sprintf(foundry, `["forge", "cast"]`) + hermes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reasons := Check(m, l, []platform.Platform{h.Platform}); len(reasons) != 0 {
+		t.Errorf("the rewritten lockfile is stale: %v", reasons)
 	}
 }
