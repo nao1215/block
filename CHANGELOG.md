@@ -135,10 +135,10 @@ refused, and a project whose `platforms` list excludes the machine running
   lockfile `bin` entries. Their seed corpora run as ordinary unit tests.
 
 ### Changed
-- The README, the documentation front page and the site tagline say what
-  block is heading toward — a Blockchain Development Toolbox for local
-  blockchain development — and that the toolchain is the only tool in it
-  today. Nothing about what block does changed.
+- The README, the documentation front page, the site tagline and the
+  repository description say the same thing about what block is: a
+  reproducible toolchain manager for blockchain development. Nothing about
+  what block does changed.
 
 ## [0.1.0] - 2026-08-22
 

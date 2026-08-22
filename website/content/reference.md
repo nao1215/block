@@ -251,6 +251,10 @@ block deliberately does not:
 - generate Docker Compose files or manage Solidity library dependencies;
 - run scripts from the registry;
 - offer shell integration, `block env`, `block add`/`remove`, or any command
-  that resolves or installs implicitly.
+  that resolves or installs implicitly;
+- grow into the tools beside the toolchain — a block explorer, a transaction
+  tracer, a devnet manager, an RPC doctor, a terminal UI, a test framework.
+  Each of those is somebody else's project, and every one of them would blur
+  what block is for.
 
 If a feature would turn block into mise or aqua, it does not belong here.
