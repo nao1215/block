@@ -86,15 +86,19 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL, want string) (path, sha str
 	if err := CheckURL(rawURL); err != nil {
 		return "", "", false, err
 	}
-	sha, err = f.download(ctx, rawURL)
+	sha, fresh, err := f.download(ctx, rawURL)
 	if err != nil {
 		return "", "", false, err
 	}
 	if want != "" && sha != want {
-		// The mismatching bytes are removed from the cache, and the blob the
-		// lockfile does name is left exactly as it was: a bad download must
-		// not cost the artifact that was already verified.
-		_ = os.Remove(f.Path(sha))
+		// The mismatching bytes are removed from the cache, and every blob
+		// that was already there is left exactly as it was: a bad download
+		// must not cost an artifact that was already verified — neither the
+		// one the lockfile names nor another tool's, which is what the
+		// download hashed to when fresh is false.
+		if fresh {
+			_ = os.Remove(f.Path(sha))
+		}
 		return "", "", false, &ChecksumError{URL: rawURL, Want: want, Got: sha}
 	}
 	return f.Path(sha), sha, false, nil
@@ -123,14 +127,17 @@ func (f *Fetcher) verifyCached(want string) (bool, error) {
 	return false, nil
 }
 
-func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {
+// download fetches rawURL into the cache under its digest and reports that
+// digest, plus whether the blob is new to the cache: a download whose bytes
+// were already cached under the same digest replaces nothing.
+func (f *Fetcher) download(ctx context.Context, rawURL string) (sha string, fresh bool, err error) {
 	const dirMode = 0o755
 	if err := os.MkdirAll(filepath.Join(f.Dir, "sha256"), dirMode); err != nil {
-		return "", err
+		return "", false, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if f.UserAgent != "" {
 		req.Header.Set("User-Agent", f.UserAgent)
@@ -140,33 +147,41 @@ func (f *Fetcher) download(ctx context.Context, rawURL string) (string, error) {
 		// Wrap rather than Errorf: a redirect this client refused already
 		// carries the code for why, and "the download failed" is the less
 		// useful of the two answers.
-		return "", diag.DownloadFailed.Wrap(fmt.Errorf("download %s: %w", rawURL, err))
+		return "", false, diag.DownloadFailed.Wrap(fmt.Errorf("download %s: %w", rawURL, err))
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only body
 	if resp.StatusCode != http.StatusOK {
-		return "", diag.DownloadFailed.Errorf("download %s: %s", rawURL, resp.Status)
+		return "", false, diag.DownloadFailed.Errorf("download %s: %s", rawURL, resp.Status)
 	}
 	tmp, err := os.CreateTemp(f.Dir, ".download-*")
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	tmpName := tmp.Name()
 	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpName) }
 	h := sha256.New()
 	if _, err := io.Copy(io.MultiWriter(tmp, h), resp.Body); err != nil {
 		cleanup()
-		return "", diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
+		return "", false, diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return "", err
+		return "", false, err
 	}
-	sha := hex.EncodeToString(h.Sum(nil))
+	sha = hex.EncodeToString(h.Sum(nil))
+	// The same bytes may already be cached under this digest — the artifact
+	// of another tool, or a previous download of this one. Content-addressed
+	// means they are the same file, so the existing one stays and the copy
+	// just made is discarded.
+	if st, err := os.Stat(f.Path(sha)); err == nil && st.Mode().IsRegular() {
+		_ = os.Remove(tmpName)
+		return sha, false, nil
+	}
 	if err := os.Rename(tmpName, f.Path(sha)); err != nil {
 		_ = os.Remove(tmpName)
-		return "", err
+		return "", false, err
 	}
-	return sha, nil
+	return sha, true, nil
 }
 
 // CheckURL enforces block's transport policy: HTTPS everywhere, with plain

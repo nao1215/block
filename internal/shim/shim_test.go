@@ -335,3 +335,38 @@ func TestEnsureLeavesNoTemporaryMarker(t *testing.T) {
 		}
 	}
 }
+
+// The shim directory is shared by every project on the machine. An upgrade
+// rebuilds it, and the rebuild has to bring back the commands other projects
+// synced — not only the ones the project that noticed the upgrade locks —
+// or "geth" next door stops resolving until that project happens to sync.
+func TestEnsureKeepsOtherProjectsShimsAcrossAnUpgrade(t *testing.T) {
+	t.Parallel()
+	st := &store.Store{Root: t.TempDir()}
+	old := self(t)
+	if _, err := Ensure(st, old, []string{"forge", "cast"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Ensure(st, old, []string{"geth"}); err != nil {
+		t.Fatal(err)
+	}
+	// block was upgraded; a project that locks only hermes syncs first.
+	upgraded := self(t)
+	created, err := Ensure(st, upgraded, []string{"hermes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(created, ","); got != "cast,forge,geth,hermes" {
+		t.Errorf("created = %q, want every shim rebuilt, not only this project's", got)
+	}
+	for _, command := range []string{"forge", "cast", "geth", "hermes"} {
+		if _, err := os.Stat(filepath.Join(Dir(st), FileName(command))); err != nil {
+			t.Errorf("shim %s is gone after the upgrade: %v", command, err)
+		}
+	}
+	// And nothing is rebuilt on the next sync from another project.
+	created, err = Ensure(st, upgraded, []string{"forge"})
+	if err != nil || len(created) != 0 {
+		t.Errorf("Ensure after rebuild = %v, %v, want nothing created", created, err)
+	}
+}

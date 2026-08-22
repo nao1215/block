@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/nao1215/block/internal/diag"
@@ -106,6 +107,15 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 		return nil, err
 	}
 	if stale {
+		// The shims are global: the directory also holds the commands every
+		// other project on this machine synced. Rebuilding for an upgrade
+		// must rebuild all of them, not only this project's, or "geth" in the
+		// project next door silently stops resolving until it syncs again.
+		existing, err := commandsIn(dir)
+		if err != nil {
+			return nil, err
+		}
+		commands = mergeCommands(commands, existing)
 		if err := removeAll(dir); err != nil {
 			// The usual cause is a shim that is running right now: a build
 			// script invoked through "forge" that itself runs "block sync".
@@ -134,6 +144,39 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 		}
 	}
 	return created, nil
+}
+
+// commandsIn lists the commands the shim directory already serves, so that a
+// rebuild can recreate them.
+func commandsIn(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if name == markerName || strings.HasPrefix(name, markerName) || e.IsDir() {
+			continue
+		}
+		out = append(out, CommandName(name))
+	}
+	return out, nil
+}
+
+// mergeCommands unions two command lists, sorted and without duplicates.
+func mergeCommands(a, b []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, c := range append(append([]string(nil), a...), b...) {
+		if c == "" || seen[c] {
+			continue
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // fileDigest is the SHA-256 of the file at path. It is what tells one block

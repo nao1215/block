@@ -102,6 +102,13 @@ func (s Source) Validate() error {
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return fmt.Errorf("invalid repo %q: want owner/name", s.Repo)
 	}
+	// The two halves are spliced into API URLs verbatim. GitHub names are
+	// ASCII letters, digits, '-', '_' and '.', so anything else — a space, a
+	// '?', a '#', a '%' — is a typo that would otherwise surface as a
+	// puzzling "not found" from the wrong endpoint.
+	if !validRepoPart(owner) || !validRepoPart(name) {
+		return fmt.Errorf("invalid repo %q: owner and name may only use letters, digits, '-', '_' and '.'", s.Repo)
+	}
 	switch s.Type {
 	case TypeGitHubRelease:
 		if s.URL != "" {
@@ -151,6 +158,23 @@ func (s Source) Validate() error {
 		return fmt.Errorf("template %q uses {target} but no [source.target] table is defined", s.ArtifactTemplate())
 	}
 	return nil
+}
+
+// validRepoPart reports whether a repository owner or name uses only the
+// characters GitHub allows in one.
+func validRepoPart(part string) bool {
+	if part == "." || part == ".." {
+		return false
+	}
+	for i := range len(part) {
+		c := part[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (s Source) validateAsset() error {

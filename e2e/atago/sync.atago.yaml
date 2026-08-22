@@ -725,6 +725,57 @@ scenarios:
             path: home
             exists: false
 
+  # A hyphen announces a pre-release, and a version that ends in one names no
+  # pre-release at all. It used to parse as the release before it — so it
+  # satisfied the constraint — while keeping the stray hyphen in its spelling,
+  # which then became the directory 1.7.4--… under $BLOCK_HOME. It is refused
+  # where the lockfile is read, before anything is downloaded or created.
+  - name: a hand-edited version with an empty pre-release is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - fixture:
+          file: block.lock
+          content: |
+            version = 1
+
+            [[tools]]
+            name = "foundry"
+            constraint = "1.7"
+            version = "1.7.4-"
+            bin = ["forge"]
+
+            [[tools.artifacts]]
+            platform = "${env:BLOCK_PLATFORM}"
+            url = "https://example.com/x.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK1004: block.lock: tool "foundry": invalid version "1.7.4-": empty pre-release
+
+'
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - assert:
+          dir:
+            path: home
+            exists: false
+
   # A lockfile arrives through pull requests and hand edits, and a bin entry is
   # the field that says which file gets run. One pointing outside the install
   # directory is refused where it is read, so neither sync nor exec nor a shim

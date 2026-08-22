@@ -75,13 +75,37 @@ type Asset struct {
 	Digest string `json:"digest"`
 }
 
-// SHA256 returns the hex digest when GitHub recorded a sha256 for the asset.
+// SHA256 returns the lower-case hex digest when GitHub recorded a sha256 for
+// the asset, and "" otherwise — including when the field is present but is
+// not a digest block could write into a lockfile and read back. A value that
+// is not 64 hex characters is treated as absent rather than trusted, so that
+// the caller downloads and hashes the artifact itself.
 func (a Asset) SHA256() string {
 	hex, ok := strings.CutPrefix(a.Digest, "sha256:")
 	if !ok {
 		return ""
 	}
+	hex = strings.ToLower(hex)
+	if !isHexDigest(hex) {
+		return ""
+	}
 	return hex
+}
+
+// isHexDigest reports whether s is a sha256 written as 64 lower-case hex
+// characters, which is the only spelling a lockfile accepts.
+func isHexDigest(s string) bool {
+	const hexLen = 64
+	if len(s) != hexLen {
+		return false
+	}
+	for i := range len(s) {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // AssetsNamed returns every asset of the release with this file name.

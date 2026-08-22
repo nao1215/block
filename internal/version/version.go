@@ -63,7 +63,14 @@ func Parse(s string) (Version, error) {
 	// String returns, so it is split off first and held to the same shape as
 	// the pre-release rather than skipped.
 	rest, build, hasBuild := strings.Cut(s, "+")
-	core, pre, _ := strings.Cut(rest, "-")
+	core, pre, hasPre := strings.Cut(rest, "-")
+	// "1.7.4-" is not a release spelled oddly: a hyphen announces a
+	// pre-release, and one that names nothing is refused the same way an
+	// empty build field is, or it would parse as 1.7.4 and still carry the
+	// stray hyphen into every URL and directory name.
+	if hasPre && pre == "" {
+		return v, fmt.Errorf("invalid version %q: empty pre-release", s)
+	}
 	// "29.1rc1": split the bare suffix off the last numeric component.
 	if i := strings.IndexFunc(core, func(r rune) bool { return r != '.' && (r < '0' || r > '9') }); i >= 0 {
 		if pre != "" {

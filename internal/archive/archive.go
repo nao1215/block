@@ -162,6 +162,13 @@ func safePath(dst, name string) (string, error) {
 	if name == "" {
 		return "", diag.PathEscape.Errorf("archive entry has an empty name")
 	}
+	// A NUL cannot be part of a file name on any platform block runs on. It
+	// is refused by name rather than left to the operating system, whose
+	// "invalid argument" would not say which member of the archive was
+	// wrong — and the archive is somebody else's, so it has to be said.
+	if strings.ContainsRune(name, 0) {
+		return "", diag.PathEscape.Errorf("refusing to extract %q: an archive entry may not contain a NUL", name)
+	}
 	// tar and zip member names are slash-separated by specification, so a
 	// backslash, a drive letter or a UNC prefix is never a legitimate one.
 	// They are refused on every platform rather than only on Windows: an
