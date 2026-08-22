@@ -158,6 +158,26 @@ func TestExtractRefusals(t *testing.T) {
 		{"tar symlink to nothing", func(t *testing.T) string {
 			return tarGz(t, member{name: "l", typ: tar.TypeSymlink, link: ""})
 		}, "a.tar.gz", "links to nothing"},
+		// Each half of the Windows check on its own: a backslash with no
+		// drive, and a drive with forward slashes.
+		{"tar symlink with a backslash", func(t *testing.T) string {
+			return tarGz(t, member{name: "bin/l", typ: tar.TypeSymlink, link: `..\etc\passwd`})
+		}, "a.tar.gz", "may not name a drive"},
+		{"tar symlink to a drive with forward slashes", func(t *testing.T) string {
+			return tarGz(t, member{name: "l", typ: tar.TypeSymlink, link: "C:/Windows/System32"})
+		}, "a.tar.gz", "may not name a drive"},
+		// Exactly the parent of the destination, not a path below it.
+		{"tar symlink to the parent itself", func(t *testing.T) string {
+			return tarGz(t, member{name: "l", typ: tar.TypeSymlink, link: ".."})
+		}, "a.tar.gz", "outside the destination"},
+		{"tar symlink to the parent via a subdirectory", func(t *testing.T) string {
+			return tarGz(t, member{name: "bin/l", typ: tar.TypeSymlink, link: "../.."})
+		}, "a.tar.gz", "outside the destination"},
+		// A tar header cannot carry a NUL, but a zip symlink is a file whose
+		// contents are the target, and a file can.
+		{"zip symlink with a NUL in the target", func(t *testing.T) string {
+			return zipFile(t, member{name: "l", mode: 0o777, link: "x\x00y"})
+		}, "a.zip", "contains a NUL"},
 		{"tar hardlink to a member the archive never wrote", func(t *testing.T) string {
 			return tarGz(t, member{name: "l", typ: tar.TypeLink, link: "etc"})
 		}, "a.tar.gz", "the archive did not write"},
@@ -563,5 +583,55 @@ func TestExtractRefusesWritingThroughALink(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "planted")); err == nil {
 		t.Error("a file was written outside the destination through a link")
+	}
+}
+
+// A hard link names its target by the member's archive name, so with
+// strip_components the link is refused when that name is not under the
+// components being dropped — and the message says that, rather than "links
+// to nothing".
+func TestExtractRefusesAHardLinkOutsideTheStrippedPrefix(t *testing.T) {
+	t.Parallel()
+	src := tarGz(t,
+		member{name: "pkg/bin/tool", content: "#!/bin/sh\nexit 0\n", mode: 0o755},
+		member{name: "pkg/bin/alias", typ: tar.TypeLink, link: "tool"},
+	)
+	err := Extract(src, t.TempDir(), "a.tar.gz", 1)
+	if diag.Of(err) != diag.PathEscape || !strings.Contains(err.Error(), `links to "tool", which is not in the archive`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// copyLinked stands in for a link the filesystem refused, and what it
+// copies has to stay runnable: the executable bit follows the target.
+func TestCopyLinkedKeepsTheExecutableBit(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("no executable bit")
+	}
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name string
+		mode os.FileMode
+		exec bool
+	}{
+		{"tool", 0o755, true},
+		{"data", 0o644, false},
+	} {
+		src := filepath.Join(dir, tc.name)
+		if err := os.WriteFile(src, []byte("x"), tc.mode); err != nil {
+			t.Fatal(err)
+		}
+		dst := filepath.Join(dir, tc.name+".copy")
+		if err := copyLinked(src, dst); err != nil {
+			t.Fatal(err)
+		}
+		st, err := os.Stat(dst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := st.Mode()&0o100 != 0; got != tc.exec {
+			t.Errorf("%s: executable = %v, want %v (mode %v)", tc.name, got, tc.exec, st.Mode())
+		}
 	}
 }

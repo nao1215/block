@@ -50,10 +50,10 @@ scenarios:
             path: out.txt
             contains: "anvil stopping"
 
-  # SIGINT is deliberately not tested this way. A background job of a
-  # non-interactive shell inherits SIG_IGN for it, so what such a scenario
-  # measures is the shell's job control rather than block's forwarding —
-  # which is the same code path for both signals.
+  # SIGINT is tested below with a child that names each signal it gets. A
+  # background job of a non-interactive shell inherits SIG_IGN for it, but
+  # block installs its own handler and the child it starts gets the default
+  # back, so the scenario measures block's forwarding and nothing else.
 
   # One signal in, one signal out, and the child's own verdict on it. A node
   # that shuts down on the first signal and force-quits on the second must
