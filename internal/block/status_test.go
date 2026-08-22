@@ -45,8 +45,8 @@ func TestStatusReportsWhatEachToolIsDoing(t *testing.T) {
 	if report.Ready || report.LockExists {
 		t.Errorf("before lock: ready=%v lockExists=%v", report.Ready, report.LockExists)
 	}
-	if !strings.Contains(report.StatusHint(), "block lock") {
-		t.Errorf("hint = %q, want it to name lock", report.StatusHint())
+	if !strings.Contains(report.Hint(), "block lock") {
+		t.Errorf("hint = %q, want it to name lock", report.Hint())
 	}
 
 	// Locked, not installed.
@@ -63,8 +63,8 @@ func TestStatusReportsWhatEachToolIsDoing(t *testing.T) {
 	if report.Tools[0].Locked != "1.7.4" || report.Tools[0].Installed != "" || report.Tools[0].Dir != "" {
 		t.Errorf("after lock: %+v", report.Tools[0])
 	}
-	if !strings.Contains(report.StatusHint(), "block sync") {
-		t.Errorf("hint = %q, want it to name sync", report.StatusHint())
+	if !strings.Contains(report.Hint(), "block sync") {
+		t.Errorf("hint = %q, want it to name sync", report.Hint())
 	}
 
 	// Installed.
@@ -78,8 +78,8 @@ func TestStatusReportsWhatEachToolIsDoing(t *testing.T) {
 	if got := states(report); got != "foundry=ok" {
 		t.Errorf("after sync: %s", got)
 	}
-	if !report.Ready || report.StatusHint() != "" {
-		t.Errorf("after sync: ready=%v hint=%q", report.Ready, report.StatusHint())
+	if !report.Ready || report.Hint() != "" {
+		t.Errorf("after sync: ready=%v hint=%q", report.Ready, report.Hint())
 	}
 	row := report.Tools[0]
 	if row.Wanted != "1.7" || row.Locked != "1.7.4" || row.Installed != "1.7.4" {
@@ -135,8 +135,8 @@ func TestStatusPutsTheLockAheadOfTheStore(t *testing.T) {
 	if report.Tools[0].Installed != "1.7.4" {
 		t.Errorf("installed = %q, want the version on disk", report.Tools[0].Installed)
 	}
-	if !strings.Contains(report.StatusHint(), "block lock") {
-		t.Errorf("hint = %q", report.StatusHint())
+	if !strings.Contains(report.Hint(), "block lock") {
+		t.Errorf("hint = %q", report.Hint())
 	}
 }
 

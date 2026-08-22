@@ -330,7 +330,7 @@ func printStatus(stdout, stderr io.Writer, report *block.Status, asJSON bool) er
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	if hint := report.StatusHint(); hint != "" {
+	if hint := report.Hint(); hint != "" {
 		fmt.Fprintf(stdout, "\n%s\n", hint)
 	}
 	for _, note := range report.Notes {

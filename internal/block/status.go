@@ -155,7 +155,7 @@ func (a *App) toolStatus(name, wanted string, l *lockfile.Lock, stale []string) 
 	if locked {
 		row.Locked = e.Version
 	}
-	installed, dir, damaged := a.installState(e, locked)
+	installed, dir, damaged := a.installState(e)
 	switch {
 	case len(stale) > 0:
 		row.State, row.Detail = StateStale, strings.Join(stale, ", ")
@@ -176,9 +176,10 @@ func (a *App) toolStatus(name, wanted string, l *lockfile.Lock, stale []string) 
 
 // installState reports what the store has for a locked tool on this platform:
 // whether it is installed and usable, where it is, and why it is not when it
-// is not. A tool the lockfile does not pin has nothing to look for.
-func (a *App) installState(e *lockfile.Tool, locked bool) (installed bool, dir string, damaged error) {
-	if !locked {
+// is not. A tool the lockfile does not pin — a nil entry — has nothing to
+// look for.
+func (a *App) installState(e *lockfile.Tool) (installed bool, dir string, damaged error) {
+	if e == nil {
 		return false, "", nil
 	}
 	art, ok := e.Artifact(a.Platform)
@@ -199,11 +200,11 @@ func (a *App) installState(e *lockfile.Tool, locked bool) (installed bool, dir s
 	}
 }
 
-// StatusHint is the sentence a report ends on: the command that would move it
+// Hint is the sentence a report ends on: the command that would move it
 // forward, or nothing when there is nothing to do. Which command it names is
 // decided by the states present, not by the first row: a stale pin has to be
 // locked before installing it means anything.
-func (s *Status) StatusHint() string {
+func (s *Status) Hint() string {
 	var stale, install bool
 	for _, t := range s.Tools {
 		switch t.State {
