@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   privilege block will not ask for — the target is copied instead.
 
 ### Added
+- `block status`: one line per tool saying what `block.toml` asks for, what
+  `block.lock` pins, whether that version is installed for this machine, and
+  what to do about the difference — `ok`, `missing`, `damaged` or `stale`. It
+  reports and nothing else: no resolution, no network, no download, no
+  install, no shims, no lockfile, so it answers the same way with the network
+  unplugged. Exit 0 when every tool is ok, 2 when something needs doing, 1 on
+  error. `--json` prints the same report as one object, every key always
+  present, for CI and other tools.
 - Four tools in the registry, 51 now: `grandine` (Rust Ethereum consensus
   client), `nethermind` (.NET Ethereum execution client), `ethereal`
   (command-line Ethereum client, from the author of `ethdo`) and `heimdall`
