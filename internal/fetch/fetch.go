@@ -86,20 +86,9 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL, want string) (path, sha str
 	if err := CheckURL(rawURL); err != nil {
 		return "", "", false, err
 	}
-	sha, fresh, err := f.download(ctx, rawURL)
+	sha, err = f.download(ctx, rawURL, want)
 	if err != nil {
 		return "", "", false, err
-	}
-	if want != "" && sha != want {
-		// The mismatching bytes are removed from the cache, and every blob
-		// that was already there is left exactly as it was: a bad download
-		// must not cost an artifact that was already verified — neither the
-		// one the lockfile names nor another tool's, which is what the
-		// download hashed to when fresh is false.
-		if fresh {
-			_ = os.Remove(f.Path(sha))
-		}
-		return "", "", false, &ChecksumError{URL: rawURL, Want: want, Got: sha}
 	}
 	return f.Path(sha), sha, false, nil
 }
@@ -128,16 +117,19 @@ func (f *Fetcher) verifyCached(want string) (bool, error) {
 }
 
 // download fetches rawURL into the cache under its digest and reports that
-// digest, plus whether the blob is new to the cache: a download whose bytes
-// were already cached under the same digest replaces nothing.
-func (f *Fetcher) download(ctx context.Context, rawURL string) (sha string, fresh bool, err error) {
+// digest. With want set, bytes that hash to anything else never reach the
+// cache: the mismatch is decided on the temporary file, so nothing is
+// published and then withdrawn, and a blob another fetch is verifying at the
+// same moment cannot disappear under it. A download whose bytes are already
+// cached under the same digest replaces nothing.
+func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, error) {
 	const dirMode = 0o755
 	if err := os.MkdirAll(filepath.Join(f.Dir, "sha256"), dirMode); err != nil {
-		return "", false, err
+		return "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if f.UserAgent != "" {
 		req.Header.Set("User-Agent", f.UserAgent)
@@ -147,41 +139,48 @@ func (f *Fetcher) download(ctx context.Context, rawURL string) (sha string, fres
 		// Wrap rather than Errorf: a redirect this client refused already
 		// carries the code for why, and "the download failed" is the less
 		// useful of the two answers.
-		return "", false, diag.DownloadFailed.Wrap(fmt.Errorf("download %s: %w", rawURL, err))
+		return "", diag.DownloadFailed.Wrap(fmt.Errorf("download %s: %w", rawURL, err))
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only body
 	if resp.StatusCode != http.StatusOK {
-		return "", false, diag.DownloadFailed.Errorf("download %s: %s", rawURL, resp.Status)
+		return "", diag.DownloadFailed.Errorf("download %s: %s", rawURL, resp.Status)
 	}
 	tmp, err := os.CreateTemp(f.Dir, ".download-*")
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	tmpName := tmp.Name()
 	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpName) }
 	h := sha256.New()
 	if _, err := io.Copy(io.MultiWriter(tmp, h), resp.Body); err != nil {
 		cleanup()
-		return "", false, diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
+		return "", diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return "", false, err
+		return "", err
 	}
-	sha = hex.EncodeToString(h.Sum(nil))
+	sha := hex.EncodeToString(h.Sum(nil))
+	if want != "" && sha != want {
+		// Decided here, on the temporary file, so the cache is left exactly
+		// as it was: the blob the lockfile names, and any other tool's blob
+		// these bytes happen to equal, are untouched.
+		_ = os.Remove(tmpName)
+		return "", &ChecksumError{URL: rawURL, Want: want, Got: sha}
+	}
 	// The same bytes may already be cached under this digest — the artifact
 	// of another tool, or a previous download of this one. Content-addressed
 	// means they are the same file, so the existing one stays and the copy
 	// just made is discarded.
 	if st, err := os.Stat(f.Path(sha)); err == nil && st.Mode().IsRegular() {
 		_ = os.Remove(tmpName)
-		return sha, false, nil
+		return sha, nil
 	}
 	if err := os.Rename(tmpName, f.Path(sha)); err != nil {
 		_ = os.Remove(tmpName)
-		return "", false, err
+		return "", err
 	}
-	return sha, true, nil
+	return sha, nil
 }
 
 // CheckURL enforces block's transport policy: HTTPS everywhere, with plain

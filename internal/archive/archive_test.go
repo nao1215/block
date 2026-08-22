@@ -339,8 +339,8 @@ func FuzzSafePath(f *testing.F) {
 			t.Fatalf("safePath accepted the empty name stripName(%q, %d) left", name, strip)
 		}
 		rel, err := filepath.Rel(dst, target)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-			t.Fatalf("safePath(%q -> %q) = %q escapes %q (rel %q)", name, stripped, target, dst, rel)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			t.Fatalf("safePath(%q -> %q) = %q is not strictly inside %q (rel %q)", name, stripped, target, dst, rel)
 		}
 		if strings.ContainsAny(target, "\x00") {
 			t.Fatalf("safePath(%q) = %q carries a NUL", name, target)
