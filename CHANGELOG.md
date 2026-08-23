@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-23
+
+The release that fills in around `lock → sync → exec` without moving it: sync
+installs a toolchain a few tools at a time instead of one after another,
+`block which` says which executable exec runs, and the shell can complete
+block's commands, the project's tools and the registry's ecosystems. With it,
+the private-release and download-bound fixes that landed since 0.4.0.
+
 ### Fixed
 - A private repository's release asset could be resolved with `GITHUB_TOKEN`
   but never installed: the token went to the API and not to the download,
@@ -47,10 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `block which <command>`: prints the absolute path of the executable
   `block exec <command>` would run, resolved from `block.toml`, `block.lock`
   and the store — never from `PATH`, so a same-named binary elsewhere on the
-  machine does not change the answer. It fails exactly where exec would: a
-  missing or stale lockfile, a tool locked but not yet installed (BLK4004,
-  run `block sync`), and a command no locked tool provides (BLK5001). One
-  line on stdout, nothing downloaded, installed or resolved.
+  machine does not change the answer. It fails where exec would — a missing
+  or stale lockfile, a tool locked but not yet installed (BLK4004, run
+  `block sync`) — and, unlike exec, which falls through to `PATH`, it refuses
+  a command no locked tool provides (BLK5001). One line on stdout, nothing
+  downloaded, installed or resolved.
 - `block completion bash|zsh|fish|powershell` prints a shell completion script. Beyond
   commands and flags, completion is dynamic: `block lock <TAB>` offers the
   tools of `block.toml`, `block which <TAB>` the commands of `block.lock`,
@@ -390,7 +399,8 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/nao1215/block/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nao1215/block/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nao1215/block/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nao1215/block/compare/v0.1.0...v0.2.0
