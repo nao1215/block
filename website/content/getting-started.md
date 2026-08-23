@@ -88,7 +88,10 @@ $ forge test     # the version this project locked
 ```
 
 There is no shell hook and nothing is written to your startup files. See
-[Commands](/commands/#shims-the-tools-by-their-own-names).
+[Commands](/commands/#shims-the-tools-by-their-own-names). `block which forge`
+prints which executable that is, and `block completion` gives your shell
+tab-completion for the rest — see
+[Shell completion](/commands/#shell-completion).
 
 ## Tools the registry does not have yet
 

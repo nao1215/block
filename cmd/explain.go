@@ -26,7 +26,8 @@ to do about it.
 Every code is listed at https://nao1215.github.io/block/errors/. Like list,
 explain is offline and read-only: it needs no block.toml, no block.lock and no
 network.`,
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeCodes,
 		RunE: func(_ *cobra.Command, args []string) error {
 			e, ok := diag.Lookup(args[0])
 			if !ok {

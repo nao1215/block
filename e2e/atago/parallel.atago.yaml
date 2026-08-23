@@ -1,0 +1,474 @@
+# `block sync` downloads and installs several tools at once, a few at a time.
+# "At once" is not something a clock can prove, so the fake GitHub proves it
+# instead: a download routed through /gate/<key>/<n>/ is held until n
+# downloads are waiting at that gate together, and refused after a timeout
+# when they never come. A sync that downloaded one tool at a time could not
+# get past a gate of two — its first download would wait for company that
+# only arrives once it is done — so a sync that succeeds through one is a sync
+# whose downloads overlapped, on any machine, however fast. The gate's stats
+# endpoint then says how many were in flight together, which is also where
+# the limit shows. Run with: make e2e
+version: "1"
+
+suite:
+  name: block sync in parallel
+
+runners:
+  fakegh:
+    type: http
+    base_url: "${env:FAKEGH_URL}"
+    timeout: 10s
+
+scenarios:
+  # Three tools, three upstreams, one gate of three: every download had to be
+  # in flight at the same moment for any of them to finish.
+  - name: sync downloads the tools of a lockfile side by side
+    env: &t1
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: &three_tools |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+
+            [tools.cometbft]
+            version = "1.7"
+
+            [tools.cometbft.source]
+            type = "github_release"
+            repo = "cometbft/cometbft"
+            asset = "cometbft_{version}_{os}_{arch}.tar.gz"
+            bin = ["cometbft"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      # Every locked URL now passes through a gate that opens for three.
+      - run:
+          shell: true
+          command: perl -pi -e 's#/download/#/gate/three-tools/3/download/#' block.lock
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          # One line per tool in lockfile order, whatever order they finished.
+          stdout:
+            equals: |
+              cometbft  1.7.4   installed
+              foundry   1.7.4   installed
+              hermes    1.13.0  installed
+              shims: anvil, cast, chisel, cometbft, forge, hermes
+      - http:
+          runner: fakegh
+          method: GET
+          path: /gate/three-tools/stats
+      - assert:
+          status: 200
+          body:
+            json:
+              - path: "$.opened"
+                equals: true
+              - path: "$.arrived"
+                equals: 3
+              - path: "$.max_inflight"
+                equals: 3
+      - assert:
+          dir:
+            path: home/cache/sha256
+            count: 3
+      # Each install is complete and each tool runs — a parallel install is
+      # still an atomic one.
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.7.4 (fake)"
+      - run:
+          command: block exec hermes version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "hermes 1.13.0 (fake)"
+      - run:
+          command: block exec cometbft version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "cometbft 1.7.4 (fake)"
+      - run:
+          command: block status
+      - assert:
+          exit_code: 0
+
+  # Six tools and a gate of two: the downloads overlap, and never more than
+  # the few block allows at once are in flight together.
+  - name: sync keeps the number of downloads in flight small
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+
+            [tools.cometbft]
+            version = "1.7"
+
+            [tools.cometbft.source]
+            type = "github_release"
+            repo = "cometbft/cometbft"
+            asset = "cometbft_{version}_{os}_{arch}.tar.gz"
+            bin = ["cometbft"]
+
+            [tools.foo]
+            version = "1.2"
+
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+
+            [tools.zipper]
+            version = "3"
+
+            [tools.zipper.source]
+            type = "github_release"
+            repo = "example/zipper"
+            asset = "zipper_{version}_{os}_{arch}.zip"
+            bin = ["zipper"]
+
+            [tools.nested]
+            version = "1"
+
+            [tools.nested.source]
+            type = "github_release"
+            repo = "example/nested"
+            asset = "nested_{version}_{os}_{arch}.tar.gz"
+            bin = ["bin/nested"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: perl -pi -e 's#/download/#/gate/six-tools/2/download/#' block.lock
+      # A fresh store: the artifacts without an upstream digest were
+      # downloaded once to lock them, and a warm cache would download nothing.
+      - run:
+          command: block sync
+          env:
+            BLOCK_HOME: "${workdir}/fresh"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              cometbft  1.7.4   installed
+              foo       1.2.0   installed
+              foundry   1.7.4   installed
+              hermes    1.13.0  installed
+              nested    1.0.0   installed
+              zipper    3.0.0   installed
+              shims: anvil, cast, chisel, cometbft, foo, forge, hermes, nested, zipper
+      - http:
+          runner: fakegh
+          method: GET
+          path: /gate/six-tools/stats
+      - assert:
+          status: 200
+          body:
+            json:
+              - path: "$.opened"
+                equals: true
+              - path: "$.arrived"
+                equals: 6
+              - path: "$.max_inflight"
+                gte: 2
+              - path: "$.max_inflight"
+                lte: 4
+      - assert:
+          dir:
+            path: fresh/tools
+            count: 6
+      - run:
+          command: block exec nested
+          env:
+            BLOCK_HOME: "${workdir}/fresh"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "nested 1.0.0 (fake)"
+
+  # One artifact that cannot be had fails the whole sync with that artifact's
+  # error. The other download is parked at a gate of three that one download
+  # can never fill — so a sync that did not stop it would sit there for the
+  # gate's ten-second timeout and then report the gate's refusal instead.
+  - name: one failed download stops the rest and is the error reported
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *three_tools
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: >-
+            perl -pi -e 's#/download/#/gate/one-fails/3/download/#' block.lock &&
+            perl -pi -e 's#/gate/one-fails/3/download/foundry-rs/#/download/foundry-rs/#' block.lock &&
+            perl -pi -e 's#foundry_v1\.7\.4_${env:BLOCK_ASSET_PLATFORM}\.tar\.gz#foundry_v1.7.4_gone.tar.gz#' block.lock
+      - run:
+          command: block sync
+          timeout: 8s
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK3001: foundry: download ${env:FAKEGH_URL}/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_gone.tar.gz: 404 Not Found\n"
+      # Nothing was installed and nothing was published to the cache: the
+      # downloads that were stopped left no partial blob behind, and no
+      # temporary file either.
+      - assert:
+          dir:
+            path: home/tools
+            exists: false
+      - assert:
+          dir:
+            path: home/cache/sha256
+            count: 0
+      - assert:
+          dir:
+            path: home/cache
+            count: 1
+      # The gate never opened: how many of the two stopped downloads had
+      # reached it before the cancellation depends on the race, so that is
+      # not asserted beyond its bound.
+      - http:
+          runner: fakegh
+          method: GET
+          path: /gate/one-fails/stats
+      - assert:
+          status: 200
+          body:
+            json:
+              - path: "$.opened"
+                equals: false
+              - path: "$.arrived"
+                lte: 2
+
+  # A private asset beside public ones: the private one is had from the API
+  # with the token, through a redirect to a signed URL that refuses a request
+  # still carrying it; the public ones are had from where block.lock says,
+  # without it. Running them together changes nothing about where the token
+  # goes.
+  - name: private and public artifacts sync together
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      GITHUB_TOKEN: fakegh-secret-token
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.secret]
+            version = "1"
+
+            [tools.secret.source]
+            type = "github_release"
+            repo = "example/secret"
+            asset = "secret_{version}_{os}_{arch}.tar.gz"
+            bin = ["secret"]
+
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.cometbft]
+            version = "1.7"
+
+            [tools.cometbft.source]
+            type = "github_release"
+            repo = "cometbft/cometbft"
+            asset = "cometbft_{version}_{os}_{arch}.tar.gz"
+            bin = ["cometbft"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - 'api_url = "${env:FAKEGH_URL}/repos/example/secret/releases/assets/'
+      # The public downloads go through a gate of two; the private one goes
+      # through the API, which is how block.lock says to fetch it.
+      - run:
+          shell: true
+          command: perl -pi -e 's#^url = "${env:FAKEGH_URL}/download/(foundry-rs|cometbft)/#url = "${env:FAKEGH_URL}/gate/mixed/2/download/$1/#' block.lock
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              cometbft  1.7.4  installed
+              foundry   1.7.4  installed
+              secret    1.0.0  installed
+              shims: anvil, cast, chisel, cometbft, forge, secret
+      - http:
+          runner: fakegh
+          method: GET
+          path: /gate/mixed/stats
+      - assert:
+          status: 200
+          body:
+            json:
+              - path: "$.opened"
+                equals: true
+              - path: "$.arrived"
+                equals: 2
+      - run:
+          command: block exec secret
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "secret 1.0.0 (fake)"
+      - run:
+          command: block exec forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "forge 1.7.4 (fake)"
+
+  # A tool already in the store beside two that are not: the cached one is
+  # reported as such and downloads nothing, and the other two still go
+  # together.
+  - name: a sync with a cache hit still downloads the rest side by side
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      - fixture:
+          file: block.toml
+          content: *three_tools
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: perl -pi -e 's#/download/#/gate/warm/2/download/#' block.lock
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              cometbft  1.7.4   installed
+              foundry   1.7.4   cached
+              hermes    1.13.0  installed
+              shims: cometbft, hermes
+      - http:
+          runner: fakegh
+          method: GET
+          path: /gate/warm/stats
+      - assert:
+          status: 200
+          body:
+            json:
+              - path: "$.opened"
+                equals: true
+              - path: "$.arrived"
+                equals: 2
+      - assert:
+          dir:
+            path: home/cache/sha256
+            count: 3
+      # And with everything cached, a second sync is offline and touches
+      # nothing, as it always was.
+      - run:
+          command: block sync
+          env:
+            BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              cometbft  1.7.4   cached
+              foundry   1.7.4   cached
+              hermes    1.13.0  cached
+          changes:
+            created: []
+            modified: []
+            deleted: []

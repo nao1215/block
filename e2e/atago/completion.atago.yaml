@@ -1,0 +1,261 @@
+# `block completion <shell>` prints the script that lets a shell complete
+# block's commands, flags and — inside a project — its tools and commands. It
+# is cobra's own generator; what is checked here is that each shell gets a
+# script, that the script is the real thing, and that completing stays
+# offline. Run with: make e2e
+version: "1"
+
+suite:
+  name: block completion
+
+scenarios:
+  - name: completion prints a bash script
+    steps:
+      - run:
+          command: block completion bash
+      - assert:
+          exit_code: 0
+          stderr:
+            equals: ""
+          stdout:
+            line: 1
+            equals: "# bash completion V2 for block                                -*- shell-script -*-"
+          changes:
+            created: []
+      - assert:
+          stdout:
+            contains:
+              - "__block_init_completion"
+              - "__block_get_completion_results"
+              - "complete -o default -F __start_block block"
+
+  - name: completion prints a zsh script
+    steps:
+      - run:
+          command: block completion zsh
+      - assert:
+          exit_code: 0
+          stderr:
+            equals: ""
+          stdout:
+            line: 1
+            equals: "#compdef block"
+      - assert:
+          stdout:
+            contains:
+              - "_block()"
+              - "__block_debug"
+              - "compdef _block block"
+
+  - name: completion prints a fish script
+    steps:
+      - run:
+          command: block completion fish
+      - assert:
+          exit_code: 0
+          stderr:
+            equals: ""
+          stdout:
+            line: 1
+            equals: "# fish completion for block                                -*- shell-script -*-"
+      - assert:
+          stdout:
+            contains:
+              - "function __block_perform_completion"
+              - "complete -c block"
+
+  # The scripts all call back into the same hidden command, and that is
+  # where the candidates come from.
+  - name: every script asks block itself for the candidates
+    steps:
+      - run:
+          shell: true
+          command: block completion bash | grep -c '__complete'
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^[1-9]'
+      - run:
+          shell: true
+          command: block completion zsh | grep -c '__complete'
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^[1-9]'
+      - run:
+          shell: true
+          command: block completion fish | grep -c '__complete'
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^[1-9]'
+
+  - name: completion refuses a shell it has no script for
+    steps:
+      - run:
+          command: block completion tcsh
+      - assert:
+          exit_code: 1
+          stdout:
+            equals: ""
+          stderr:
+            equals: 'block: no completion script for "tcsh": choose bash, zsh, fish or powershell
+
+'
+      - run:
+          command: block completion
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: completion needs a shell: bash, zsh, fish or powershell\n"
+      - run:
+          command: block --help
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "block completion bash|zsh|fish  prints a shell completion script"
+              - "completion  Print a shell completion script for bash, zsh, fish or PowerShell"
+
+  # What the scripts complete: the subcommands and their flags, the
+  # ecosystems and error codes built into the binary, and — in a project —
+  # the tools block.toml declares and the commands block.lock provides.
+  # Nothing here reaches the network: the API is unreachable throughout.
+  - name: completing offers commands, flags, ecosystems and codes offline
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+    steps:
+      - run:
+          command: block __complete ""
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "lock\tResolve block.toml into block.lock"
+              - "sync\tInstall the toolchain pinned in block.lock"
+              - "exec\tRun a command with the installed toolchain on PATH"
+              - "which\tPrint the executable exec would run for a command"
+              - "status\tShow what block.toml, block.lock and the store say"
+              - "completion\tPrint a shell completion script"
+      - run:
+          command: block __complete status --
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "--json"
+      - run:
+          command: block __complete lock --
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "--check"
+      - run:
+          command: block __complete list ""
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "ethereum"
+              - "cosmos"
+      - run:
+          command: block __complete explain BLK10
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "BLK1003\tblock.lock not found"
+      # Outside a project there is nothing to offer and nothing to complain
+      # about.
+      - run:
+          command: block __complete which ""
+      - assert:
+          exit_code: 0
+          stdout:
+            line: 1
+            equals: ":4"
+
+  - name: completing a tool or a command reads the project and installs nothing
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+      # The tools to lock come from block.toml, before there is a lockfile.
+      - run:
+          command: block __complete lock ""
+          env:
+            BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              foundry
+              hermes
+              :4
+          changes:
+            created: []
+      # A tool already named is not offered again.
+      - run:
+          command: block __complete lock foundry ""
+          env:
+            BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              hermes
+              :4
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      # The commands come from block.lock, installed or not, and asking for
+      # them installs nothing.
+      - run:
+          command: block __complete which ""
+          env:
+            BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              anvil
+              cast
+              chisel
+              forge
+              hermes
+              :4
+          changes:
+            created: []
+      - assert:
+          dir:
+            path: home
+            exists: false

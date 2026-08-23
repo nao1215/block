@@ -277,8 +277,9 @@ block deliberately does not:
 - manage wallets, keys, validators, staking or nodes;
 - generate Docker Compose files or manage Solidity library dependencies;
 - run scripts from the registry;
-- offer shell integration, `block env`, `block add`/`remove`, or any command
-  that resolves or installs implicitly;
+- offer shell hooks or `eval`-style integration, `block env`, `block add`/
+  `remove`, or any command that resolves or installs implicitly — a completion
+  script is the whole of what block gives a shell;
 - grow into the tools beside the toolchain — a block explorer, a transaction
   tracer, a devnet manager, an RPC doctor, a terminal UI, a test framework.
   Each of those is somebody else's project, and every one of them would blur

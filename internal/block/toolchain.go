@@ -153,3 +153,30 @@ func (t *Toolchain) Command(name string, args []string) (*exec.Cmd, error) {
 	cmd.Env = append(os.Environ(), "PATH="+path)
 	return cmd, nil
 }
+
+// Which returns the absolute path of the executable `block exec name` runs:
+// the one the project's installed toolchain provides for that command name.
+// It is the same offline view exec and a shim take — block.toml, block.lock
+// and the store, checked against each other — so it refuses for the same
+// reasons they do: a stale or missing lock, a tool that is locked but not
+// synced. A command the toolchain does not provide is an error here even
+// though exec would fall through to PATH for it: the question which answers
+// is "what does block run for this", and for such a command the answer is
+// "nothing of block's".
+func (a *App) Which(name string) (string, error) {
+	t, err := a.Toolchain()
+	if err != nil {
+		return "", err
+	}
+	bin, ok := t.ResolveCommand(name)
+	if !ok {
+		return "", diag.CommandNotFound.Errorf("%s does not lock a tool providing the command %q", manifest.FileName, name)
+	}
+	// The store root comes from BLOCK_HOME, which nothing stops from being
+	// relative; what a script gets back is usable from any directory.
+	abs, err := filepath.Abs(bin)
+	if err != nil {
+		return "", err
+	}
+	return abs, nil
+}

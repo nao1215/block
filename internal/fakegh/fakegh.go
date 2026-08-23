@@ -15,6 +15,7 @@
 //
 //	/ratelimited/repos/...   403 with X-RateLimit-Remaining: 0
 //	/downgrade/<name>        302 to plain http on a host that is not loopback
+//	/gate/<key>/<n>/<route>  held until n requests wait together (see gate.go)
 //
 // Besides GitHub, the server plays a vendor download host at /blobs/<name>
 // for http-type recipes (modelled on go-ethereum's gethstore).
@@ -361,6 +362,11 @@ type Server struct {
 	// blobs caches generated archives by "owner/name/tag/asset".
 	mu    sync.Mutex
 	blobs map[string][]byte
+	// gates are the barriers of [gate], by key.
+	gates map[string]*gate
+	// GateTimeout is how long a gated request waits before it is refused;
+	// zero means [DefaultGateTimeout].
+	GateTimeout time.Duration
 }
 
 // New builds a Server for the given repositories.
@@ -381,6 +387,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	snapshot := 2
 	if rest, ok := strings.CutPrefix(path, "/t1"); ok {
 		snapshot, path = 1, rest
+	}
+	if rest, ok := strings.CutPrefix(path, "/gate/"); ok {
+		s.serveGate(w, r, rest)
+		return
 	}
 	if rest, ok := strings.CutPrefix(path, "/ratelimited"); ok {
 		w.Header().Set("X-RateLimit-Remaining", "0")
