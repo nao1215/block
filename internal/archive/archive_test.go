@@ -732,16 +732,14 @@ func TestExtractRefusesAZipLinkTargetLongerThanItReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = Extract(src, dst, "a.zip", 0)
-	if runtime.GOOS == "windows" {
-		// No symlinks without a privilege, and the target is not a file to
-		// copy: refused for that reason, never for its length.
-		if err == nil || strings.Contains(err.Error(), "longer than") {
-			t.Fatalf("Extract() = %v", err)
-		}
+	if err != nil && runtime.GOOS == "windows" && !strings.Contains(err.Error(), "longer than") {
+		// Without the symlink privilege the link cannot be made, and the
+		// target is not a file to copy in its place: refused for that
+		// reason, never for its length.
 		return
 	}
 	if err != nil {
-		t.Fatalf("Extract() with a target exactly at the limit = %v", err)
+		t.Fatalf("Extract() with a long target within the limit = %v", err)
 	}
 	if got, err := os.Readlink(filepath.Join(dst, "Runner")); err != nil || got != atLimit {
 		t.Errorf("Readlink() = %q, %v", got, err)

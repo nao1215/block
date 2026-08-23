@@ -550,7 +550,7 @@ scenarios:
           file: block.toml
           content: |
             [tools]
-            foundry = "1.7"
+            cometbft = "1.7"
       - run:
           command: block lock
       - assert:
@@ -559,13 +559,13 @@ scenarios:
       # the size is what is refused, long before the digest would be.
       - run:
           shell: true
-          command: perl -pi -e 's#/download/foundry-rs/foundry/v1.7.4/foundry_v1.7.4_#/download/example/huge/v1.0.0/huge_1.0.0_#' block.lock
+          command: perl -pi -e 's#/download/cometbft/cometbft/v1.7.4/cometbft_1.7.4_#/download/example/huge/v1.0.0/huge_1.0.0_#' block.lock
       - run:
           command: block sync
       - assert:
           exit_code: 1
           stderr:
-            equals: "block: BLK3004: foundry: refusing to download ${env:FAKEGH_URL}/download/example/huge/v1.0.0/huge_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: it is larger than the 2147483648 bytes block transfers\n"
+            equals: "block: BLK3004: cometbft: refusing to download ${env:FAKEGH_URL}/download/example/huge/v1.0.0/huge_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: it is larger than the 2147483648 bytes block transfers\n"
       - assert:
           dir:
             path: home/cache/sha256

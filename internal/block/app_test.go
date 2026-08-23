@@ -1354,12 +1354,16 @@ func TestLockRecordsTheAPIURLOfAPrivateAssetOnly(t *testing.T) {
 	if h.stderr.Len() != 0 {
 		t.Errorf("stderr = %q, want nothing downloaded for a digest the API published", h.stderr)
 	}
-	h.reset()
-	if err := h.Sync(ctx); err != nil {
-		t.Fatalf("Sync() with the token = %v", err)
-	}
-	if !strings.Contains(h.stdout.String(), "secret  1.0.0  installed") {
-		t.Errorf("stdout = %q", h.stdout)
+	// The fake tools are shell scripts, which Windows cannot install as
+	// executables; the E2E suite covers the install there.
+	if runtime.GOOS != "windows" {
+		h.reset()
+		if err := h.Sync(ctx); err != nil {
+			t.Fatalf("Sync() with the token = %v", err)
+		}
+		if !strings.Contains(h.stdout.String(), "secret  1.0.0  installed") {
+			t.Errorf("stdout = %q", h.stdout)
+		}
 	}
 
 	// The same token, a public repository: nothing new in the lockfile.
@@ -1372,8 +1376,10 @@ func TestLockRecordsTheAPIURLOfAPrivateAssetOnly(t *testing.T) {
 	if strings.Contains(h2.lockText(t), "api_url") {
 		t.Errorf("lockfile of a public repository = %s, carries an api_url", h2.lockText(t))
 	}
-	if err := h2.Sync(ctx); err != nil {
-		t.Fatalf("Sync() of a public repository with a token = %v", err)
+	if runtime.GOOS != "windows" {
+		if err := h2.Sync(ctx); err != nil {
+			t.Fatalf("Sync() of a public repository with a token = %v", err)
+		}
 	}
 }
 
