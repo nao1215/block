@@ -348,3 +348,130 @@ func TestResolveChannelRefusesWhatCannotBePinned(t *testing.T) {
 		}
 	})
 }
+
+// A constraint that names one release of a channel is resolved by looking the
+// tag up, with no dereference in between: the whole point is that nothing
+// about it can move.
+func TestResolveChannelRelease(t *testing.T) {
+	t.Parallel()
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	s := src()
+	s.Channels = map[string]recipe.Channel{"nightly": {Asset: "t_nightly_{os}_{arch}.tar.gz"}}
+	tag := "nightly-" + sha
+	// A nightly is flagged a pre-release upstream, and is asked for by name
+	// here, so the flag is not an objection.
+	f := &fake{tags: []string{"nightly"}, releases: map[string]*github.Release{tag: rel(tag, true, "t_nightly_linux_amd64.tar.gz")}}
+	res, err := ResolveChannelConstraint(context.Background(), f, s, version.MustParseConstraint(tag))
+	if err != nil {
+		t.Fatal(err)
+	}
+	switch {
+	case res.Tag != tag:
+		t.Errorf("Tag = %q, want %q", res.Tag, tag)
+	case res.Channel != "nightly":
+		t.Errorf("Channel = %q", res.Channel)
+	case res.Identity() != tag:
+		t.Errorf("Identity() = %q, want %q", res.Identity(), tag)
+	// The commit comes out of the tag, so no second request is made for it.
+	case res.Commit != sha:
+		t.Errorf("Commit = %q, want %q", res.Commit, sha)
+	}
+	if strings.Join(f.lookups, ",") != tag {
+		t.Errorf("lookups = %v, want the tag alone", f.lookups)
+	}
+	// The asset is the channel's, not a version's: a channel release has no
+	// version to render.
+	a, err := ArtifactFor(res, s, platform.Platform{OS: "linux", Arch: "amd64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(a.URL, "/t_nightly_linux_amd64.tar.gz") {
+		t.Errorf("URL = %q", a.URL)
+	}
+}
+
+// The recipe has the final say on what a constraint names: a release line an
+// upstream happens to call "dev-1234567" is that line, not one release of a
+// line called "dev".
+func TestResolveChannelConstraintPrefersADeclaredChannel(t *testing.T) {
+	t.Parallel()
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	s := src()
+	s.Channels = map[string]recipe.Channel{"dev-1234567": {Asset: "t_dev_{os}_{arch}.tar.gz"}}
+	tag := "dev-1234567-" + sha
+	f := &fake{tags: []string{"dev-1234567"}, releases: map[string]*github.Release{tag: rel(tag, true, "t_dev_linux_amd64.tar.gz")}}
+	res, err := ResolveChannelConstraint(context.Background(), f, s, version.MustParseConstraint("dev-1234567"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// It was dereferenced, which is what a moving tag gets and a named
+	// release does not.
+	if res.Tag != tag || res.Channel != "dev-1234567" {
+		t.Fatalf("resolution = %+v, want the moving tag dereferenced", res)
+	}
+}
+
+func TestResolveChannelReleaseRefusals(t *testing.T) {
+	t.Parallel()
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	s := src()
+	s.Channels = map[string]recipe.Channel{"nightly": {Asset: "t_nightly_{os}_{arch}.tar.gz"}}
+
+	t.Run("a line the recipe does not declare", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{releases: map[string]*github.Release{}}
+		_, err := ResolveChannelConstraint(context.Background(), f, s, version.MustParseConstraint("canary-"+sha))
+		if diag.Of(err) != diag.NoSuchChannel || !strings.Contains(err.Error(), "it has nightly") {
+			t.Fatalf("err = %v, want %s naming the channels there are", err, diag.NoSuchChannel)
+		}
+	})
+	t.Run("a release the upstream does not publish", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{releases: map[string]*github.Release{}}
+		_, err := ResolveChannelConstraint(context.Background(), f, s, version.MustParseConstraint("nightly-"+sha))
+		if diag.Of(err) != diag.UpstreamNotFound || !strings.Contains(err.Error(), "nightly-"+sha) {
+			t.Fatalf("err = %v, want %s naming the tag", err, diag.UpstreamNotFound)
+		}
+	})
+	t.Run("a draft", func(t *testing.T) {
+		t.Parallel()
+		r := rel("nightly-"+sha, true, "t_nightly_linux_amd64.tar.gz")
+		r.Draft = true
+		f := &fake{releases: map[string]*github.Release{r.TagName: r}}
+		_, err := ResolveChannelConstraint(context.Background(), f, s, version.MustParseConstraint("nightly-"+sha))
+		if diag.Of(err) != diag.NoPublishedRelease || !strings.Contains(err.Error(), "draft") {
+			t.Fatalf("err = %v, want %s about a draft", err, diag.NoPublishedRelease)
+		}
+	})
+	t.Run("an upstream error is not a refusal", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{relErr: errors.New("boom")}
+		_, err := ResolveChannelConstraint(context.Background(), f, s, version.MustParseConstraint("nightly-"+sha))
+		if err == nil || diag.Of(err) == diag.UpstreamNotFound || !strings.Contains(err.Error(), "boom") {
+			t.Fatalf("err = %v, want a plain failure", err)
+		}
+	})
+}
+
+// A name that is neither a declared channel nor one release of one is the
+// refusal an unknown channel has always earned, whichever entry point asked.
+func TestResolveChannelConstraintRefusesAnUndeclaredLine(t *testing.T) {
+	t.Parallel()
+	f := &fake{}
+	t.Run("a source with channels", func(t *testing.T) {
+		t.Parallel()
+		s := src()
+		s.Channels = map[string]recipe.Channel{"nightly": {Asset: "t_nightly_{os}_{arch}.tar.gz"}}
+		_, err := ResolveChannelConstraint(context.Background(), f, s, version.MustParseConstraint("canary"))
+		if diag.Of(err) != diag.NoSuchChannel || !strings.Contains(err.Error(), "it has nightly") {
+			t.Fatalf("err = %v, want %s naming the channels there are", err, diag.NoSuchChannel)
+		}
+	})
+	t.Run("a source with none", func(t *testing.T) {
+		t.Parallel()
+		_, err := ResolveChannelConstraint(context.Background(), f, src(), version.MustParseConstraint("nightly"))
+		if diag.Of(err) != diag.NoSuchChannel || !strings.Contains(err.Error(), "ask for a version instead") {
+			t.Fatalf("err = %v, want %s pointing at versions", err, diag.NoSuchChannel)
+		}
+	})
+}

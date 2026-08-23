@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/nao1215/block/internal/diag"
+	"github.com/nao1215/block/internal/fserr"
 )
 
 // ChecksumError reports a digest mismatch between lockfile and download.
@@ -120,6 +121,18 @@ func (f *Fetcher) tooLarge(rawURL string) error {
 	return diag.DownloadTooLarge.Errorf("refusing to download %s: it is larger than the %d bytes block transfers", rawURL, f.MaxBytes)
 }
 
+// cacheErr names a failure to write the download cache. A filesystem with no
+// room left is its own diagnostic: "the store could not be written" would send
+// the reader to check the permissions of a directory whose permissions are
+// fine, and an artifact is written twice on its way in — once as a temporary
+// file, once under its digest — so the cache is where a tight disk shows first.
+func (f *Fetcher) cacheErr(err error) error {
+	if fserr.OutOfSpace(err) {
+		return diag.DiskFull.Errorf("cache %s: there is no room left on the disk, or a quota is exhausted: %w", f.Dir, err)
+	}
+	return diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
+}
+
 // Path returns where a blob with the given digest lives in the cache.
 func (f *Fetcher) Path(sha string) string {
 	return filepath.Join(f.Dir, "sha256", sha)
@@ -182,7 +195,7 @@ func (f *Fetcher) verifyCached(want string) (bool, error) {
 func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, error) {
 	const dirMode = 0o755
 	if err := os.MkdirAll(filepath.Join(f.Dir, "sha256"), dirMode); err != nil {
-		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
+		return "", f.cacheErr(err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -218,7 +231,7 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	}
 	tmp, err := os.CreateTemp(f.Dir, downloadPrefix+"*")
 	if err != nil {
-		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
+		return "", f.cacheErr(err)
 	}
 	tmpName := tmp.Name()
 	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpName) }
@@ -228,6 +241,13 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(resp.Body, f.MaxBytes+1))
 	if err != nil {
 		cleanup()
+		// A copy has two ends, and only one of them is the network: bytes
+		// that arrived and had nowhere to go are a full disk, not a failed
+		// transfer, and saying "the download failed" would send the reader
+		// to look at their proxy.
+		if fserr.OutOfSpace(err) {
+			return "", f.cacheErr(err)
+		}
 		return "", diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
 	}
 	if n > f.MaxBytes {
@@ -236,7 +256,7 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
+		return "", f.cacheErr(err)
 	}
 	sha := hex.EncodeToString(h.Sum(nil))
 	if want != "" && sha != want {
@@ -256,7 +276,7 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	}
 	if err := os.Rename(tmpName, f.Path(sha)); err != nil {
 		_ = os.Remove(tmpName)
-		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
+		return "", f.cacheErr(err)
 	}
 	return sha, nil
 }

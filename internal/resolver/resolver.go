@@ -8,7 +8,9 @@
 //
 // A channel constraint takes a different road, because a channel is a tag that
 // moves: it is dereferenced to the commit it points at, and the release tagged
-// "<channel>-<commit>" is what gets pinned. See [ResolveChannel].
+// "<channel>-<commit>" is what gets pinned. A constraint that names such a
+// release outright takes the same road with the dereference left out. See
+// [ResolveChannelConstraint].
 //
 // Either type additionally resolves the tagged commit when its template
 // carries {commit}.
@@ -179,11 +181,7 @@ func resolveCommit(ctx context.Context, rel Releases, src recipe.Source, res *Re
 // whose contents will change.
 func ResolveChannel(ctx context.Context, rel Releases, src recipe.Source, channel string) (Resolution, error) {
 	if _, ok := src.Channel(channel); !ok {
-		declared := src.ChannelNames()
-		if len(declared) == 0 {
-			return Resolution{}, diag.NoSuchChannel.Errorf("%s publishes no channel %q; ask for a version instead", src.Repo, channel)
-		}
-		return Resolution{}, diag.NoSuchChannel.Errorf("%s publishes no channel %q (it has %s)", src.Repo, channel, strings.Join(declared, ", "))
+		return Resolution{}, noSuchChannel(src, channel)
 	}
 	commit, err := rel.Commit(ctx, src.Repo, channel)
 	if err != nil {
@@ -203,6 +201,75 @@ func ResolveChannel(ctx context.Context, rel Releases, src recipe.Source, channe
 		return Resolution{}, diag.ChannelNotPinnable.Errorf("release %s of %s is a draft", res.Tag, src.Repo)
 	}
 	res.Release = r
+	return res, nil
+}
+
+// noSuchChannel is the refusal a channel name the recipe does not declare
+// earns, naming the ones it does. Both roads into a channel report it, and
+// they have to report it the same way.
+func noSuchChannel(src recipe.Source, channel string) error {
+	declared := src.ChannelNames()
+	if len(declared) == 0 {
+		return diag.NoSuchChannel.Errorf("%s publishes no channel %q; ask for a version instead", src.Repo, channel)
+	}
+	return diag.NoSuchChannel.Errorf("%s publishes no channel %q (it has %s)", src.Repo, channel, strings.Join(declared, ", "))
+}
+
+// ResolveChannelConstraint pins what a channel constraint asks for, whichever
+// of the two shapes it has: the release the moving tag points at right now, or
+// the one release the constraint names in full.
+//
+// The recipe has the final say on which it is. A source is free to call a
+// moving release line anything, "nightly-2" included, so a constraint that
+// spells a declared channel whole is that channel — the shape of the string is
+// only consulted for a name no channel claims.
+func ResolveChannelConstraint(ctx context.Context, rel Releases, src recipe.Source, c version.Constraint) (Resolution, error) {
+	if _, ok := src.Channel(c.String()); ok {
+		return ResolveChannel(ctx, rel, src, c.String())
+	}
+	if tag := c.ChannelRelease(); tag != "" {
+		return ResolveChannelRelease(ctx, rel, src, c.Channel(), tag)
+	}
+	return ResolveChannel(ctx, rel, src, c.Channel())
+}
+
+// ResolveChannelRelease pins one release of a channel by the tag the upstream
+// published it under.
+//
+// It is the second half of [ResolveChannel] on its own. A channel is pinned by
+// dereferencing its moving tag and taking the release published for the commit
+// beneath it; a constraint such as "nightly-<commit>" already names that
+// release, so there is nothing to dereference and nothing that could move. One
+// API call, and re-running lock writes the same pin back for as long as the
+// upstream keeps the release.
+//
+// The channel still has to be one the recipe declares, because the asset names
+// come from it: a nightly's archive is called after the line, not after a
+// version. A pre-release flag is not an objection here — a nightly is a
+// pre-release by definition, and this is the tag the project asked for by
+// name — but a draft is, since its assets are not published at all.
+func ResolveChannelRelease(ctx context.Context, rel Releases, src recipe.Source, channel, tag string) (Resolution, error) {
+	if _, ok := src.Channel(channel); !ok {
+		return Resolution{}, noSuchChannel(src, channel)
+	}
+	r, err := rel.ReleaseByTag(ctx, src.Repo, tag)
+	if errors.Is(err, github.ErrNotFound) {
+		return Resolution{}, diag.UpstreamNotFound.Errorf(
+			"%s publishes no release %q; %q names one release of the %q channel, and the upstream has to carry that tag",
+			src.Repo, tag, tag, channel)
+	}
+	if err != nil {
+		return Resolution{}, err
+	}
+	if r.Draft {
+		return Resolution{}, diag.NoPublishedRelease.Errorf("release %s of %s is a draft, so it publishes no assets", tag, src.Repo)
+	}
+	res := Resolution{Channel: channel, Tag: tag, Release: r}
+	// The commit is in the tag, so a {commit} template costs no lookup. The
+	// channel may carry hyphens of its own, so the whole of it is cut.
+	if sha, ok := strings.CutPrefix(tag, channel+"-"); ok && sha != "" {
+		res.Commit = sha
+	}
 	return res, nil
 }
 

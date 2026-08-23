@@ -176,6 +176,165 @@ scenarios:
           changes:
             modified: []
 
+  # Foundry publishes each night's build as a "nightly-<commit>" tag of its
+  # own, whether or not "nightly" is retagged onto the newest of them. A
+  # project that wants a particular one — or a pin no upstream retagging can
+  # reach — names that tag in block.toml.
+  - name: a named release of a channel locks to itself and never moves
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *nightly
+      # Learn a tag the upstream really publishes, the way a person reads one
+      # off the releases page.
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: |
+            tag=$(grep -oE 'nightly-[0-9a-f]{40}' block.lock | head -1)
+            sed "s/version = \"nightly\"/version = \"$tag\"/" block.toml > block.toml.new
+            mv block.toml.new block.toml
+            rm block.lock
+            block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^foundry  locked nightly-[0-9a-f]{40}\n'
+      # What was asked for and what was resolved are now the same tag, and the
+      # asset is still the channel's rather than a version's.
+      - run:
+          shell: true
+          command: |
+            tag=$(grep -oE 'nightly-[0-9a-f]{40}' block.lock | head -1)
+            grep -c "\"$tag\"" block.lock
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "2\n"
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - "/foundry_nightly_${env:BLOCK_ASSET_PLATFORM}.tar.gz"
+              - "sha256 = "
+      # The night moves on. A floating "nightly" would follow it; this pin is
+      # the tag itself, so nothing upstream can move it.
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}" block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "block.lock is up to date"
+          changes:
+            modified: []
+      - run:
+          shell: true
+          command: BLOCK_GITHUB_API_URL="${env:FAKEGH_URL}" block lock --check
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "(up-to-date)"
+      # And it installs and runs like any other pin.
+      - run:
+          shell: true
+          command: block sync && block exec forge --version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "(fake)"
+
+  # A named release is only as good as its tag: one the upstream does not
+  # carry is a missing release, and one whose line the recipe never declared
+  # is the same refusal an unknown channel earns.
+  - name: a named release the upstream does not publish is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "nightly-0000000000000000000000000000000000000000"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.foundry.source.channels.nightly]
+            asset = "foundry_nightly_{os}_{arch}.tar.gz"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK2003: foundry: foundry-rs/foundry publishes no release \"nightly-0000000000000000000000000000000000000000\"; \"nightly-0000000000000000000000000000000000000000\" names one release of the \"nightly\" channel, and the upstream has to carry that tag\n"
+      - assert:
+          file:
+            path: block.lock
+            exists: false
+
+  - name: a named release of a line the recipe does not declare is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "canary-0000000000000000000000000000000000000000"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+
+            [tools.foundry.source.channels.nightly]
+            asset = "foundry_nightly_{os}_{arch}.tar.gz"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK2009: foundry: foundry-rs/foundry publishes no channel \"canary\" (it has nightly)\n"
+
+  # A constraint that is neither a version nor a shape a channel can have is
+  # refused by the manifest, offline, before anything is resolved — and the
+  # refusal says how a named release is written.
+  - name: a channel name too long to be one names the shape that would work
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "nightly-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge"]
+
+            [tools.foundry.source.channels.nightly]
+            asset = "foundry_nightly_{os}_{arch}.tar.gz"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "BLK1002"
+              - "keep it under 32 characters"
+              - "<channel>-<commit>"
+
   - name: a channel the source does not publish is refused by name
     env: *t1
     steps:

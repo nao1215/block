@@ -9,7 +9,7 @@ A code is `BLK` followed by four digits, and the thousands digit says what kind 
 | `BLK1xxx` | what was asked for — block.toml, block.lock, and the names typed on the command line | 11 |
 | `BLK2xxx` | resolving a version against an upstream, which only `block lock` ever does | 10 |
 | `BLK3xxx` | downloading an artifact and proving it is the one block.lock names | 4 |
-| `BLK4xxx` | installing into the store under `$BLOCK_HOME` | 5 |
+| `BLK4xxx` | installing into the store under `$BLOCK_HOME` | 6 |
 | `BLK5xxx` | running a command with the locked toolchain, through `block exec` or a shim | 4 |
 | `BLK6xxx` | a refusal on security grounds — block declining, rather than failing | 6 |
 | `BLK9xxx` | an internal error: a bug in block | 1 |
@@ -56,6 +56,7 @@ Look a code up from the terminal with `block explain BLK1001`, which prints this
 | [`BLK4003`](#blk4003--an-install-in-the-store-is-incomplete-or-damaged) | an install in the store is incomplete or damaged | v0.1.0 |
 | [`BLK4004`](#blk4004--a-locked-tool-is-not-installed) | a locked tool is not installed | v0.1.0 |
 | [`BLK4005`](#blk4005--the-store-could-not-be-written) | the store could not be written | v0.1.0 |
+| [`BLK4006`](#blk4006--the-disk-is-full-or-a-quota-is-exhausted) | the disk is full or a quota is exhausted | v0.6.0 |
 | [`BLK5001`](#blk5001--the-command-is-in-neither-the-toolchain-nor-path) | the command is in neither the toolchain nor PATH | v0.1.0 |
 | [`BLK5002`](#blk5002--the-command-could-not-be-started) | the command could not be started | v0.1.0 |
 | [`BLK5003`](#blk5003--shims-are-calling-each-other-in-a-loop) | shims are calling each other in a loop | v0.1.0 |
@@ -310,11 +311,19 @@ Exits 1. Since v0.1.0.
 
 ### BLK4005 — the store could not be written
 
-block could not create or replace a directory under $BLOCK_HOME. The store is a per-user directory; a shared or root-owned one, or a full disk, stops sync before anything is installed.
+block could not create or replace a directory under $BLOCK_HOME. The store is a per-user directory; a shared or root-owned one stops sync before anything is installed. Running out of room is told apart from this and reported as BLK4006.
 
-Fix: Check the permissions and free space on $BLOCK_HOME (~/.local/share/block by default, %LOCALAPPDATA%\block on Windows), or point BLOCK_HOME at a directory this user owns.
+Fix: Check the permissions and ownership of $BLOCK_HOME (~/.local/share/block by default, %LOCALAPPDATA%\block on Windows), or point BLOCK_HOME at a directory this user owns.
 
 Exits 1. Since v0.1.0.
+
+### BLK4006 — the disk is full or a quota is exhausted
+
+A write under $BLOCK_HOME could not be completed because the filesystem has no room left, or this user has reached a quota on it. It is reported while unpacking an artifact into the store and while writing a download into the cache, both of which can want considerably more room than the artifact itself. Nothing half-written is published: an install is built in a temporary directory and renamed into place only once it is complete, and an install already there and verifying is left untouched.
+
+Fix: Free space on the filesystem that holds $BLOCK_HOME (~/.local/share/block by default, %LOCALAPPDATA%\block on Windows), or have the quota raised, and run the command again. The cache under $BLOCK_HOME/cache can be deleted at any time: it is rebuilt from block.lock. Pointing BLOCK_HOME at a roomier filesystem works too, and on CI is often the shorter answer.
+
+Exits 1. Since v0.6.0.
 
 ## BLK5xxx — running a command with the locked toolchain, through `block exec` or a shim
 

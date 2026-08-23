@@ -327,6 +327,17 @@ func FuzzParseConstraint(f *testing.F) {
 		if c.IsZero() || c.String() != s {
 			t.Fatalf("ParseConstraint(%q) = %q", s, c)
 		}
+		if rel := c.ChannelRelease(); rel != "" {
+			// One release of a channel: it is already the tag, so it matches
+			// itself and nothing else on its line.
+			if rel != s || c.Channel() == s || !c.MatchesRelease(s) || c.MatchesRelease(s+"0") {
+				t.Fatalf("channel release %q matches the wrong releases", s)
+			}
+			if c.Matches(MustParse("1.0.0")) {
+				t.Fatalf("channel release %q matched a version", s)
+			}
+			return
+		}
 		if c.IsChannel() {
 			// A channel matches the tags of its own line and no version.
 			if c.Channel() != s || !c.MatchesRelease(s+"-abc") || c.MatchesRelease("other-abc") {
@@ -510,6 +521,131 @@ func TestValidateReleaseID(t *testing.T) {
 	for _, bad := range []string{"", "nightly/../etc", `nightly\x`, "nightly\x00", "nightly rc", strings.Repeat("n", 200)} {
 		if err := ValidateReleaseID(bad); err == nil {
 			t.Errorf("ValidateReleaseID(%q) accepted", bad)
+		}
+	}
+}
+
+// A channel constraint has two shapes: the release line itself, and one named
+// release of it. Foundry publishes its daily builds as "nightly-<commit>"
+// tags whether or not it retags "nightly" onto the newest of them, so a
+// project has to be able to write either.
+func TestChannelReleaseConstraint(t *testing.T) {
+	t.Parallel()
+	const sha = "e469863b1ac3f2d9d48f9d25d068a14861060cb3"
+	c, err := ParseConstraint("nightly-" + sha)
+	if err != nil {
+		t.Fatalf("ParseConstraint(nightly-<sha>) = %v", err)
+	}
+	switch {
+	case !c.IsChannel():
+		t.Error("a named release of a channel is still a channel constraint")
+	case c.Channel() != "nightly":
+		t.Errorf("Channel() = %q, want nightly", c.Channel())
+	case c.ChannelRelease() != "nightly-"+sha:
+		t.Errorf("ChannelRelease() = %q", c.ChannelRelease())
+	case c.String() != "nightly-"+sha:
+		t.Errorf("String() = %q", c.String())
+	}
+	// It names one release, so it matches that release and nothing else on
+	// the line — which is the whole difference from the moving form.
+	if !c.MatchesRelease("nightly-" + sha) {
+		t.Error("a named release does not match itself")
+	}
+	for _, id := range []string{"nightly", "nightly-5e88010a83d1b87b8f4d13058e42a2949d3e9dc0", sha, "nightly-" + sha + "0"} {
+		if c.MatchesRelease(id) {
+			t.Errorf("nightly-<sha> matched %q", id)
+		}
+	}
+	// A version is not a release of a channel, either way round.
+	if c.Matches(MustParse("1.7.4")) {
+		t.Error("a channel release matched a version")
+	}
+}
+
+// Which of the two shapes a string is comes from what follows its last
+// hyphen, so a release line whose own name carries one stays a release line.
+func TestChannelReleaseSplit(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in      string
+		channel string
+		release string
+	}{
+		{in: "nightly", channel: "nightly"},
+		{in: "nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3", channel: "nightly", release: "nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3"},
+		// Seven hex digits is the shortest abbreviation git prints.
+		{in: "nightly-e469863", channel: "nightly", release: "nightly-e469863"},
+		// Six is not, so this is a channel with an odd name.
+		{in: "nightly-e46986", channel: "nightly-e46986"},
+		// A hyphenated release line, and one release of it.
+		{in: "pre-release", channel: "pre-release"},
+		{in: "pre-release-e469863", channel: "pre-release", release: "pre-release-e469863"},
+		// Not hex: "release" is a word, and "nightly-release" is a name.
+		{in: "nightly-release", channel: "nightly-release"},
+		// A trailing hyphen names no commit.
+		{in: "nightly-", channel: "nightly-"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+			c, err := ParseConstraint(tt.in)
+			if err != nil {
+				t.Fatalf("ParseConstraint(%q) = %v", tt.in, err)
+			}
+			if c.Channel() != tt.channel || c.ChannelRelease() != tt.release {
+				t.Errorf("ParseConstraint(%q) = channel %q release %q, want %q / %q",
+					tt.in, c.Channel(), c.ChannelRelease(), tt.channel, tt.release)
+			}
+		})
+	}
+}
+
+// The bound on a channel name is what stops a constraint growing without
+// limit; a named release is bounded by that plus a commit. Neither of them
+// admits the shapes below, and the refusal still says how to write one.
+func TestChannelReleaseRefusals(t *testing.T) {
+	t.Parallel()
+	bad := []string{
+		// A commit longer than a SHA-256 object name is not a commit, and
+		// what is left is a channel name far past its bound.
+		"nightly-" + strings.Repeat("a", 65),
+		// A channel name past its bound, with a real commit after it.
+		strings.Repeat("n", 33) + "-e469863b1ac3f2d9d48f9d25d068a14861060cb3",
+		// Upper case is not how a tag writes a commit, and not how an
+		// upstream writes a release line.
+		"nightly-E469863B1AC3F2D9D48F9D25D068A14861060CB3",
+		// A constraint may not start with a separator, whichever half the
+		// rest of it would have been.
+		"-e469863b1ac3",
+		// A version with the tag prefix written in is a version, not a
+		// release line called "v1".
+		"v1-e469863b1ac3",
+	}
+	for _, in := range bad {
+		if c, err := ParseConstraint(in); err == nil {
+			t.Errorf("ParseConstraint(%q) accepted as channel %q release %q", in, c.Channel(), c.ChannelRelease())
+		}
+	}
+	// The refusal points at the shape that would have worked.
+	_, err := ParseConstraint("nightly-" + strings.Repeat("a", 65))
+	if err == nil || !strings.Contains(err.Error(), "<channel>-<commit>") {
+		t.Errorf("over-long channel error = %v, want it to name the release form", err)
+	}
+}
+
+// isHex is what tells one release of a channel from a channel whose name
+// merely carries a hyphen, so it admits exactly what a tag writes a commit
+// with: lower-case hex, and nothing that is merely near it.
+func TestIsHex(t *testing.T) {
+	t.Parallel()
+	for _, ok := range []string{"0", "abcdef", "0123456789abcdef", "e469863"} {
+		if !isHex(ok) {
+			t.Errorf("isHex(%q) = false", ok)
+		}
+	}
+	for _, bad := range []string{"", "ABCDEF", "g", "0x1234", "12 34", "e469863-"} {
+		if isHex(bad) {
+			t.Errorf("isHex(%q) = true", bad)
 		}
 	}
 }

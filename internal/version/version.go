@@ -1,7 +1,7 @@
 // Package version parses the semantic versions that upstream tools publish and
 // the constraints a block.toml declares against them.
 //
-// block deliberately supports a tiny constraint syntax, in three forms:
+// block deliberately supports a tiny constraint syntax, in four forms:
 //
 //   - a dotted prefix: "1" means any 1.x.y, "1.7" means any 1.7.y and "1.7.4"
 //     is exact. A pre-release never satisfies one of these, so a project that
@@ -11,7 +11,11 @@
 //   - a channel: "nightly" is a release line an upstream publishes under a tag
 //     that moves. What a channel resolves to is decided by the resolver, not
 //     here, because a moving tag has to be turned into something that does not
-//     move before it reaches a lockfile.
+//     move before it reaches a lockfile;
+//   - one release of a channel: "nightly-<commit>" is the tag an upstream
+//     publishes for a single build of that line. It is a channel constraint
+//     that has already stopped moving, so it needs the channel's resolution
+//     road and none of its floating.
 //
 // Upstreams are not uniformly semver: Bitcoin Core tags "v29.0" and "v29.1rc1".
 // Parse accepts two components (patch 0) and a bare alphabetic pre-release
@@ -293,14 +297,17 @@ type Constraint struct {
 	parts []int
 	// pre is the pre-release a constraint names exactly, or "".
 	pre string
-	// channel is the release line a constraint floats on, or "".
+	// channel is the release line a constraint names, or "".
 	channel string
+	// release is the one release of that line a constraint names in full —
+	// "nightly-<commit>" — or "" when it floats on the line itself.
+	release string
 }
 
 // ParseConstraint parses a constraint. Operators, ranges and wildcards are
 // rejected so that block.toml stays trivially readable; what is accepted is a
-// dotted release prefix, one of those with an exact pre-release after it, or a
-// channel name.
+// dotted release prefix, one of those with an exact pre-release after it, a
+// channel name, or one named release of a channel.
 func ParseConstraint(s string) (Constraint, error) {
 	if s == "" {
 		return Constraint{}, errors.New("version constraint is empty")
@@ -313,10 +320,7 @@ func ParseConstraint(s string) (Constraint, error) {
 	// numbers, so the first character tells the two apart with nothing to
 	// configure and no ambiguity to resolve.
 	if s[0] < '0' || s[0] > '9' {
-		if err := validateChannel(s); err != nil {
-			return Constraint{}, err
-		}
-		return Constraint{raw: s, channel: s}, nil
+		return parseChannelConstraint(s)
 	}
 	core, pre, hasPre := strings.Cut(s, "-")
 	parts := strings.Split(core, ".")
@@ -353,6 +357,84 @@ func ParseConstraint(s string) (Constraint, error) {
 // under $BLOCK_HOME by way of the tag it resolves to.
 const maxChannel = 32
 
+// A channel release is spelled "<channel>-<commit>", which is the tag an
+// upstream publishes for one build of a release line and the very tag block
+// pins a channel to. The commit bounds below are git's own: seven hex digits
+// is the shortest abbreviation git will print, and sixty-four is a whole
+// SHA-256 object name.
+//
+// The bound on a channel name is what stops a constraint growing without
+// limit, and it is why "nightly-<40 hex digits>" is not simply a channel with
+// a long name: the two halves mean different things, so each is held to the
+// shape of the thing it is.
+const (
+	minCommit = 7
+	maxCommit = 64
+)
+
+// parseChannelConstraint parses the two shapes a non-numeric constraint has:
+//
+//	nightly            the release line itself, followed wherever its moving
+//	                   tag points today
+//	nightly-<commit>   one release of that line, named the way the upstream
+//	                   publishes it
+//
+// The second exists because a moving tag is the upstream's to move — or to
+// stop moving. Foundry's daily builds are published as "nightly-<commit>"
+// tags whether or not "nightly" is retagged onto the newest of them, and a
+// project that wants a particular one, or that wants a pin no upstream
+// retagging can affect, names it outright. It resolves down the channel's
+// road, because it is a channel's release and its asset is named after the
+// channel; it simply never floats.
+//
+// Which of the two a string is cannot be decided by the presence of a hyphen:
+// a release line may be called "pre-release". It is decided by the shape of
+// what follows the last one, and only a commit qualifies. A recipe has the
+// final say, and the resolver asks it: a channel a source declares by its
+// whole name is that channel, whatever it looks like here.
+func parseChannelConstraint(s string) (Constraint, error) {
+	if name, _, ok := cutCommit(s); ok {
+		if err := validateChannel(name); err != nil {
+			return Constraint{}, err
+		}
+		return Constraint{raw: s, channel: name, release: s}, nil
+	}
+	if err := validateChannel(s); err != nil {
+		return Constraint{}, err
+	}
+	return Constraint{raw: s, channel: s}, nil
+}
+
+// cutCommit splits "<channel>-<commit>" into its two halves. It reports false
+// for anything whose last hyphen is not followed by a commit, which is what
+// leaves a hyphenated channel name — "pre-release" — a channel name.
+func cutCommit(s string) (name, commit string, ok bool) {
+	i := strings.LastIndexByte(s, '-')
+	if i <= 0 {
+		return "", "", false
+	}
+	commit = s[i+1:]
+	if len(commit) < minCommit || len(commit) > maxCommit || !isHex(commit) {
+		return "", "", false
+	}
+	return s[:i], commit, true
+}
+
+// isHex reports whether s is a non-empty run of lower-case hex digits, which
+// is how git writes an object name and how a tag carries one.
+func isHex(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := range len(s) {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // validateChannel holds a channel name to lower-case letters, digits and
 // hyphens, starting with a letter. That is what upstreams call their release
 // lines, and it leaves no way to write a path, a separator or something that
@@ -365,7 +447,7 @@ func validateChannel(s string) error {
 		return fmt.Errorf("invalid version constraint %q: write the version without the tag prefix, as %q", s, s[1:])
 	}
 	if len(s) > maxChannel {
-		return fmt.Errorf("invalid channel %q: keep it under %d characters", s, maxChannel)
+		return fmt.Errorf("invalid channel %q: keep it under %d characters (one release of a channel is written \"<channel>-<commit>\", with the commit in hex)", s, maxChannel)
 	}
 	for i := range len(s) {
 		c := s[i]
@@ -404,8 +486,14 @@ func (v Version) IsPrerelease() bool { return v.Pre != "" }
 // version.
 func (c Constraint) IsChannel() bool { return c.channel != "" }
 
-// Channel is the release line the constraint floats on, or "".
+// Channel is the release line the constraint names, or "".
 func (c Constraint) Channel() string { return c.channel }
+
+// ChannelRelease is the one release of that line the constraint names in
+// full — "nightly-<commit>" — or "" when it floats on the line itself. It is
+// already immutable, so resolving it is a lookup rather than a dereference,
+// and re-running lock never moves it.
+func (c Constraint) ChannelRelease() string { return c.release }
 
 // Matches reports whether v satisfies the constraint. A pre-release matches
 // only a constraint that names it exactly, and a channel matches no version at
@@ -436,6 +524,13 @@ func (c Constraint) MatchesRelease(id string) bool {
 		return false
 	}
 	if c.IsChannel() {
+		// A constraint that named one release could only have resolved to
+		// that release; one that floats could have resolved to any release
+		// of its line, and to nothing else — least of all to the tag that
+		// moves, which is the pin a lockfile may not hold.
+		if c.release != "" {
+			return id == c.release
+		}
 		return strings.HasPrefix(id, c.channel+"-")
 	}
 	v, err := Parse(id)

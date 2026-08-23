@@ -55,6 +55,28 @@ nothing else, and the pin moves when — and only when — `lock` is run again.
 Which channels a tool has is the upstream's business and the recipe's; asking
 for one it does not publish names the ones it does.
 
+One release of a channel can also be named outright, by the tag the upstream
+published it under:
+
+```toml
+[tools]
+foundry = "nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3"
+```
+
+That is the same channel with the floating taken out. `nightly` is resolved
+through whatever the moving tag points at today, so it follows the upstream's
+retagging — and stops following it when the upstream stops retagging, which is
+what has happened to Foundry's `nightly`: the daily builds still arrive as
+`nightly-<commit>` tags, and the moving tag no longer catches up with them.
+Naming the tag says which build you mean and leaves nothing for an upstream to
+move. `block lock` resolves it in one request and writes the same pin back
+every time it is run.
+
+Errors first, since a named release has two ways to be wrong: a commit the
+upstream does not publish is `BLK2003`, and a release line the recipe does not
+declare is `BLK2009` — the same refusal `foundry = "canary"` earns, listing the
+channels there are.
+
 ## `block lock --check`
 
 The same resolution, writing nothing and downloading nothing. It compares the

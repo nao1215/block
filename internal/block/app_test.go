@@ -20,7 +20,9 @@ import (
 	"github.com/nao1215/block/internal/lockfile"
 	"github.com/nao1215/block/internal/manifest"
 	"github.com/nao1215/block/internal/platform"
+	"github.com/nao1215/block/internal/recipe"
 	"github.com/nao1215/block/internal/store"
+	"github.com/nao1215/block/internal/version"
 	"github.com/nao1215/block/registry"
 )
 
@@ -1462,5 +1464,236 @@ func TestOversizedArtifactsAreRefused(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(h.Store.CacheDir()); len(entries) > 1 {
 		t.Errorf("cache = %v, want no partial download left", entries)
+	}
+}
+
+// foundryManifest is the project-local Foundry recipe the channel scenarios
+// use, asking for whatever version says.
+func foundryManifest(version string) string {
+	return "[tools.foundry]\nversion = \"" + version + "\"\n" +
+		"[tools.foundry.source]\ntype = \"github_release\"\nrepo = \"foundry-rs/foundry\"\n" +
+		"asset = \"foundry_v{version}_{os}_{arch}.tar.gz\"\nbin = [\"forge\"]\n" +
+		"[tools.foundry.source.channels.nightly]\nasset = \"foundry_nightly_{os}_{arch}.tar.gz\"\n"
+}
+
+// An upstream that publishes "nightly-<commit>" tags can be asked for one of
+// them by name. It is the same channel, resolved without the dereference: the
+// pin is what the constraint already said, and no retagging upstream moves it.
+func TestLockPinsANamedReleaseOfAChannel(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	ctx := context.Background()
+
+	// Ask for the channel once, to learn a tag the fixture really publishes —
+	// the same way a person reads one off the upstream's releases page.
+	h.manifest(t, foundryManifest("nightly"))
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	l, err := lockfile.Parse([]byte(h.lockText(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	floated, _ := l.Tool("foundry")
+	tag := floated.Version
+	if !strings.HasPrefix(tag, "nightly-") {
+		t.Fatalf("version = %q", tag)
+	}
+
+	// Now name that release outright, in a project of its own.
+	h2 := newHarness(t, "/t1")
+	h2.manifest(t, foundryManifest(tag))
+	if err := h2.Lock(ctx, nil, false); err != nil {
+		t.Fatalf("Lock(%s) = %v", tag, err)
+	}
+	if h2.stdout.String() != "foundry  locked "+tag+"\nwrote block.lock\n" {
+		t.Errorf("stdout = %q", h2.stdout)
+	}
+	l2, err := lockfile.Parse([]byte(h2.lockText(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin, _ := l2.Tool("foundry")
+	if pin.Constraint != tag {
+		t.Errorf("constraint = %q, want %q", pin.Constraint, tag)
+	}
+	if pin.Version != tag {
+		t.Errorf("version = %q, want %q", pin.Version, tag)
+	}
+	art, ok := pin.Artifact(h2.Platform)
+	switch {
+	case !ok:
+		t.Fatal("no artifact for this platform")
+	// The asset is the channel's, so it is named after the line and not after
+	// a version — a channel release has none.
+	case !strings.Contains(art.URL, "/"+tag+"/foundry_nightly_"):
+		t.Errorf("url = %q, want the named tag and the channel's asset", art.URL)
+	case art.SHA256 == "":
+		t.Error("a named channel release recorded no checksum")
+	}
+
+	// The night moves on, and this pin does not: that is the whole difference
+	// from the floating form, and it holds through a full re-lock.
+	h2.later()
+	h2.reset()
+	if err := h2.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h2.stdout.String(), "up to date") {
+		t.Errorf("a named release moved: %q", h2.stdout)
+	}
+	// And it installs and runs like any other pin.
+	if runtime.GOOS != "windows" {
+		if err := h2.Sync(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h2.Env(); err != nil {
+			t.Errorf("Env() = %v", err)
+		}
+	}
+}
+
+// A named release is only as good as the tag: one the upstream does not
+// publish is a missing release, said as such, and one whose line the recipe
+// does not declare is the same refusal an unknown channel earns.
+func TestLockRefusesANamedReleaseThatIsNotThere(t *testing.T) {
+	t.Parallel()
+	const absent = "0000000000000000000000000000000000000000"
+	tests := []struct {
+		name       string
+		constraint string
+		code       diag.Code
+		contains   string
+	}{
+		{
+			name:       "a commit the upstream never published",
+			constraint: "nightly-" + absent,
+			code:       diag.UpstreamNotFound,
+			contains:   `publishes no release "nightly-` + absent + `"`,
+		},
+		{
+			name:       "a release line the recipe does not declare",
+			constraint: "canary-" + absent,
+			code:       diag.NoSuchChannel,
+			contains:   `publishes no channel "canary" (it has nightly)`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, "/t1")
+			h.manifest(t, foundryManifest(tt.constraint))
+			err := h.Lock(context.Background(), nil, false)
+			if err == nil || !strings.Contains(err.Error(), tt.contains) {
+				t.Fatalf("Lock() = %v, want a refusal naming %q", err, tt.contains)
+			}
+			if diag.Of(err) != tt.code {
+				t.Errorf("code = %v, want %v", diag.Of(err), tt.code)
+			}
+			if _, err := os.Stat(h.LockPath()); err == nil {
+				t.Error("a refused lock wrote block.lock")
+			}
+		})
+	}
+}
+
+// A constraint that is neither a version nor a shape a channel can have is
+// refused by the manifest, before anything is resolved at all.
+func TestLockRefusesAnUnparsableChannelConstraint(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	h.offline()
+	h.manifest(t, foundryManifest("nightly-"+strings.Repeat("z", 40)))
+	err := h.Lock(context.Background(), nil, false)
+	if diag.Of(err) != diag.ManifestInvalid {
+		t.Fatalf("Lock() = %v, want %s", err, diag.ManifestInvalid)
+	}
+	if !strings.Contains(err.Error(), "<channel>-<commit>") {
+		t.Errorf("err = %v, want it to name the shape that would work", err)
+	}
+}
+
+// Which platforms a source ships for is in the recipe, so a toolchain that
+// cannot be locked is refused before any of it is fetched. Left to
+// resolution, the tools before the unsupported one would have been downloaded
+// and then thrown away with the lockfile that was never written.
+func TestLockChecksEveryPlatformBeforeDownloadingAnything(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	// "foo" sorts before "maconly" and publishes no digest, so locking it
+	// costs a download — the one that must not happen here.
+	h.manifest(t, "[tools.foo]\nversion = \"1.2\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"example/foo\"\nasset = \"foo_{version}_{os}_{arch}.tar.gz\"\nbin = [\"foo\"]\n"+
+		"[tools.maconly]\nversion = \"0.1\"\n[tools.maconly.source]\ntype = \"github_release\"\nrepo = \"example/maconly\"\nasset = \"maconly_{version}_{os}_{arch}.tar.gz\"\nplatforms = [\"darwin/arm64\"]\nbin = [\"maconly\"]\n")
+	err := h.Lock(context.Background(), nil, false)
+	if diag.Of(err) != diag.PlatformUnsupported {
+		t.Fatalf("Lock() = %v, want %s", err, diag.PlatformUnsupported)
+	}
+	// The message is the one resolution would have produced, word for word.
+	const want = "maconly: unsupported platform linux/amd64 (available: darwin/arm64)"
+	if err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
+	}
+	if h.stderr.Len() != 0 {
+		t.Errorf("something was downloaded before the refusal: %q", h.stderr)
+	}
+	// Nothing reached the cache, and no lockfile was written.
+	if _, err := os.Stat(h.Fetcher.Dir); !os.IsNotExist(err) {
+		t.Errorf("the cache directory exists: %v", err)
+	}
+	if _, err := os.Stat(h.LockPath()); err == nil {
+		t.Error("a refused lock wrote block.lock")
+	}
+}
+
+// The preflight asks only about the platforms that still need resolving. A
+// pin block is keeping already carries its artifacts and never consults the
+// source for them, so a recipe that has since stopped claiming a platform
+// must not retroactively refuse a lock that would have kept working.
+func TestCheckPlatformsSkipsWhatAKeptPinAlreadyCovers(t *testing.T) {
+	t.Parallel()
+	linux := platform.Platform{OS: "linux", Arch: "amd64"}
+	darwin := platform.Platform{OS: "darwin", Arch: "arm64"}
+	// A registry tool — no source fingerprint — whose recipe now claims one
+	// platform fewer than the lockfile covers.
+	narrowed := recipe.Source{
+		Type: recipe.TypeGitHubRelease, Repo: "example/foo",
+		Asset: "foo_{version}_{os}_{arch}.tar.gz", Platforms: []string{"linux/amd64"}, Bin: []string{"foo"},
+	}
+	pinned := &lockfile.Tool{
+		Name: "foo", Constraint: "1.2", Version: "1.2.0", Bin: []string{"foo"},
+		Artifacts: []lockfile.Artifact{
+			{Platform: "darwin/arm64", URL: "https://x/a", SHA256: strings.Repeat("a", 64)},
+			{Platform: "linux/amd64", URL: "https://x/b", SHA256: strings.Repeat("b", 64)},
+		},
+	}
+	kept := toolPlan{
+		tool:  manifest.Tool{Name: "foo", Constraint: version.MustParseConstraint("1.2")},
+		src:   narrowed,
+		prev:  pinned,
+		plats: []platform.Platform{darwin, linux},
+	}
+	if !kept.keeps() {
+		t.Fatal("the plan does not describe a kept pin")
+	}
+	a := &App{}
+	if err := a.checkPlatforms([]toolPlan{kept}); err != nil {
+		t.Errorf("checkPlatforms() refused a platform the pin already covers: %v", err)
+	}
+	// Re-resolving the same tool is a different question, and gets the
+	// refusal: nothing would be carried over.
+	resolving := kept
+	resolving.resolve = true
+	err := a.checkPlatforms([]toolPlan{resolving})
+	if diag.Of(err) != diag.PlatformUnsupported || !strings.Contains(err.Error(), "foo: unsupported platform darwin/arm64") {
+		t.Errorf("checkPlatforms() = %v, want %s", err, diag.PlatformUnsupported)
+	}
+	// So is a platform the kept pin does not cover yet.
+	adding := kept
+	adding.prev = &lockfile.Tool{
+		Name: "foo", Constraint: "1.2", Version: "1.2.0", Bin: []string{"foo"},
+		Artifacts: []lockfile.Artifact{{Platform: "linux/amd64", URL: "https://x/b", SHA256: strings.Repeat("b", 64)}},
+	}
+	if diag.Of(a.checkPlatforms([]toolPlan{adding})) != diag.PlatformUnsupported {
+		t.Error("checkPlatforms() allowed a platform nothing can deliver")
 	}
 }

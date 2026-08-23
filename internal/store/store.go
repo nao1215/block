@@ -23,6 +23,7 @@ import (
 
 	"github.com/nao1215/block/internal/archive"
 	"github.com/nao1215/block/internal/diag"
+	"github.com/nao1215/block/internal/fserr"
 	"github.com/nao1215/block/internal/recipe"
 )
 
@@ -171,6 +172,17 @@ func BinPath(dir, bin string) (string, error) {
 	return target, nil
 }
 
+// writeFailed names a write into the store that did not happen. A filesystem
+// with no room left gets a code of its own: what the reader has to go and free
+// is not what they would go and check the permissions of, and telling them to
+// do the second when it is the first wastes the trip.
+func writeFailed(what string, err error) error {
+	if fserr.OutOfSpace(err) {
+		return diag.DiskFull.Errorf("%s: there is no room left on the disk, or a quota is exhausted: %w", what, err)
+	}
+	return diag.StoreUnwritable.Errorf("%s: %w", what, err)
+}
+
 // Install places the artifact at src into dir atomically. An archive is
 // extracted (dropping strip leading components); a raw executable is copied
 // under the single name in bins. Work happens in a sibling temp directory
@@ -198,7 +210,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 	}
 	parent := filepath.Dir(dir)
 	if err := os.MkdirAll(parent, dirMode); err != nil {
-		return diag.StoreUnwritable.Wrap(err)
+		return writeFailed("creating "+parent, err)
 	}
 	// Everything is built in a sibling temporary directory and renamed into
 	// place at the end, so a failure anywhere below leaves the store exactly
@@ -206,7 +218,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 	// there and working.
 	tmp, err := os.MkdirTemp(parent, "."+filepath.Base(dir)+tmpInfix+"*")
 	if err != nil {
-		return diag.StoreUnwritable.Wrap(err)
+		return writeFailed("creating a build directory in "+parent, err)
 	}
 	defer os.RemoveAll(tmp) //nolint:errcheck // best-effort cleanup
 	switch {
@@ -220,7 +232,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 			return err
 		}
 		if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
-			return err
+			return writeFailed("creating "+filepath.Dir(target), err)
 		}
 		if err := copyExecutable(src, target); err != nil {
 			return fmt.Errorf("install %s: %w", assetName, err)
@@ -238,13 +250,13 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 	// complete by construction.
 	const markerMode = 0o644
 	if err := os.WriteFile(filepath.Join(tmp, markerName), []byte(assetName+"\n"), markerMode); err != nil {
-		return err
+		return writeFailed("marking the install complete", err)
 	}
 	if err := os.Rename(tmp, dir); err != nil {
 		if s.IsInstalled(dir, bins) {
 			return nil
 		}
-		return diag.StoreUnwritable.Wrap(err)
+		return writeFailed("publishing the install as "+dir, err)
 	}
 	return nil
 }
@@ -273,6 +285,12 @@ func ensureExecutable(dir string, bins []string) error {
 }
 
 // copyExecutable copies a raw binary into place with the executable bit set.
+//
+// A copy has two ends and only one of them is the install directory. Reading
+// the cached artifact is not a write into the store, so a failure there keeps
+// the plain error it has always had rather than being reported as one; only
+// the destination goes through [writeFailed], where a filesystem with no room
+// left earns a code of its own.
 func copyExecutable(src, dst string) error {
 	in, err := os.Open(src) //nolint:gosec // cache path
 	if err != nil {
@@ -282,13 +300,23 @@ func copyExecutable(src, dst string) error {
 	const execMode = 0o755
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, execMode) //nolint:gosec // inside the temp install dir
 	if err != nil {
-		return err
+		return writeFailed("creating "+dst, err)
 	}
 	if _, err := io.Copy(out, in); err != nil {
 		_ = out.Close()
+		// io.Copy does not say which end gave out, so only a failure the
+		// operating system attributes to the disk is named as the store's.
+		if fserr.OutOfSpace(err) {
+			return writeFailed("writing "+dst, err)
+		}
 		return err
 	}
-	return out.Close()
+	// A close is the destination alone: it is where the last of the buffered
+	// bytes are written, which is often where a full disk is first noticed.
+	if err := out.Close(); err != nil {
+		return writeFailed("writing "+dst, err)
+	}
+	return nil
 }
 
 // BinDirs returns the directories that must be prepended to PATH so that the

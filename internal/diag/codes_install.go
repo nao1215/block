@@ -34,7 +34,14 @@ var (
 	// StoreUnwritable is a store block cannot write to.
 	StoreUnwritable = register(4005,
 		"the store could not be written",
-		"block could not create or replace a directory under $BLOCK_HOME. The store is a per-user directory; a shared or root-owned one, or a full disk, stops sync before anything is installed.",
-		"Check the permissions and free space on $BLOCK_HOME (~/.local/share/block by default, %LOCALAPPDATA%\\block on Windows), or point BLOCK_HOME at a directory this user owns.",
+		"block could not create or replace a directory under $BLOCK_HOME. The store is a per-user directory; a shared or root-owned one stops sync before anything is installed. Running out of room is told apart from this and reported as "+DiskFull.String()+".",
+		"Check the permissions and ownership of $BLOCK_HOME (~/.local/share/block by default, %LOCALAPPDATA%\\block on Windows), or point BLOCK_HOME at a directory this user owns.",
 		"v0.1.0")
+
+	// DiskFull is a write with nowhere to go.
+	DiskFull = register(4006,
+		"the disk is full or a quota is exhausted",
+		"A write under $BLOCK_HOME could not be completed because the filesystem has no room left, or this user has reached a quota on it. It is reported while unpacking an artifact into the store and while writing a download into the cache, both of which can want considerably more room than the artifact itself. Nothing half-written is published: an install is built in a temporary directory and renamed into place only once it is complete, and an install already there and verifying is left untouched.",
+		"Free space on the filesystem that holds $BLOCK_HOME (~/.local/share/block by default, %LOCALAPPDATA%\\block on Windows), or have the quota raised, and run the command again. The cache under $BLOCK_HOME/cache can be deleted at any time: it is rebuilt from block.lock. Pointing BLOCK_HOME at a roomier filesystem works too, and on CI is often the shorter answer.",
+		"v0.6.0")
 )
