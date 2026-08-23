@@ -32,6 +32,18 @@ A version is a dotted prefix: `"1"` means the newest `1.x.y`, `"1.7"` the
 newest `1.7.y`, `"1.7.1"` exactly that release. There are no operators or
 ranges, and pre-releases (`1.8.0-rc1`) are never selected.
 
+What a `version` may say, in full:
+
+| Written | Means |
+| --- | --- |
+| `"1"`, `"1.7"`, `"1.7.1"` | a dotted prefix: the newest release under it |
+| `"1.8.0-rc1"` | that pre-release and nothing else; a pre-release is named, never floated onto |
+| `"nightly"` | a channel: the release line under a tag the upstream moves |
+| `"nightly-<commit>"` | one release of that line, named the way the upstream tags it |
+
+The last two are the same channel; only the first of them floats. See
+[Channels](#channels).
+
 Tool names are looked up in the built-in [Tools](/tools/). A tool that
 is not in the registry — or one you want to fetch from a fork — can be defined
 in the project itself:
@@ -168,6 +180,41 @@ itself rather than after a version:
 [source.channels.nightly]
 asset = "foundry_nightly_{os}_{arch}.tar.gz"
 ```
+
+### Channels
+
+A channel can also be asked for by the tag of one of its releases:
+
+```toml
+[tools]
+foundry = "nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3"
+```
+
+Written that way there is nothing to dereference — the constraint already
+names the tag — so `lock` fetches that release and pins it:
+
+```text
+the named tag                        (GET /repos/{repo}/releases/tags/{channel}-{commit})
+  → pick the asset named by the recipe's channel for each platform
+```
+
+The two forms differ in what re-running `lock` does, and in nothing else:
+
+| Written | `block lock` resolves | Re-running `lock` |
+| --- | --- | --- |
+| `foundry = "nightly"` | wherever the moving tag points **now** | moves the pin when the upstream retagged |
+| `foundry = "nightly-<commit>"` | that release | writes the same pin back |
+
+A commit is seven to sixty-four lower-case hex digits, which is how git writes
+one and how a tag carries it; anything else after the hyphen is part of a
+channel's own name, so a release line called `pre-release` stays one. A channel
+name is at most 32 characters, and it becomes part of a directory name under
+`$BLOCK_HOME` by way of the tag it resolves to.
+
+Both forms need the channel declared by the recipe, because the asset names
+come from it. A pre-release flag is no objection to either — a nightly is a
+pre-release by definition — but a draft release is, since a draft publishes no
+assets.
 
 ## Registry and source types
 

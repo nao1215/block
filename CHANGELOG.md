@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A channel can be asked for by the tag of one of its releases:
+  `foundry = "nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3"`. It is the
+  same channel with the floating taken out — the same recipe, the same
+  channel assets, the same URL and SHA-256 in `block.lock` — resolved in one
+  request and pinned to itself, so re-running `block lock` writes the same
+  pin back. It exists because a moving tag is the upstream's to stop moving:
+  Foundry still publishes a `nightly-<commit>` tag every night, but no longer
+  retags `nightly` onto the newest of them, and `foundry = "nightly"` follows
+  a tag that has stood still. Both forms keep working; a commit the upstream
+  does not publish is BLK2003, and a release line the recipe does not declare
+  is BLK2009.
+- BLK4006 for a write with nowhere to go. Running out of disk space or
+  exceeding a quota while unpacking an artifact or writing a download used to
+  surface as whatever the operating system said, with no code to look up
+  (`block: cosmos-relayer: extract …: write …: disk quota exceeded`). It is
+  now told apart from the store being unwritable for other reasons (BLK4005)
+  by the error number rather than by the wording, on Unix and on Windows, and
+  `block explain BLK4006` says what to free.
+
+### Changed
+- `block lock` checks that every tool ships for every platform asked for
+  before it fetches anything. Which platforms a recipe covers is static, so a
+  toolchain whose last tool has no build for a declared platform used to
+  download the artifacts of every tool before it and then write no lockfile.
+  The refusal is the same BLK2007, with the same alternatives listed; only
+  the downloads that preceded it are gone.
+
 ## [0.5.0] - 2026-08-23
 
 The release that fills in around `lock → sync → exec` without moving it: sync

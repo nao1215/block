@@ -205,6 +205,46 @@ $ echo $?
 Which channels a tool has is the upstream's business: asking for one that is
 not published names the ones that are.
 
+## Ask for one particular nightly
+
+`foundry = "nightly"` follows a tag the upstream moves — and an upstream is
+free to stop moving it. Foundry's `nightly` is where that has happened: the
+daily builds still arrive, each as a `nightly-<commit>` tag of its own, but the
+moving tag no longer catches up with them, so `"nightly"` keeps resolving to
+whichever build it was last pointed at.
+
+Name the tag instead, and there is nothing left to move:
+
+```toml
+[tools]
+foundry = "nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3"
+```
+
+```console
+$ block lock
+foundry  locked nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3
+```
+
+Copy the tag from the upstream's releases page, or read it out of a `block.lock`
+that `"nightly"` already wrote. Everything after that is the same: the same
+assets, the same URL and SHA-256 in `block.lock`, the same `block sync`.
+
+| Written | `block lock` gives you | Running `block lock` again |
+| --- | --- | --- |
+| `foundry = "nightly"` | whatever the moving tag points at now | moves the pin when the upstream retagged |
+| `foundry = "nightly-<commit>"` | that build | writes the same pin back |
+
+Either way `block.lock` holds the same immutable thing, so a build is
+reproducible with both. What the second form adds is that the *manifest* is
+reproducible too: `block lock` on a fresh checkout gives everybody the build
+you chose, rather than the one that happened to be current. Use it when you are
+bisecting an upstream regression, when a nightly is part of what a bug report
+means — and, for now, when you want a Foundry nightly that is actually recent.
+
+Two ways to get it wrong, both said plainly: a commit the upstream does not
+publish is `BLK2003`, and a release line the recipe does not declare is
+`BLK2009`.
+
 ## Lock for a platform you are not on
 
 Say every platform your team and your CI use, once:

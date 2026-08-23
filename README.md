@@ -58,6 +58,8 @@ Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
 
 `sync` never resolves, `exec` never installs, and nothing updates by itself.
 `foundry = "nightly"` works too: it pins the release under the tag that moves.
+So does `foundry = "nightly-<commit>"`, which names one nightly outright and
+never moves at all — [when to use which](https://nao1215.github.io/block/cookbook/#ask-for-one-particular-nightly).
 
 ## Install
 
