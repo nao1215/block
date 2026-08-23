@@ -778,8 +778,9 @@ which prints the absolute path `block exec` would run and never looks at
 solhint --solc "$(block which solc)" 'contracts/**/*.sol'
 ```
 
-It fails where `exec` would — not synced, not locked, not a command the project
-provides — so a Makefile that uses it cannot silently pick up a system copy.
+It fails where `exec` would — not synced, not locked — and, unlike `exec`, it
+refuses a command the project does not lock rather than falling through to
+`PATH`, so a Makefile that uses it cannot silently pick up a system copy.
 
 ```json
 {

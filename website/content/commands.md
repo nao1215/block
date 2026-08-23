@@ -131,9 +131,12 @@ Unlike the shell's `which`, it never consults `PATH`. The answer comes from
 other way does not change it. From a nested directory it resolves to the
 enclosing project, exactly as `exec` does.
 
-It fails as `exec` would, with the same codes: a missing lockfile (BLK1003), a
-lockfile that no longer matches `block.toml` (BLK1005), a tool that is locked
-but not yet installed, and a command no locked tool provides:
+It fails as `exec` would, with the same codes, when the project is not ready:
+a missing lockfile (BLK1003), a lockfile that no longer matches `block.toml`
+(BLK1005), a tool that is locked but not yet installed (BLK4004). For a command
+no locked tool provides it deliberately differs: `exec` falls through to `PATH`
+for such a command, `which` refuses it (BLK5001), because the question it
+answers is what block runs — and for that command, block runs nothing:
 
 ```console
 $ block which forge
@@ -292,6 +295,12 @@ $ block completion zsh > "${fpath[1]}/_block"
 
 ```console
 $ block completion fish > ~/.config/fish/completions/block.fish
+```
+
+PowerShell, in `$PROFILE`:
+
+```powershell
+block completion powershell | Out-String | Invoke-Expression
 ```
 
 bash can also take the script from its completion directory instead of

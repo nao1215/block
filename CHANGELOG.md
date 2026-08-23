@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   missing or stale lockfile, a tool locked but not yet installed (BLK4004,
   run `block sync`), and a command no locked tool provides (BLK5001). One
   line on stdout, nothing downloaded, installed or resolved.
-- `block completion bash|zsh|fish` prints a shell completion script. Beyond
+- `block completion bash|zsh|fish|powershell` prints a shell completion script. Beyond
   commands and flags, completion is dynamic: `block lock <TAB>` offers the
   tools of `block.toml`, `block which <TAB>` the commands of `block.lock`,
   `block list <TAB>` the ecosystems of the embedded registry and

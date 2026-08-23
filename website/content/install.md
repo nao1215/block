@@ -77,13 +77,18 @@ this step costs you nothing but four extra characters: `block exec forge test`.
 
 ## Shell completion
 
-Also optional. `block completion` prints a completion script for bash, zsh or
-fish; load it from your shell's startup file once:
+Also optional. `block completion` prints a completion script for bash, zsh,
+fish or PowerShell; load it from your shell's startup file once:
 
 ```shell
 echo 'source <(block completion bash)' >> ~/.bashrc
 echo 'source <(block completion zsh)' >> ~/.zshrc
 block completion fish > ~/.config/fish/completions/block.fish
+```
+
+```powershell
+# In $PROFILE
+block completion powershell | Out-String | Invoke-Expression
 ```
 
 It completes commands, flags, the tools of the current project, and the

@@ -316,10 +316,12 @@ runs: the one the project's installed toolchain provides for that command.
 
 Unlike the shell's which, it does not look at PATH: the answer comes from
 block.toml, block.lock and the store, and a same-named executable elsewhere
-on the machine does not change it. It fails — as exec would — when the
-lockfile is missing or stale, when the tool is locked but not yet installed
-(run "block sync"), and when no locked tool provides the command. which never
-downloads, installs or resolves anything.`,
+on the machine does not change it. It fails as exec would when the lockfile
+is missing or stale or the tool is locked but not yet installed (run "block
+sync"). For a command no locked tool provides it differs from exec on
+purpose: exec would fall through to PATH, which refuses (BLK5001), because
+the question it answers is what block runs, and there the answer is nothing.
+which never downloads, installs or resolves anything.`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeLockedCommands,
 		RunE: func(_ *cobra.Command, args []string) error {

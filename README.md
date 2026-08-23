@@ -54,7 +54,7 @@ Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
 | `block status [--json]` | what the two files and the store say, read-only |
 | `block list [ecosystem]` | the tools block can install |
 | `block explain <code>` | what a `BLK` error code means |
-| `block completion <shell>` | a completion script for bash, zsh or fish |
+| `block completion <shell>` | a completion script for bash, zsh, fish or PowerShell |
 
 `sync` never resolves, `exec` never installs, and nothing updates by itself.
 `foundry = "nightly"` works too: it pins the release under the tag that moves.
