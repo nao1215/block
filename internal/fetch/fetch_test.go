@@ -344,3 +344,184 @@ func TestFetchGivesUpOnARedirectLoop(t *testing.T) {
 		t.Fatalf("followed %d hops", n)
 	}
 }
+
+func TestCredentialAllows(t *testing.T) {
+	t.Parallel()
+	c := Credential{Host: "api.github.com", Token: "tok"}
+	tests := []struct {
+		name string
+		cred Credential
+		url  string
+		want bool
+	}{
+		{"the credential's host", c, "https://api.github.com/repos/o/r/releases/assets/1", true},
+		{"the host in another case", c, "https://API.GitHub.com/repos/o/r/releases/assets/1", true},
+		{"the release CDN", c, "https://objects.githubusercontent.com/x?X-Amz-Signature=y", false},
+		{"the web host", c, "https://github.com/o/r/releases/download/v1/a.tar.gz", false},
+		{"a subdomain", c, "https://evil.api.github.com/", false},
+		{"the host on another port", c, "https://api.github.com:8443/", false},
+		{"the host with the port it was given", Credential{Host: "127.0.0.1:8080", Token: "t"}, "http://127.0.0.1:8080/repos/o/r", true},
+		{"no token", Credential{Host: "api.github.com"}, "https://api.github.com/", false},
+		{"no host", Credential{Token: "tok"}, "https://api.github.com/", false},
+		{"not a url", c, "://", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.cred.Allows(tt.url); got != tt.want {
+				t.Errorf("Allows(%q) = %v, want %v", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
+// A private release asset is had from the API with the token — and from
+// the signed URL the API redirects to without it. The objects host refuses a
+// request that carries both, so the token leaking onto the hop is not a
+// theoretical concern: it is the download failing.
+func TestFetchSendsTheTokenToItsHostAndDropsItOnTheHop(t *testing.T) {
+	t.Parallel()
+	payload := []byte("private bytes")
+	objects := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			http.Error(w, "Only one auth mechanism allowed", http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer objects.Close()
+	var seen atomic.Int32
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.Add(1)
+		if r.Header.Get("Authorization") != "Bearer tok" || r.Header.Get("Accept") != "application/octet-stream" {
+			t.Errorf("the API was asked without the token or for the wrong type: %v", r.Header)
+		}
+		// Two httptest servers are two ports on one loopback address, so
+		// the hop is to a different host the way a CDN is.
+		http.Redirect(w, r, objects.URL+"/signed?sig=1", http.StatusFound)
+	}))
+	defer api.Close()
+	f := New(t.TempDir(), "block/test")
+	f.Credential = Credential{Host: strings.TrimPrefix(api.URL, "http://"), Token: "tok"}
+	_, sha, _, err := f.Fetch(context.Background(), api.URL+"/repos/o/r/releases/assets/1", "")
+	if err != nil || sha != digest(payload) {
+		t.Fatalf("Fetch() = %q, %v, want the asset through the redirect", sha, err)
+	}
+	if seen.Load() != 1 {
+		t.Errorf("the API was asked %d times", seen.Load())
+	}
+}
+
+// Whatever host the artifact is on, the token goes to the credential's host
+// and nowhere else — not to a vendor download server, and not to GitHub's
+// own web host either.
+func TestFetchDoesNotSendTheTokenElsewhere(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			t.Errorf("a host the credential is not for was sent %q", auth)
+		}
+		_, _ = w.Write([]byte("public"))
+	}))
+	defer srv.Close()
+	f := New(t.TempDir(), "block/test")
+	f.Credential = Credential{Host: "api.github.com", Token: "tok"}
+	if _, _, _, err := f.Fetch(context.Background(), srv.URL+"/a.tar.gz", ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An artifact that announces a size past the limit is refused before a byte
+// of it is read, and one that announces nothing is stopped at the limit
+// while it is being read. Either way nothing is kept: not in the cache, and
+// not as a temporary file beside it.
+func TestFetchRefusesADownloadLargerThanItTransfers(t *testing.T) {
+	t.Parallel()
+	nothingKept := func(t *testing.T, dir string) {
+		t.Helper()
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), downloadPrefix) {
+				t.Errorf("%s was left behind", e.Name())
+			}
+		}
+		blobs, _ := os.ReadDir(filepath.Join(dir, "sha256"))
+		if len(blobs) != 0 {
+			t.Errorf("the cache holds %d blobs from a refused download", len(blobs))
+		}
+	}
+	t.Run("announced by Content-Length", func(t *testing.T) {
+		t.Parallel()
+		var body atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Length", "3221225472")
+			w.WriteHeader(http.StatusOK)
+			body.Add(1)
+		}))
+		defer srv.Close()
+		f := New(t.TempDir(), "block/test")
+		_, _, _, err := f.Fetch(context.Background(), srv.URL+"/huge.tar.gz", "")
+		if err == nil || diag.Of(err) != diag.DownloadTooLarge || !strings.Contains(err.Error(), "larger than the") {
+			t.Fatalf("Fetch() error = %v (%v), want BLK3004", err, diag.Of(err))
+		}
+		nothingKept(t, f.Dir)
+	})
+	t.Run("unannounced", func(t *testing.T) {
+		t.Parallel()
+		const limit = 1024
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			// Flushing first means no Content-Length: the body arrives in
+			// chunks and its size is known only when it ends — or does not.
+			_ = http.NewResponseController(w).Flush()
+			chunk := []byte(strings.Repeat("x", limit))
+			for range 4 {
+				if _, err := w.Write(chunk); err != nil {
+					return
+				}
+				_ = http.NewResponseController(w).Flush()
+			}
+		}))
+		defer srv.Close()
+		f := New(t.TempDir(), "block/test")
+		f.MaxBytes = limit
+		_, _, _, err := f.Fetch(context.Background(), srv.URL+"/endless.tar.gz", "")
+		if err == nil || diag.Of(err) != diag.DownloadTooLarge {
+			t.Fatalf("Fetch() error = %v (%v), want BLK3004", err, diag.Of(err))
+		}
+		nothingKept(t, f.Dir)
+	})
+	t.Run("exactly the limit is not too large", func(t *testing.T) {
+		t.Parallel()
+		const limit = 1024
+		payload := []byte(strings.Repeat("y", limit))
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_ = http.NewResponseController(w).Flush()
+			_, _ = w.Write(payload)
+		}))
+		defer srv.Close()
+		f := New(t.TempDir(), "block/test")
+		f.MaxBytes = limit
+		_, sha, _, err := f.Fetch(context.Background(), srv.URL+"/exact.tar.gz", "")
+		if err != nil || sha != digest(payload) {
+			t.Fatalf("Fetch() = %q, %v", sha, err)
+		}
+	})
+}
+
+func TestCheckSize(t *testing.T) {
+	t.Parallel()
+	f := New(t.TempDir(), "block/test")
+	if err := f.CheckSize("https://example.com/a", MaxBytes); err != nil {
+		t.Errorf("CheckSize(at the limit) = %v", err)
+	}
+	if err := f.CheckSize("https://example.com/a", 0); err != nil {
+		t.Errorf("CheckSize(unknown) = %v", err)
+	}
+	err := f.CheckSize("https://example.com/a", MaxBytes+1)
+	if err == nil || diag.Of(err) != diag.DownloadTooLarge || !strings.Contains(err.Error(), "https://example.com/a") {
+		t.Errorf("CheckSize(past the limit) = %v (%v)", err, diag.Of(err))
+	}
+}

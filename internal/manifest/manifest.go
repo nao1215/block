@@ -176,14 +176,38 @@ func parseTool(md toml.MetaData, name string, prim toml.Primitive) (Tool, error)
 
 // Find walks from dir upward looking for block.toml and returns the directory
 // that holds it.
+//
+// Only a directory that has no block.toml at all is walked past. One that has
+// something by that name which is not a readable file — a directory, a link
+// that points at nothing, a file this user may not stat — stops the search
+// with an error: walking on would silently run the project against a parent's
+// manifest, which is the one thing a nested project must never do.
 func Find(dir string) (string, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return "", err
 	}
 	for {
-		if st, err := os.Stat(filepath.Join(dir, FileName)); err == nil && !st.IsDir() {
+		path := filepath.Join(dir, FileName)
+		// Lstat, not Stat: a link that points at nothing is "not found" to
+		// Stat, and it is exactly the case that must not be walked past.
+		li, err := os.Lstat(path)
+		switch {
+		case err == nil:
+			st, err := os.Stat(path)
+			switch {
+			case err != nil && li.Mode()&os.ModeSymlink != 0:
+				// Not wrapped: a "does not exist" inside would read, to the
+				// caller, as no manifest at all.
+				return "", diag.ManifestInvalid.Errorf("%s is a link that points at nothing (%v)", path, err)
+			case err != nil:
+				return "", diag.ManifestInvalid.Errorf("%s: %v", path, err)
+			case st.IsDir():
+				return "", diag.ManifestInvalid.Errorf("%s is a directory, not a manifest", path)
+			}
 			return dir, nil
+		case !os.IsNotExist(err):
+			return "", diag.ManifestInvalid.Errorf("%s: %v", path, err)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {

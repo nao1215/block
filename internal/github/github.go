@@ -43,6 +43,15 @@ type Client struct {
 	UserAgent string
 }
 
+// Host is the host the client sends its token to, as it appears in BaseURL.
+func (c *Client) Host() string {
+	u, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return ""
+	}
+	return u.Host
+}
+
 // NewFromEnv builds a client from BLOCK_GITHUB_API_URL and GITHUB_TOKEN/GH_TOKEN.
 func NewFromEnv(userAgent string) *Client {
 	base := os.Getenv(EnvBaseURL)
@@ -67,7 +76,12 @@ type Release struct {
 
 // Asset is one downloadable release file.
 type Asset struct {
-	Name               string `json:"name"`
+	Name string `json:"name"`
+	// URL is the asset's API endpoint, which serves the bytes when asked
+	// for application/octet-stream. It is the only way to download an asset
+	// of a private repository: BrowserDownloadURL answers a browser session
+	// and nothing else.
+	URL                string `json:"url"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int64  `json:"size"`
 	// Digest is GitHub's own checksum of the upload, "sha256:<hex>", or ""
@@ -180,6 +194,27 @@ func (c *Client) ReleaseByTag(ctx context.Context, repo, tag string) (*Release, 
 		return nil, err
 	}
 	return &rel, nil
+}
+
+type repository struct {
+	Private bool `json:"private"`
+}
+
+// Private reports whether repo is a private repository. A client without a
+// token is shown public repositories only, so anything it resolved is public
+// and no request is spent asking.
+func (c *Client) Private(ctx context.Context, repo string) (bool, error) {
+	if c.Token == "" {
+		return false, nil
+	}
+	var r repository
+	if err := c.getJSON(ctx, fmt.Sprintf("%s/repos/%s", c.BaseURL, repo), &r); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, fmt.Errorf("repository %s: %w", repo, ErrNotFound)
+		}
+		return false, err
+	}
+	return r.Private, nil
 }
 
 type commit struct {

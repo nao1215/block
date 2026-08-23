@@ -1,11 +1,14 @@
 package manifest
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/platform"
 )
 
@@ -210,4 +213,88 @@ func TestParseAcceptsAChannelConstraint(t *testing.T) {
 	if !ok || ch.Asset != "foundry_nightly_{os}_{arch}.tar.gz" {
 		t.Errorf("channel = %+v, %v", ch, ok)
 	}
+}
+
+// Find walks past a directory only when it has no block.toml at all. Anything
+// else by that name — a directory, a link to nothing — stops the search: a
+// nested project that is broken must be reported as broken, not quietly run
+// against the manifest of the project above it.
+func TestFindStopsAtABrokenManifest(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, FileName), []byte("[tools]\nfoundry = \"1\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("a directory named block.toml", func(t *testing.T) {
+		t.Parallel()
+		nested := filepath.Join(root, "dir")
+		if err := os.MkdirAll(filepath.Join(nested, FileName), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Find(filepath.Join(nested, "deeper"))
+		if err == nil || !strings.Contains(err.Error(), "is a directory") || diag.Of(err) != diag.ManifestInvalid {
+			t.Errorf("Find() error = %v (%v), want the directory refused as BLK1002", err, diag.Of(err))
+		}
+	})
+	t.Run("a link that points at nothing", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS == "windows" {
+			t.Skip("symlinks need a privilege on Windows")
+		}
+		nested := filepath.Join(root, "dangling")
+		if err := os.MkdirAll(nested, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("nowhere.toml", filepath.Join(nested, FileName)); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Find(nested)
+		if err == nil || diag.Of(err) != diag.ManifestInvalid {
+			t.Errorf("Find() error = %v (%v), want the dangling link refused as BLK1002", err, diag.Of(err))
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			// The caller turns "does not exist" into "block.toml not found",
+			// and that is not what is wrong here.
+			t.Errorf("Find() error = %v reads as a missing manifest", err)
+		}
+	})
+	t.Run("a link to a real manifest is followed", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS == "windows" {
+			t.Skip("symlinks need a privilege on Windows")
+		}
+		nested := filepath.Join(root, "linked")
+		if err := os.MkdirAll(nested, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(root, FileName), filepath.Join(nested, FileName)); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Find(nested)
+		if err != nil || got != nested {
+			t.Errorf("Find() = %q, %v, want %q", got, err, nested)
+		}
+	})
+	t.Run("a manifest this user cannot stat", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS == "windows" || os.Getuid() == 0 {
+			t.Skip("permissions do not bind here")
+		}
+		nested := filepath.Join(root, "closed")
+		if err := os.MkdirAll(filepath.Join(nested, "child"), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(nested, FileName), []byte("[tools]\nx = \"1\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// The search starts below a directory it may not look inside.
+		if err := os.Chmod(nested, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(nested, 0o750) })
+		_, err := Find(filepath.Join(nested, "child"))
+		if err == nil || diag.Of(err) != diag.ManifestInvalid {
+			t.Errorf("Find() error = %v (%v), want the unreadable directory reported, not walked past", err, diag.Of(err))
+		}
+	})
 }

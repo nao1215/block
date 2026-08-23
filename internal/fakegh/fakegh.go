@@ -18,6 +18,13 @@
 //
 // Besides GitHub, the server plays a vendor download host at /blobs/<name>
 // for http-type recipes (modelled on go-ethereum's gethstore).
+//
+// A private repository is served the way GitHub serves one: the API answers
+// "Not Found" unless the request bears [Token], and its release assets are
+// had only through the asset endpoint, which redirects to a signed URL on the
+// objects host — the same server reached as "localhost" rather than
+// "127.0.0.1", because what a signed URL rejects is a request that also
+// carries a bearer token, and that is only observable across a host boundary.
 package fakegh
 
 import (
@@ -29,6 +36,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"net/http"
 	"os"
@@ -38,6 +46,14 @@ import (
 	"sync"
 	"time"
 )
+
+// Token is the one bearer token the private fixtures accept.
+const Token = "fakegh-secret-token"
+
+// HugeSize is the size the API reports for the assets of a repository
+// flagged huge, and the Content-Length its downloads announce: larger than
+// block transfers, so nothing is ever actually sent.
+const HugeSize = 3 << 30
 
 // release is one fixture release.
 type release struct {
@@ -68,6 +84,10 @@ type release struct {
 	// a release for the commit under it: nothing that will not move, so
 	// nothing block can pin.
 	unpinnable bool
+	// pad adds this many directory members named pad/ to every archive of
+	// the release, so that an archive can hold more entries than block
+	// extracts without listing each one here.
+	pad int
 }
 
 type entry struct {
@@ -91,6 +111,12 @@ type Repo struct {
 	// download host) instead of as release assets, named
 	// <name>-<os>-<arch>-<version>-<commit8>.tar.gz with a directory prefix.
 	blobs bool
+	// private hides the repository from any request without [Token] and
+	// serves its assets only through the API's asset endpoint.
+	private bool
+	// huge makes every asset of the repository [HugeSize] bytes, as the API
+	// reports it and as the download announces it.
+	huge bool
 }
 
 const (
@@ -287,8 +313,45 @@ func Fixtures() []Repo {
 			{tag: "2.5.0", at: 1, bins: []string{"bare"},
 				assets: platformAssets("bare_2.5.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
 		}},
+		{owner: "example", name: "secret", private: true, digest: true, releases: []release{
+			// A private repository: resolvable and downloadable with the
+			// token, invisible without it.
+			example("v1.0.0", 1, "secret", allPlatforms, ".tar.gz"),
+		}},
+		{owner: "example", name: "huge", huge: true, releases: []release{
+			// Assets the API says are larger than block will download.
+			example("v1.0.0", 1, "huge", allPlatforms, ".tar.gz"),
+		}},
+		{owner: "example", name: "crowded", releases: []release{
+			// More members than block extracts, almost all of them
+			// directories and the last two links: an archive that counted
+			// only its files would be under the limit.
+			{tag: "v1.0.0", at: 1, bins: []string{"crowded"}, pad: crowdPad - 2,
+				assets:  platformAssets("crowded_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil),
+				entries: []entry{{name: "Runner", link: "crowded"}, {name: "Alias", link: "crowded", typ: tar.TypeLink}}},
+		}},
+		{owner: "example", name: "crowdedzip", releases: []release{
+			// The same in a zip, which has no hard links.
+			{tag: "v1.0.0", at: 1, bins: []string{"crowdedzip"}, pad: crowdPad - 1,
+				assets:  platformAssets("crowdedzip_1.0.0_{os}_{arch}.zip", allPlatforms, nil, nil),
+				entries: []entry{{name: "Runner", link: "crowdedzip"}}},
+		}},
+		{owner: "example", name: "longlink", releases: []release{
+			// A zip symlink whose target is one byte longer than block
+			// reads: cut short, it would point at some path nobody wrote.
+			{tag: "v1.0.0", at: 1, bins: []string{"longlink"},
+				assets:  platformAssets("longlink_1.0.0_{os}_{arch}.zip", allPlatforms, nil, nil),
+				entries: []entry{{name: "Runner", link: strings.Repeat("a", longLinkBytes)}}},
+		}},
 	}
 }
+
+// crowdPad is how many members beyond the executable and README it takes to
+// exceed the number of entries block extracts: one past 200,000.
+const crowdPad = 200_001 - 2
+
+// longLinkBytes is one more than the zip link target block reads.
+const longLinkBytes = 4096 + 1
 
 // Server is the fake GitHub handler. Base must be set to the URL clients
 // reach it at before serving, because release assets carry absolute URLs.
@@ -354,18 +417,31 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
+// authorized reports whether a request may see a repository: any request
+// may see a public one, and a private one shows only to [Token].
+func authorized(rp Repo, r *http.Request) bool {
+	return !rp.private || r.Header.Get("Authorization") == "Bearer "+Token
+}
+
 func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, rest string, snapshot int) {
 	parts := strings.SplitN(rest, "/", 3)
-	if len(parts) < 3 {
+	if len(parts) < 2 {
 		http.NotFound(w, r)
 		return
 	}
 	rp, ok := s.repos[parts[0]+"/"+parts[1]]
-	if !ok {
+	if !ok || !authorized(rp, r) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 		return
 	}
+	if len(parts) == 2 {
+		// The repository itself, which is where its visibility is said.
+		writeJSON(w, http.StatusOK, map[string]any{"full_name": parts[0] + "/" + parts[1], "private": rp.private})
+		return
+	}
 	switch {
+	case strings.HasPrefix(parts[2], "releases/assets/"):
+		s.serveAsset(w, r, rp, strings.TrimPrefix(parts[2], "releases/assets/"))
 	case strings.HasPrefix(parts[2], "git/matching-refs/tags/"):
 		prefix := strings.TrimPrefix(parts[2], "git/matching-refs/tags/")
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
@@ -411,14 +487,21 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, rest string, s
 			}
 			assets := []map[string]any{}
 			for _, name := range rel.assets {
+				key := assetKey(rp, rel.tag, name)
 				a := map[string]any{
+					"id":                   assetID(key),
+					"url":                  fmt.Sprintf("%s/repos/%s/%s/releases/assets/%d", s.base, rp.owner, rp.name, assetID(key)),
 					"name":                 name,
-					"browser_download_url": fmt.Sprintf("%s/download/%s/%s/%s/%s", s.base, rp.owner, rp.name, rel.tag, name),
-					"size":                 0,
+					"browser_download_url": fmt.Sprintf("%s/download/%s", s.base, key),
+					"size":                 int64(0),
+				}
+				if rp.huge {
+					a["size"] = int64(HugeSize)
 				}
 				if rp.digest {
-					sum := sha256.Sum256(buildArchive(name, rel))
+					sum := sha256.Sum256(s.archive(key, name, rel))
 					a["digest"] = "sha256:" + hex.EncodeToString(sum[:])
+					a["size"] = int64(len(s.archive(key, name, rel)))
 				}
 				assets = append(assets, a)
 				if rel.twice {
@@ -441,6 +524,97 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, rest string, s
 	}
 }
 
+// assetKey names one asset: "owner/name/tag/asset", which is also its path
+// under /download/.
+func assetKey(rp Repo, tag, name string) string {
+	return fmt.Sprintf("%s/%s/%s/%s", rp.owner, rp.name, tag, name)
+}
+
+// assetID is the stable numeric id an asset has in the API.
+func assetID(key string) int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(key))
+	return int64(h.Sum64() >> 1) // halved, so it fits
+}
+
+// signature is what the objects host wants in place of a token: a stamp a
+// real CDN derives from a secret, and here from the key alone.
+func signature(key string) string {
+	sum := sha256.Sum256([]byte("sig:" + key))
+	return hex.EncodeToString(sum[:8])
+}
+
+// objectsBase is the URL of the objects host: this server, reached by the
+// other loopback name, so that a hop there crosses a host boundary.
+func (s *Server) objectsBase() string {
+	if strings.Contains(s.base, "127.0.0.1") {
+		return strings.Replace(s.base, "127.0.0.1", "localhost", 1)
+	}
+	return strings.Replace(s.base, "localhost", "127.0.0.1", 1)
+}
+
+// archive returns the (cached) bytes of one asset.
+func (s *Server) archive(key, name string, rel release) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	blob, ok := s.blobs[key]
+	if !ok {
+		blob = buildArchive(name, rel)
+		s.blobs[key] = blob
+	}
+	return blob
+}
+
+// findAsset resolves an asset id to the key, name and release it belongs to.
+func (s *Server) findAsset(rp Repo, id string) (key, name string, rel release, ok bool) {
+	for _, rel := range allReleases(rp) {
+		for _, name := range rel.assets {
+			key := assetKey(rp, rel.tag, name)
+			if strconv.FormatInt(assetID(key), 10) == id {
+				return key, name, rel, true
+			}
+		}
+	}
+	return "", "", release{}, false
+}
+
+// allReleases lists the releases a repository can serve, the pinned
+// "<moving tag>-<commit>" ones included.
+func allReleases(rp Repo) []release {
+	out := append([]release(nil), rp.releases...)
+	for _, rel := range rp.releases {
+		if !rel.moves || rel.unpinnable {
+			continue
+		}
+		for at := 1; at <= latestSnapshot; at++ {
+			tag := rel.tag + "-" + commitAt(rel, at)
+			for _, pinned := range releasesFor(rp, tag, latestSnapshot) {
+				if pinned.tag == tag {
+					out = append(out, pinned)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// serveAsset is the API's asset endpoint. Asked for application/octet-stream
+// it answers, as GitHub does, with a redirect to a signed URL on the objects
+// host; asked for anything else it describes the asset.
+func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, rp Repo, id string) {
+	key, name, _, ok := s.findAsset(rp, id)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
+		return
+	}
+	if r.Header.Get("Accept") != "application/octet-stream" {
+		writeJSON(w, http.StatusOK, map[string]any{"id": assetID(key), "name": name})
+		return
+	}
+	w.Header().Set("Location", fmt.Sprintf("%s/download/%s?sig=%s", s.objectsBase(), key, signature(key)))
+	w.WriteHeader(http.StatusFound)
+}
+
 func (s *Server) serveDownload(w http.ResponseWriter, r *http.Request, rest string) {
 	parts := strings.SplitN(rest, "/", 4)
 	if len(parts) != 4 {
@@ -452,6 +626,22 @@ func (s *Server) serveDownload(w http.ResponseWriter, r *http.Request, rest stri
 		http.NotFound(w, r)
 		return
 	}
+	// A signed URL is the objects host's, and it accepts one credential only:
+	// a request that also carries a token is refused, as S3 refuses it. The
+	// browser URL of a private asset, unsigned, is not for a program.
+	if sig := r.URL.Query().Get("sig"); sig != "" {
+		if sig != signature(rest) {
+			http.Error(w, "bad signature", http.StatusForbidden)
+			return
+		}
+		if r.Header.Get("Authorization") != "" {
+			http.Error(w, "Only one auth mechanism allowed", http.StatusBadRequest)
+			return
+		}
+	} else if rp.private {
+		http.NotFound(w, r)
+		return
+	}
 	for _, rel := range releasesFor(rp, parts[2], latestSnapshot) {
 		if rel.tag != parts[2] {
 			continue
@@ -460,15 +650,16 @@ func (s *Server) serveDownload(w http.ResponseWriter, r *http.Request, rest stri
 			if name != parts[3] {
 				continue
 			}
-			s.mu.Lock()
-			blob, ok := s.blobs[rest]
-			if !ok {
-				blob = buildArchive(name, rel)
-				s.blobs[rest] = blob
-			}
-			s.mu.Unlock()
 			w.Header().Set("Content-Type", "application/octet-stream")
-			_, _ = w.Write(blob)
+			if rp.huge {
+				// Announced, never sent: a client that reads the header
+				// refuses before the body, and one that does not would wait
+				// for bytes that are not coming.
+				w.Header().Set("Content-Length", strconv.Itoa(HugeSize))
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			_, _ = w.Write(s.archive(rest, name, rel))
 			return
 		}
 	}
@@ -707,6 +898,11 @@ func buildArchive(name string, rel release) []byte {
 	// the archive names the executable "linked.exe", a link to "linked"
 	// points at nothing, which is a broken fixture rather than the thing the
 	// scenario is about.
+	// The padding goes before the listed entries, so a fixture whose point
+	// is the entry past the limit gets to say which member that is.
+	for range rel.pad {
+		members = append(members, entry{name: "pad/", mode: 0o755})
+	}
 	for _, e := range rel.entries {
 		if e.link != "" && slices.Contains(rel.bins, e.link) {
 			e.link += suffix
@@ -735,6 +931,9 @@ func buildTarGz(members []entry) []byte {
 		switch {
 		case m.typ != 0:
 			hdr.Typeflag = m.typ
+			hdr.Linkname = m.link
+		case strings.HasSuffix(m.name, "/"):
+			hdr.Typeflag = tar.TypeDir
 		case m.link != "":
 			hdr.Typeflag = tar.TypeSymlink
 			hdr.Linkname = m.link
@@ -761,12 +960,20 @@ func buildZip(members []entry) []byte {
 	zw := zip.NewWriter(&buf)
 	for _, m := range members {
 		hdr := &zip.FileHeader{Name: m.name, Method: zip.Deflate, Modified: epoch}
-		hdr.SetMode(os.FileMode(m.mode)) //nolint:gosec // fixture modes are small constants
+		mode, content := os.FileMode(m.mode), m.content //nolint:gosec // fixture modes are small constants
+		switch {
+		case strings.HasSuffix(m.name, "/"):
+			mode |= os.ModeDir
+		case m.link != "":
+			// A zip symlink is a file whose contents are the target.
+			mode, content = mode|os.ModeSymlink|0o777, m.link
+		}
+		hdr.SetMode(mode)
 		f, err := zw.CreateHeader(hdr)
 		if err != nil {
 			log.Fatal(err)
 		}
-		if _, err := f.Write([]byte(m.content)); err != nil {
+		if _, err := f.Write([]byte(content)); err != nil {
 			log.Fatal(err)
 		}
 	}

@@ -57,6 +57,11 @@ type Artifact struct {
 	Platform string `toml:"platform"`
 	URL      string `toml:"url"`
 	SHA256   string `toml:"sha256"`
+	// APIURL is recorded for the asset of a private repository, and only
+	// then: URL answers a browser session alone there, and the bytes are had
+	// from the API with a token. A public artifact is what URL says it is,
+	// and the lockfile says nothing more about it.
+	APIURL string `toml:"api_url,omitempty"`
 }
 
 // Tool returns the entry with the given name.

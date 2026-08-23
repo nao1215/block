@@ -331,3 +331,62 @@ scenarios:
           exit_code: 1
           stderr:
             contains: "block.toml not found"
+
+  # block walks up from the working directory to the nearest block.toml, and
+  # only past a directory that has none. A nested project whose block.toml is
+  # not a readable file is broken, and is reported as broken — not quietly
+  # run against the manifest of the project above it.
+  - name: a directory named block.toml stops the search instead of being walked past
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: mkdir -p nested/block.toml && cd nested && block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "block: BLK1002: "
+              - "block.toml is a directory, not a manifest"
+      - assert:
+          file:
+            path: block.lock
+            exists: false
+      - run:
+          shell: true
+          command: cd nested && block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "block.toml is a directory, not a manifest"
+
+  - name: a block.toml that is a link to nothing stops the search instead of being walked past
+    skip:
+      os: windows
+    env:
+      BLOCK_HOME: "${workdir}/home"
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.7"
+      - run:
+          shell: true
+          command: mkdir -p nested && ln -s nowhere.toml nested/block.toml && cd nested && block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "block: BLK1002: "
+              - "block.toml is a link that points at nothing"
+      - assert:
+          file:
+            path: block.lock
+            exists: false

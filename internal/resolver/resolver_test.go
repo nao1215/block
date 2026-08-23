@@ -45,6 +45,8 @@ func (f *fake) Commit(_ context.Context, _, ref string) (string, error) {
 	return "", github.ErrNotFound
 }
 
+func (f *fake) Private(context.Context, string) (bool, error) { return false, nil }
+
 func (f *fake) ReleaseByTag(_ context.Context, _, tag string) (*github.Release, error) {
 	f.lookups = append(f.lookups, tag)
 	if f.relErr != nil {

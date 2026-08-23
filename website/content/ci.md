@@ -258,3 +258,10 @@ calls an hour, which a re-lock can exhaust.
 
 `block sync` and `block exec` never call the API, so a job that only builds and
 tests needs no token at all — and cannot be broken by a rate limit.
+
+The one exception is a tool from a private repository: its release asset is
+downloaded through the API, with the token, because the public download URL
+answers a browser session alone. `block sync` needs `GITHUB_TOKEN` for such a
+pin and says so (BLK3001) when it is missing. The token goes to the GitHub
+host it was given for and to no other host — not to the CDN a download
+redirects to, and not to a vendor's download server.

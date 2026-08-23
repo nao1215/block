@@ -37,6 +37,9 @@ type Releases interface {
 	Tags(ctx context.Context, repo, prefix string) ([]string, error)
 	ReleaseByTag(ctx context.Context, repo, tag string) (*github.Release, error)
 	Commit(ctx context.Context, repo, ref string) (string, error)
+	// Private reports whether a repository is private, and so whether its
+	// release assets can only be downloaded through the API with a token.
+	Private(ctx context.Context, repo string) (bool, error)
 }
 
 // Resolution is a chosen release plus what naming its artifacts needs: the
@@ -69,6 +72,13 @@ func (r Resolution) Identity() string {
 type Artifact struct {
 	URL    string
 	SHA256 string
+	// APIURL is the asset's API endpoint, for a github_release source; the
+	// bytes of a private repository's asset are had from it and nowhere
+	// else. Empty for an http source.
+	APIURL string
+	// Size is the asset's size as the upstream reports it, or 0 when the
+	// upstream does not say.
+	Size int64
 }
 
 // Versions lists every release version the recipe's tags expose that
@@ -252,5 +262,5 @@ func ArtifactFor(res Resolution, src recipe.Source, p platform.Platform) (Artifa
 			res.Tag, src.Repo, len(matches), name, strings.Join(urls, ", "))
 	}
 	a := matches[0]
-	return Artifact{URL: a.BrowserDownloadURL, SHA256: a.SHA256()}, nil
+	return Artifact{URL: a.BrowserDownloadURL, SHA256: a.SHA256(), APIURL: a.URL, Size: a.Size}, nil
 }

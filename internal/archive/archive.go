@@ -32,6 +32,11 @@ const (
 	maxEntries    = 200_000
 )
 
+// maxLinkBytes caps the target of a zip symlink, which the format stores as
+// the member's contents. PATH_MAX is 4096 on Linux and shorter everywhere
+// else, so nothing a filesystem would accept is refused.
+const maxLinkBytes = 4096
+
 // budget is what is left of an archive's aggregate allowance.
 type budget struct {
 	bytes   int64
@@ -40,7 +45,10 @@ type budget struct {
 
 func newBudget() *budget { return &budget{bytes: maxTotalBytes, entries: maxEntries} }
 
-// entry accounts for one member before it is written.
+// entry accounts for one member before it is written. Every member counts —
+// a directory, a symlink or a hard link as much as a file — because an
+// archive that carries two hundred thousand of any of them is the thing the
+// bound is there to refuse, and an inode is an inode whatever it holds.
 func (b *budget) entry(name string) error {
 	b.entries--
 	if b.entries < 0 {
@@ -129,6 +137,9 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 			// names the destination itself, which already exists.
 			continue
 		}
+		if err := left.entry(hdr.Name); err != nil {
+			return err
+		}
 		target, err := safePath(dst, name)
 		if err != nil {
 			return err
@@ -139,9 +150,6 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 				return err
 			}
 		case tar.TypeReg:
-			if err := left.entry(hdr.Name); err != nil {
-				return err
-			}
 			n, err := writeFile(target, tr, hdr.FileInfo().Mode())
 			if err != nil {
 				return err
@@ -186,6 +194,9 @@ func extractZip(src, dst string, strip int) error {
 		if !ok || isRoot(name) {
 			continue
 		}
+		if err := left.entry(zf.Name); err != nil {
+			return err
+		}
 		target, err := safePath(dst, name)
 		if err != nil {
 			return err
@@ -202,19 +213,22 @@ func extractZip(src, dst string, strip int) error {
 			if err != nil {
 				return err
 			}
-			const maxLinkBytes = 4096
-			link, err := io.ReadAll(io.LimitReader(rc, maxLinkBytes))
+			// One byte past the limit is read, so that a target longer than
+			// the limit is told apart from one exactly at it. Reading up to
+			// the limit and no further would cut the target short and create
+			// a link to wherever the cut happened to land.
+			link, err := io.ReadAll(io.LimitReader(rc, maxLinkBytes+1))
 			_ = rc.Close()
 			if err != nil {
 				return diag.ArchiveUnreadable.Errorf("invalid zip archive: %w", err)
+			}
+			if len(link) > maxLinkBytes {
+				return diag.ArchiveTooLarge.Errorf("refusing to extract %q: its link target is longer than %d bytes", zf.Name, maxLinkBytes)
 			}
 			if err := symlink(dst, target, string(link), zf.Name); err != nil {
 				return err
 			}
 		case mode.IsRegular():
-			if err := left.entry(zf.Name); err != nil {
-				return err
-			}
 			rc, err := zf.Open()
 			if err != nil {
 				return err

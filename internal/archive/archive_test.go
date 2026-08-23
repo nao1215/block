@@ -635,3 +635,115 @@ func TestCopyLinkedKeepsTheExecutableBit(t *testing.T) {
 		}
 	}
 }
+
+// The entry allowance counts every member, not only the files: an archive of
+// two hundred thousand directories, symlinks or hard links costs the same
+// inodes as one of two hundred thousand files, and counting files alone let
+// all of them through.
+func TestExtractCountsEveryKindOfEntry(t *testing.T) {
+	t.Parallel()
+	// All the directory members share one name, so the archive is cheap to
+	// unpack right up to the refusal; the two links at the end are what an
+	// archive that counted files alone would not have counted.
+	crowd := func(n int) []member {
+		out := []member{{name: "tool", content: "#!/bin/sh\n", mode: 0o755}}
+		for range n {
+			out = append(out, member{name: "pad/", mode: 0o755, typ: tar.TypeDir})
+		}
+		return out
+	}
+	tests := []struct {
+		name string
+		src  string
+		last string
+	}{
+		{
+			name: "tar: directories, a symlink and a hard link",
+			src: tarGz(t, append(crowd(maxEntries-2),
+				member{name: "Runner", typ: tar.TypeSymlink, link: "tool"},
+				member{name: "Alias", typ: tar.TypeLink, link: "tool"})...),
+			last: "Alias",
+		},
+		{
+			name: "zip: directories and a symlink",
+			src:  zipFile(t, append(crowd(maxEntries-1), member{name: "Runner", link: "tool"})...),
+			last: "Runner",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dst := filepath.Join(t.TempDir(), "dst")
+			if err := os.MkdirAll(dst, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			name := "a.tar.gz"
+			if strings.HasSuffix(tt.src, ".zip") {
+				name = "a.zip"
+			}
+			err := Extract(tt.src, dst, name, 0)
+			if err == nil || diag.Of(err) != diag.ArchiveTooLarge || !strings.Contains(err.Error(), "more than") {
+				t.Fatalf("Extract() = %v (%v), want the entry allowance refused", err, diag.Of(err))
+			}
+			// The refusal lands on the last member, which is the one that
+			// would not have been counted before.
+			if !strings.Contains(err.Error(), `"`+tt.last+`"`) {
+				t.Errorf("Extract() = %v, want it to name %q", err, tt.last)
+			}
+			if _, err := os.Lstat(filepath.Join(dst, tt.last)); err == nil {
+				t.Errorf("%s was created past the allowance", tt.last)
+			}
+		})
+	}
+}
+
+// A zip link target longer than block reads used to be read up to the limit
+// and cut there, and a link made to whatever path the cut left — a path
+// nobody wrote. It is refused whole instead.
+func TestExtractRefusesAZipLinkTargetLongerThanItReads(t *testing.T) {
+	t.Parallel()
+	tooLong := strings.Repeat("a", maxLinkBytes+1)
+	src := zipFile(t,
+		member{name: "tool", content: "#!/bin/sh\n", mode: 0o755},
+		member{name: "Runner", link: tooLong},
+	)
+	dst := filepath.Join(t.TempDir(), "dst")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := Extract(src, dst, "a.zip", 0)
+	if err == nil || diag.Of(err) != diag.ArchiveTooLarge || !strings.Contains(err.Error(), "link target is longer than") {
+		t.Fatalf("Extract() = %v (%v), want the link target refused", err, diag.Of(err))
+	}
+	if _, err := os.Lstat(filepath.Join(dst, "Runner")); err == nil {
+		t.Error("a link was made from a cut-short target")
+	}
+
+	// A long target within the limit is still a target, and the link is
+	// made. (Exactly at the limit cannot be tried: the operating systems
+	// block runs on refuse a target that long before block sees it.)
+	atLimit := strings.Repeat("b", 200)
+	src = zipFile(t,
+		member{name: "tool", content: "#!/bin/sh\n", mode: 0o755},
+		member{name: "Runner", link: atLimit},
+	)
+	dst = filepath.Join(t.TempDir(), "dst")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err = Extract(src, dst, "a.zip", 0)
+	if runtime.GOOS == "windows" {
+		// No symlinks without a privilege, and the target is not a file to
+		// copy: refused for that reason, never for its length.
+		if err == nil || strings.Contains(err.Error(), "longer than") {
+			t.Fatalf("Extract() = %v", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("Extract() with a target exactly at the limit = %v", err)
+	}
+	if got, err := os.Readlink(filepath.Join(dst, "Runner")); err != nil || got != atLimit {
+		t.Errorf("Readlink() = %q, %v", got, err)
+	}
+}
