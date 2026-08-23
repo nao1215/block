@@ -61,6 +61,20 @@ Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
 So does `foundry = "nightly-<commit>"`, which names one nightly outright and
 never moves at all — [when to use which](https://nao1215.github.io/block/cookbook/#ask-for-one-particular-nightly).
 
+block installs prebuilt artifacts that upstreams publish, and does not build
+tools from source. `go install`, `cargo install`, `make` and upstream build
+scripts are outside what a recipe can ask for, so adding a tool cannot add a
+way to run something during installation. Every resolved artifact is pinned
+in `block.lock` with its SHA-256.
+
+That is a deliberate boundary. Not building at install time keeps a tool's
+dependency resolver, its build scripts and the system toolchain out of the
+step, which narrows the installation-time attack surface. It is worth having
+where CI and developer machines can reach signing keys and other credentials.
+It does not make an artifact safe: a digest pins what you get, not who built
+it. [Security](https://nao1215.github.io/block/security/#what-block-installs)
+has the reasoning and the limits.
+
 ## Install
 
 ```shell
@@ -99,7 +113,7 @@ The [releases page](https://github.com/nao1215/block/releases) also has `.deb`,
 | [Reference](https://nao1215.github.io/block/reference/) | file formats, the store, how versions resolve |
 | [Error codes](https://nao1215.github.io/block/errors/) | every `BLK` code and what to do about it |
 | [CI](https://nao1215.github.io/block/ci/) | GitHub Actions, GitLab, CircleCI, Docker |
-| [Security](https://nao1215.github.io/block/security/) | what block guarantees while downloading binaries |
+| [Security](https://nao1215.github.io/block/security/) | what block does and does not guarantee while installing binaries |
 
 ## Related
 
