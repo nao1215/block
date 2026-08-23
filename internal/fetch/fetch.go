@@ -36,32 +36,88 @@ func (e *ChecksumError) Error() string {
 // Code names the diagnostic this refusal is published under.
 func (e *ChecksumError) Code() diag.Code { return diag.ChecksumMismatch }
 
+// MaxBytes is the most one download may hold. A transfer is stopped at this
+// size whatever the upstream announced, so a response with no Content-Length
+// — or a lying one — cannot fill the disk through the cache. The bound is far
+// above any real toolchain artifact: the largest in the registry is a few
+// hundred megabytes.
+const MaxBytes = 2 << 30
+
+// Credential is a bearer token and the one host it may be sent to. The host
+// is the GitHub API's, which already saw the token when the release was
+// resolved; a download anywhere else — a release CDN, a vendor server, a
+// mirror a redirect points at — is made without it.
+type Credential struct {
+	Host  string
+	Token string
+}
+
+// Allows reports whether rawURL is one the token may be sent to: the
+// credential's own host, compared whole (name and port) and without regard
+// to case. An empty credential allows nothing.
+func (c Credential) Allows(rawURL string) bool {
+	if c.Token == "" || c.Host == "" {
+		return false
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, c.Host)
+}
+
 // Fetcher downloads into Dir.
 type Fetcher struct {
 	Dir       string
 	HTTP      *http.Client
 	UserAgent string
+	// Credential is sent with a request to its host and to nothing else.
+	Credential Credential
+	// MaxBytes caps one download; New sets it to [MaxBytes].
+	MaxBytes int64
 }
 
 // New returns a Fetcher storing blobs under dir. Its client enforces the
 // transport policy on every redirect hop, so an https artifact cannot be
-// answered by a plain-http location.
+// answered by a plain-http location, and it drops the credential from a hop
+// that leaves the credential's host, so a release served through a signed
+// CDN URL never sees the token.
 func New(dir, userAgent string) *Fetcher {
 	const timeout = 10 * time.Minute
-	return &Fetcher{
-		Dir: dir,
-		HTTP: &http.Client{
-			Timeout: timeout,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				const maxRedirects = 10
-				if len(via) >= maxRedirects {
-					return fmt.Errorf("stopped after %d redirects", maxRedirects)
-				}
-				return CheckURL(req.URL.String())
-			},
+	f := &Fetcher{Dir: dir, UserAgent: userAgent, MaxBytes: MaxBytes}
+	f.HTTP = &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			const maxRedirects = 10
+			if len(via) >= maxRedirects {
+				return fmt.Errorf("stopped after %d redirects", maxRedirects)
+			}
+			if err := CheckURL(req.URL.String()); err != nil {
+				return err
+			}
+			// The client copies the headers of the first request onto each
+			// hop. The token is among them, and it is for one host only.
+			if !f.Credential.Allows(req.URL.String()) {
+				req.Header.Del("Authorization")
+			}
+			return nil
 		},
-		UserAgent: userAgent,
 	}
+	return f
+}
+
+// CheckSize refuses an artifact that is known, before any transfer, to be
+// larger than the Fetcher will download — the size an upstream's API reports
+// for it.
+func (f *Fetcher) CheckSize(rawURL string, size int64) error {
+	if size > f.MaxBytes {
+		return f.tooLarge(rawURL)
+	}
+	return nil
+}
+
+func (f *Fetcher) tooLarge(rawURL string) error {
+	return diag.DownloadTooLarge.Errorf("refusing to download %s: it is larger than the %d bytes block transfers", rawURL, f.MaxBytes)
 }
 
 // Path returns where a blob with the given digest lives in the cache.
@@ -135,6 +191,13 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	if f.UserAgent != "" {
 		req.Header.Set("User-Agent", f.UserAgent)
 	}
+	if f.Credential.Allows(rawURL) {
+		// A private release asset is served by the API, which hands over
+		// the bytes — or a signed redirect to them — only when asked for
+		// the binary rather than the JSON that describes it.
+		req.Header.Set("Authorization", "Bearer "+f.Credential.Token)
+		req.Header.Set("Accept", "application/octet-stream")
+	}
 	resp, err := f.HTTP.Do(req)
 	if err != nil {
 		// Wrap rather than Errorf: a redirect this client refused already
@@ -146,6 +209,13 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	if resp.StatusCode != http.StatusOK {
 		return "", diag.DownloadFailed.Errorf("download %s: %s", rawURL, resp.Status)
 	}
+	// What the response announces is checked first, so an artifact that says
+	// how big it is costs nothing to refuse. What it announces is not
+	// trusted, though: the copy below stops at the same bound whether or
+	// not a Content-Length was given, and whatever it said.
+	if resp.ContentLength > f.MaxBytes {
+		return "", f.tooLarge(rawURL)
+	}
 	tmp, err := os.CreateTemp(f.Dir, downloadPrefix+"*")
 	if err != nil {
 		return "", diag.StoreUnwritable.Errorf("cache %s: %w", f.Dir, err)
@@ -153,9 +223,16 @@ func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, er
 	tmpName := tmp.Name()
 	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpName) }
 	h := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(tmp, h), resp.Body); err != nil {
+	// One byte past the limit, so a body that ends exactly at it is told
+	// apart from one that was cut there.
+	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(resp.Body, f.MaxBytes+1))
+	if err != nil {
 		cleanup()
 		return "", diag.DownloadFailed.Errorf("download %s: %w", rawURL, err)
+	}
+	if n > f.MaxBytes {
+		cleanup()
+		return "", f.tooLarge(rawURL)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)

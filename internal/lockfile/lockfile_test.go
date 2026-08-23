@@ -315,3 +315,31 @@ func TestWriteReportsAnUnwritableDirectory(t *testing.T) {
 		t.Fatalf("a lockfile appeared: %v", err)
 	}
 }
+
+// The API URL of a private asset is part of the pin, and a pin without one
+// is written exactly as before: the key is absent, not empty.
+func TestArtifactAPIURLRoundTrips(t *testing.T) {
+	t.Parallel()
+	l := &Lock{Tools: []Tool{{
+		Name: "secret", Constraint: "1", Version: "1.0.0", Bin: []string{"secret"},
+		Artifacts: []Artifact{
+			{Platform: "linux/amd64", URL: "https://github.com/o/r/releases/download/v1.0.0/a.tar.gz", SHA256: strings.Repeat("a", 64), APIURL: "https://api.github.com/repos/o/r/releases/assets/7"},
+			{Platform: "darwin/arm64", URL: "https://github.com/o/r/releases/download/v1.0.0/b.tar.gz", SHA256: strings.Repeat("b", 64)},
+		},
+	}}}
+	data, err := Marshal(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(data), "api_url") != 1 {
+		t.Errorf("Marshal() = %s, want api_url once", data)
+	}
+	got, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool, _ := got.Tool("secret")
+	if tool.Artifacts[0].APIURL != "" || tool.Artifacts[1].APIURL != "https://api.github.com/repos/o/r/releases/assets/7" {
+		t.Errorf("Parse() artifacts = %+v", tool.Artifacts)
+	}
+}

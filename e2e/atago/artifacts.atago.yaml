@@ -513,3 +513,150 @@ scenarios:
             equals: "block: BLK2007: quirky: unsupported platform ${env:BLOCK_PLATFORM} (available: ${env:BLOCK_OTHER_PLATFORM})\n"
           changes:
             created: []
+
+  # An artifact the API already says is larger than block transfers is
+  # refused when the pin would be made: a lockfile nothing could install is
+  # not worth writing, and nothing is downloaded to find that out.
+  - name: an asset the upstream reports as too large is refused at lock time
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.huge]
+            version = "1"
+            [tools.huge.source]
+            type = "github_release"
+            repo = "example/huge"
+            asset = "huge_{version}_{os}_{arch}.tar.gz"
+            bin = ["huge"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK3004: huge: refusing to download ${env:FAKEGH_URL}/download/example/huge/v1.0.0/huge_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: it is larger than the 2147483648 bytes block transfers\n"
+          changes:
+            created: []
+
+  # A lockfile that names a download which turns out to be larger than block
+  # transfers — the upstream replaced the file, or the lock was edited — is
+  # refused by sync on the Content-Length, before a byte of the body, and
+  # leaves nothing in the cache.
+  - name: a download larger than block transfers is refused at sync
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            cometbft = "1.7"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      # Point the pin at the oversized download without touching its digest:
+      # the size is what is refused, long before the digest would be.
+      - run:
+          shell: true
+          command: perl -pi -e 's#/download/cometbft/cometbft/v1.7.4/cometbft_1.7.4_#/download/example/huge/v1.0.0/huge_1.0.0_#' block.lock
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK3004: cometbft: refusing to download ${env:FAKEGH_URL}/download/example/huge/v1.0.0/huge_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: it is larger than the 2147483648 bytes block transfers\n"
+      - assert:
+          dir:
+            path: home/cache/sha256
+            exists: true
+            count: 0
+      - assert:
+          dir:
+            path: home/tools
+            exists: false
+
+  # Every member counts against the number of entries block extracts, not
+  # only the files: the fixture is almost entirely directories, with a
+  # symlink and a hard link at the end, and an archive that counted its
+  # files alone would have been under the limit.
+  - name: an archive with too many entries is refused whatever they are
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.crowded]
+            version = "1"
+            [tools.crowded.source]
+            type = "github_release"
+            repo = "example/crowded"
+            asset = "crowded_{version}_{os}_{arch}.tar.gz"
+            bin = ["crowded"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK6004: crowded: extract crowded_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: refusing to extract "Alias": the archive holds more than 200000 entries'
+      - assert:
+          dir:
+            path: home/tools/crowded
+            exists: true
+            count: 0
+
+  - name: a zip with too many entries is refused whatever they are
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.crowdedzip]
+            version = "1"
+            [tools.crowdedzip.source]
+            type = "github_release"
+            repo = "example/crowdedzip"
+            asset = "crowdedzip_{version}_{os}_{arch}.zip"
+            bin = ["crowdedzip"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK6004: crowdedzip: extract crowdedzip_1.0.0_${env:BLOCK_ASSET_PLATFORM}.zip: refusing to extract "Runner": the archive holds more than 200000 entries'
+      - assert:
+          dir:
+            path: home/tools/crowdedzip
+            exists: true
+            count: 0
+
+  # A zip stores a symlink's target as the member's contents. One longer than
+  # block reads used to be cut at the limit and a link made to whatever path
+  # the cut left; it is refused whole instead.
+  - name: a zip symlink whose target is longer than block reads is refused
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.longlink]
+            version = "1"
+            [tools.longlink.source]
+            type = "github_release"
+            repo = "example/longlink"
+            asset = "longlink_{version}_{os}_{arch}.zip"
+            bin = ["longlink"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'block: BLK6004: longlink: extract longlink_1.0.0_${env:BLOCK_ASSET_PLATFORM}.zip: refusing to extract "Runner": its link target is longer than 4096 bytes'
+      - assert:
+          dir:
+            path: home/tools/longlink
+            exists: true
+            count: 0

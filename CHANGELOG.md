@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- A private repository's release asset could be resolved with `GITHUB_TOKEN`
+  but never installed: the token went to the API and not to the download,
+  and the asset's browser URL answers a browser session alone. `block lock`
+  now records the asset's API URL beside it — for a private repository only,
+  so the lockfile of a public project is unchanged whether or not a token is
+  in hand — and `block sync` downloads from there with the token. The token
+  goes to the GitHub host it was given for (`BLOCK_GITHUB_API_URL`, or
+  api.github.com) and to no other: a redirect to a release CDN drops it, and
+  a pin whose API URL names some other host is refused rather than tried. A
+  private pin synced without a token says so (BLK3001) instead of reporting
+  the upstream's "not found".
+- A download had no size limit: an upstream answering with an endless body
+  filled the disk through the cache. A transfer now stops at 2 GiB — refused
+  from the Content-Length before the body when the response says, and from
+  the asset size the GitHub API reports before the pin is even written —
+  and the partial file is discarded. BLK3004 names it.
+- An archive's entry limit counted regular files only, so two hundred
+  thousand directories, symlinks or hard links went through. Every member
+  counts now, in tar and zip alike.
+- A zip symlink whose target was longer than the 4096 bytes block reads was
+  cut at the limit and a link made to whatever path the cut left. It is
+  refused whole (BLK6004).
+- `manifest.Find` walked past a `block.toml` it could not stat as a file — a
+  directory by that name, a link to nothing, a directory it may not read —
+  and ran the nested project against a parent's manifest. Only a directory
+  with no `block.toml` at all is walked past now; anything else by that name
+  stops the search with BLK1002.
+
+### Added
+- BLK3004, "an artifact is larger than block will download".
+- End-to-end scenarios for each of the above: a private release installed
+  with the token through a signed redirect that refuses the token, a private
+  pin synced without one, a token not sent to a host it is not for, a public
+  pin unchanged by a token, an oversized asset refused at lock and at sync,
+  a tar and a zip with too many entries, a zip link target too long, and a
+  nested `block.toml` that is a directory or a dangling link.
+
 ## [0.4.0] - 2026-08-22
 
 A hardening release: two rounds of bug hunting over the paths the previous

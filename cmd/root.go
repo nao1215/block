@@ -167,12 +167,18 @@ func newApp(stdout, stderr io.Writer) (*block.App, error) {
 		return nil, err
 	}
 	ua := cmdinfo.UserAgent()
+	gh := github.NewFromEnv(ua)
+	fetcher := fetch.New(st.CacheDir(), ua)
+	// The token goes to the GitHub host it was given for and to no other:
+	// a private release asset is downloaded from that host's API, and a
+	// public one from wherever block.lock says, without it.
+	fetcher.Credential = fetch.Credential{Host: gh.Host(), Token: gh.Token}
 	return &block.App{
 		Dir:      dir,
 		Platform: platform.Current(),
 		Registry: reg,
-		Releases: github.NewFromEnv(ua),
-		Fetcher:  fetch.New(st.CacheDir(), ua),
+		Releases: gh,
+		Fetcher:  fetcher,
 		Store:    st,
 		Stdout:   stdout,
 		Stderr:   stderr,

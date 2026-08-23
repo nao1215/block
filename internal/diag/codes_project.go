@@ -15,7 +15,7 @@ var (
 	// ManifestInvalid is a block.toml that cannot be read as one.
 	ManifestInvalid = register(1002,
 		"block.toml is not valid",
-		"block.toml was found but does not parse, or says something block cannot act on: an unknown key, a tool name that is not a tool name, a platform block does not support, or a version constraint that is not a dotted prefix. block refuses the whole file rather than acting on the part of it that made sense.",
+		"block.toml was found but does not parse, or says something block cannot act on: an unknown key, a tool name that is not a tool name, a platform block does not support, or a version constraint that is not a dotted prefix. block refuses the whole file rather than acting on the part of it that made sense. The same code is reported when what is at the name is not a readable file at all — a directory, a link that points at nothing — because block stops there rather than walking on to a parent's manifest.",
 		"Fix the key the message names. Constraints are dotted prefixes only — \"1\", \"1.7\", \"1.7.4\" — with no operators or ranges; the format is at https://nao1215.github.io/block/reference/.",
 		"v0.1.0")
 

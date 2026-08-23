@@ -274,3 +274,88 @@ func TestGetJSONNamesItsOwnSizeLimit(t *testing.T) {
 		t.Errorf("error = %q, which blames the API for block's own cut", err)
 	}
 }
+
+// Whether a repository is private is asked of the API only when there is a
+// token to ask with: without one the API shows public repositories only, so
+// a repository that resolved at all is public, and a request would be spent
+// on a question already answered.
+func TestPrivateAsksOnlyWithAToken(t *testing.T) {
+	t.Parallel()
+	t.Run("no token, no request", func(t *testing.T) {
+		t.Parallel()
+		c := newTestClient(t, func(_ http.ResponseWriter, r *http.Request) {
+			t.Errorf("the API was asked %s without a token", r.URL)
+		})
+		c.Token = ""
+		private, err := c.Private(context.Background(), "o/r")
+		if err != nil || private {
+			t.Errorf("Private() = %v, %v, want public without a request", private, err)
+		}
+	})
+	t.Run("a private repository", func(t *testing.T) {
+		t.Parallel()
+		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/repos/o/r" || r.Header.Get("Authorization") != "Bearer tok" {
+				t.Errorf("asked %s with %v", r.URL, r.Header)
+			}
+			_, _ = w.Write([]byte(`{"full_name":"o/r","private":true}`))
+		})
+		private, err := c.Private(context.Background(), "o/r")
+		if err != nil || !private {
+			t.Errorf("Private() = %v, %v", private, err)
+		}
+	})
+	t.Run("a public repository", func(t *testing.T) {
+		t.Parallel()
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"full_name":"o/r","private":false}`))
+		})
+		private, err := c.Private(context.Background(), "o/r")
+		if err != nil || private {
+			t.Errorf("Private() = %v, %v", private, err)
+		}
+	})
+	t.Run("a repository the token cannot see", func(t *testing.T) {
+		t.Parallel()
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+		})
+		_, err := c.Private(context.Background(), "o/r")
+		if !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "repository o/r") {
+			t.Errorf("Private() error = %v, want not found naming the repository", err)
+		}
+	})
+}
+
+func TestHost(t *testing.T) {
+	t.Parallel()
+	tests := map[string]string{
+		DefaultBaseURL:                   "api.github.com",
+		"https://ghe.example.com/api/v3": "ghe.example.com",
+		"http://127.0.0.1:8080/t1":       "127.0.0.1:8080",
+		"://":                            "",
+	}
+	for base, want := range tests {
+		if got := (&Client{BaseURL: base}).Host(); got != want {
+			t.Errorf("Host(%q) = %q, want %q", base, got, want)
+		}
+	}
+}
+
+// The asset's API URL is what a private asset is downloaded from, so it has
+// to survive the trip through the release JSON.
+func TestReleaseByTagKeepsTheAssetAPIURL(t *testing.T) {
+	t.Parallel()
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v1.0.0","assets":[{"name":"a.tar.gz","url":"https://api.example.com/repos/o/r/releases/assets/7","browser_download_url":"https://example.com/o/r/releases/download/v1.0.0/a.tar.gz","size":42}]}`))
+	})
+	rel, err := c.ReleaseByTag(context.Background(), "o/r", "v1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rel.Assets[0]
+	if got.URL != "https://api.example.com/repos/o/r/releases/assets/7" || got.Size != 42 {
+		t.Errorf("asset = %+v", got)
+	}
+}

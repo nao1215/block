@@ -97,7 +97,11 @@ Three files, three responsibilities:
 | `block.lock` | *what was decided* | your repository |
 
 The lock holds facts only — exact version, executables, URL and digest per
-platform. A project-local source additionally records a fingerprint of its
+platform. An artifact of a private repository additionally records the
+asset's API URL as `api_url`, which is where `block sync` downloads it from
+with `GITHUB_TOKEN`: the browser URL of a private asset answers a browser
+session alone. A public artifact records nothing more, whether or not a
+token was in hand when it was locked. A project-local source additionally records a fingerprint of its
 definition (`source = "sha256:…"`), so editing it makes the pin stale. A
 registry recipe change never affects an existing lock: `sync` needs only the
 URLs and digests already written down.

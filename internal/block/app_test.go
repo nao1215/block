@@ -1314,3 +1314,152 @@ func TestLockRefusesAChannelTheSourceDoesNotPublish(t *testing.T) {
 		t.Error("a refused lock wrote block.lock")
 	}
 }
+
+// withToken gives the harness the token the private fixtures accept, on the
+// API client and on the fetcher alike — which is how the CLI wires it.
+func (h *harness) withToken() {
+	c := &github.Client{BaseURL: h.srv.URL + "/t1", HTTP: h.srv.Client(), Token: fakegh.Token}
+	h.Releases = c
+	h.Fetcher.Credential = fetch.Credential{Host: c.Host(), Token: c.Token}
+}
+
+const secretManifest = `[tools.secret]
+version = "1"
+[tools.secret.source]
+type = "github_release"
+repo = "example/secret"
+asset = "secret_{version}_{os}_{arch}.tar.gz"
+bin = ["secret"]
+`
+
+// A private repository's asset is pinned with its API URL, which is where a
+// download with a token has to go: the browser URL answers a browser session
+// alone. A public repository's pin says nothing more than it did — the same
+// token in hand or not — so lockfiles of public projects do not churn.
+func TestLockRecordsTheAPIURLOfAPrivateAssetOnly(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	h.withToken()
+	ctx := context.Background()
+
+	h.manifest(t, secretManifest)
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	lock := h.lockText(t)
+	want := "api_url = \"" + h.srv.URL + "/repos/example/secret/releases/assets/"
+	if !strings.Contains(lock, want) || !strings.Contains(lock, "url = \""+h.srv.URL+"/download/example/secret/v1.0.0/secret_1.0.0_linux_amd64.tar.gz\"") {
+		t.Errorf("lockfile = %s, want the asset's API URL beside its URL", lock)
+	}
+	if h.stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing downloaded for a digest the API published", h.stderr)
+	}
+	// The fake tools are shell scripts, which Windows cannot install as
+	// executables; the E2E suite covers the install there.
+	if runtime.GOOS != "windows" {
+		h.reset()
+		if err := h.Sync(ctx); err != nil {
+			t.Fatalf("Sync() with the token = %v", err)
+		}
+		if !strings.Contains(h.stdout.String(), "secret  1.0.0  installed") {
+			t.Errorf("stdout = %q", h.stdout)
+		}
+	}
+
+	// The same token, a public repository: nothing new in the lockfile.
+	h2 := newHarness(t, "/t1")
+	h2.withToken()
+	h2.manifest(t, "[tools.foo]\nversion = \"1.2\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"example/foo\"\nasset = \"foo_{version}_{os}_{arch}.tar.gz\"\nbin = [\"foo\"]\n")
+	if err := h2.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(h2.lockText(t), "api_url") {
+		t.Errorf("lockfile of a public repository = %s, carries an api_url", h2.lockText(t))
+	}
+	if runtime.GOOS != "windows" {
+		if err := h2.Sync(ctx); err != nil {
+			t.Fatalf("Sync() of a public repository with a token = %v", err)
+		}
+	}
+}
+
+// Without a token the private repository does not exist as far as the API
+// says, and lock reports that. With a pin already made, a sync without the
+// token says what is missing instead of trying a download that would come
+// back "not found" — and never sends the token to a host it is not for.
+func TestPrivateAssetNeedsTheToken(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := newHarness(t, "/t1")
+	h.manifest(t, secretManifest)
+	err := h.Lock(ctx, nil, false)
+	if err == nil || diag.Of(err) != diag.UpstreamNotFound {
+		t.Fatalf("Lock() without a token = %v (%v), want BLK2003", err, diag.Of(err))
+	}
+
+	h.withToken()
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	// The pin is made; now sync without the token.
+	h.Fetcher.Credential = fetch.Credential{}
+	err = h.Sync(ctx)
+	if err == nil || diag.Of(err) != diag.DownloadFailed || !strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Fatalf("Sync() without a token = %v (%v), want BLK3001 naming the token", err, diag.Of(err))
+	}
+	if entries, _ := os.ReadDir(filepath.Join(h.Store.CacheDir(), "sha256")); len(entries) != 0 {
+		t.Errorf("%d blobs cached by a refused sync", len(entries))
+	}
+
+	// A token for some other host is no token for this one: the lockfile's
+	// API URL is on the fake GitHub, and the credential is not.
+	h.Fetcher.Credential = fetch.Credential{Host: "api.github.com", Token: "elsewhere"}
+	err = h.Sync(ctx)
+	if err == nil || !strings.Contains(err.Error(), "no GITHUB_TOKEN (or GH_TOKEN) is set for "+strings.TrimPrefix(h.srv.URL, "http://")) {
+		t.Fatalf("Sync() with a token for another host = %v, want the host named", err)
+	}
+}
+
+// An asset the API already says is larger than block transfers is refused
+// at lock time — a pin nothing could install is not worth writing — and one
+// that only announces its size when asked for is refused at sync.
+func TestOversizedArtifactsAreRefused(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := newHarness(t, "/t1")
+	h.manifest(t, "[tools.huge]\nversion = \"1\"\n[tools.huge.source]\ntype = \"github_release\"\nrepo = \"example/huge\"\nasset = \"huge_{version}_{os}_{arch}.tar.gz\"\nbin = [\"huge\"]\n")
+	err := h.Lock(ctx, nil, false)
+	if err == nil || diag.Of(err) != diag.DownloadTooLarge {
+		t.Fatalf("Lock() = %v (%v), want BLK3004", err, diag.Of(err))
+	}
+	if h.stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want no download attempted", h.stderr)
+	}
+	if _, err := os.Stat(h.LockPath()); err == nil {
+		t.Error("a lockfile was written for an artifact that cannot be installed")
+	}
+
+	// A lockfile that names the oversized download directly, as one written
+	// before the upstream grew would: sync reads the Content-Length and
+	// refuses before the body.
+	h.manifest(t, "[tools.foo]\nversion = \"1.2\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"example/foo\"\nasset = \"foo_{version}_{os}_{arch}.tar.gz\"\nbin = [\"foo\"]\n")
+	if err := h.Lock(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	lock := strings.Replace(h.lockText(t), "/download/example/foo/v1.2.0/foo_1.2.0_linux_amd64.tar.gz", "/download/example/huge/v1.0.0/huge_1.0.0_linux_amd64.tar.gz", 1)
+	if err := os.WriteFile(h.LockPath(), []byte(lock), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The lock of a digest-less asset downloaded it to learn the digest, so
+	// the blob is cached under the name the edited lock still carries.
+	if err := os.RemoveAll(h.Store.CacheDir()); err != nil {
+		t.Fatal(err)
+	}
+	err = h.Sync(ctx)
+	if err == nil || diag.Of(err) != diag.DownloadTooLarge {
+		t.Fatalf("Sync() = %v (%v), want BLK3004", err, diag.Of(err))
+	}
+	if entries, _ := os.ReadDir(h.Store.CacheDir()); len(entries) > 1 {
+		t.Errorf("cache = %v, want no partial download left", entries)
+	}
+}

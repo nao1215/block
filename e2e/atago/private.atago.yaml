@@ -1,0 +1,181 @@
+# Private repositories: the asset of one is downloaded through the API with
+# the token, and the token goes to that host and to no other. The fake GitHub
+# serves its private fixture the way GitHub does — invisible without the
+# token, its asset endpoint answering with a redirect to a signed URL on an
+# objects host that refuses a request carrying a bearer token — so a download
+# that succeeds is proof the credential stayed where it belongs.
+# Run with: make e2e
+version: "1"
+
+suite:
+  name: block private releases
+
+scenarios:
+  - name: a private release is resolved and installed with the token
+    env: &secret
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      GITHUB_TOKEN: fakegh-secret-token
+    steps:
+      - fixture:
+          file: block.toml
+          content: &secret_manifest |
+            [tools.secret]
+            version = "1"
+            [tools.secret.source]
+            type = "github_release"
+            repo = "example/secret"
+            asset = "secret_{version}_{os}_{arch}.tar.gz"
+            bin = ["secret"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "secret  locked 1.0.0\nwrote block.lock\n"
+          # The API published a digest, so nothing was downloaded to lock.
+          stderr:
+            equals: ""
+      # The pin carries the asset's API URL beside the URL a browser would
+      # use: the bytes of a private asset are had from the API, with the
+      # token, and from nowhere else.
+      - assert:
+          file:
+            path: block.lock
+            contains:
+              - 'url = "${env:FAKEGH_URL}/download/example/secret/v1.0.0/secret_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz"'
+              - 'api_url = "${env:FAKEGH_URL}/repos/example/secret/releases/assets/'
+      - run:
+          command: block lock --check
+      - assert:
+          exit_code: 0
+      # The objects host the API redirects to refuses any request that also
+      # carries the token, so an install that completes is an install that
+      # never leaked it across the hop.
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "secret  1.0.0  installed"
+      - run:
+          command: block exec secret
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "secret 1.0.0 (fake)"
+
+  - name: without the token the private repository does not exist
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: *secret_manifest
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: "block: BLK2003: secret: repository example/secret: not found\n"
+          changes:
+            created: []
+
+  # A pin made with the token, synced on a machine without one: the browser
+  # URL would answer "not found", which is what the upstream says and not what
+  # is wrong. block says what is missing instead, and downloads nothing.
+  - name: a private pin synced without the token says what is missing
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: *secret_manifest
+      - run:
+          command: block lock
+          env:
+            GITHUB_TOKEN: fakegh-secret-token
+      - assert:
+          exit_code: 0
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "block: BLK3001: secret: download ${env:FAKEGH_URL}/download/example/secret/v1.0.0/secret_1.0.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz: it is a private release asset, and no GITHUB_TOKEN (or GH_TOKEN) is set for "
+      - assert:
+          dir:
+            path: home/cache
+            exists: false
+
+  # The token is for the GitHub host block was configured with. A lockfile
+  # whose API URL names some other host — here the same server by its other
+  # loopback name — gets no token for it, and the sync is refused up front
+  # rather than the credential tried somewhere it was not given for.
+  - name: the token is not sent to a host it is not for
+    env: *secret
+    steps:
+      - fixture:
+          file: block.toml
+          content: *secret_manifest
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: perl -pi -e 's#(api_url = "http://)127\.0\.0\.1#${1}localhost#' block.lock
+      - assert:
+          file:
+            path: block.lock
+            contains: 'api_url = "http://localhost:'
+      - run:
+          command: block sync
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "it is a private release asset, and no GITHUB_TOKEN (or GH_TOKEN) is set for localhost:"
+      - assert:
+          dir:
+            path: home/cache
+            exists: false
+
+  # A public repository is not changed by having a token in hand: its pin
+  # says what it always said, and its download goes where block.lock says,
+  # without the token — so lockfiles of public projects do not churn when
+  # CI happens to set GITHUB_TOKEN.
+  - name: a public release locked with a token records nothing extra
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+      GITHUB_TOKEN: fakegh-secret-token
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foo  1.2.0  installed"
+      - assert:
+          file:
+            path: block.lock
+            not_contains: "api_url"
+      - run:
+          command: block exec foo
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foo 1.2.0 (fake)"

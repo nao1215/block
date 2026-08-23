@@ -8,7 +8,7 @@ A code is `BLK` followed by four digits, and the thousands digit says what kind 
 |---|---|---|
 | `BLK1xxx` | what was asked for — block.toml, block.lock, and the names typed on the command line | 11 |
 | `BLK2xxx` | resolving a version against an upstream, which only `block lock` ever does | 10 |
-| `BLK3xxx` | downloading an artifact and proving it is the one block.lock names | 3 |
+| `BLK3xxx` | downloading an artifact and proving it is the one block.lock names | 4 |
 | `BLK4xxx` | installing into the store under `$BLOCK_HOME` | 5 |
 | `BLK5xxx` | running a command with the locked toolchain, through `block exec` or a shim | 4 |
 | `BLK6xxx` | a refusal on security grounds — block declining, rather than failing | 6 |
@@ -50,6 +50,7 @@ Look a code up from the terminal with `block explain BLK1001`, which prints this
 | [`BLK3001`](#blk3001--an-artifact-could-not-be-downloaded) | an artifact could not be downloaded | v0.1.0 |
 | [`BLK3002`](#blk3002--a-download-does-not-match-the-digest-in-blocklock) | a download does not match the digest in block.lock | v0.1.0 |
 | [`BLK3003`](#blk3003--a-cached-artifact-is-corrupt-and-could-not-be-replaced) | a cached artifact is corrupt and could not be replaced | v0.1.0 |
+| [`BLK3004`](#blk3004--an-artifact-is-larger-than-block-will-download) | an artifact is larger than block will download | v0.5.0 |
 | [`BLK4001`](#blk4001--an-artifact-could-not-be-unpacked) | an artifact could not be unpacked | v0.1.0 |
 | [`BLK4002`](#blk4002--the-artifact-does-not-contain-a-declared-executable) | the artifact does not contain a declared executable | v0.1.0 |
 | [`BLK4003`](#blk4003--an-install-in-the-store-is-incomplete-or-damaged) | an install in the store is incomplete or damaged | v0.1.0 |
@@ -79,7 +80,7 @@ Exits 1. Since v0.1.0.
 
 ### BLK1002 — block.toml is not valid
 
-block.toml was found but does not parse, or says something block cannot act on: an unknown key, a tool name that is not a tool name, a platform block does not support, or a version constraint that is not a dotted prefix. block refuses the whole file rather than acting on the part of it that made sense.
+block.toml was found but does not parse, or says something block cannot act on: an unknown key, a tool name that is not a tool name, a platform block does not support, or a version constraint that is not a dotted prefix. block refuses the whole file rather than acting on the part of it that made sense. The same code is reported when what is at the name is not a readable file at all — a directory, a link that points at nothing — because block stops there rather than walking on to a parent's manifest.
 
 Fix: Fix the key the message names. Constraints are dotted prefixes only — "1", "1.7", "1.7.4" — with no operators or ranges; the format is at https://nao1215.github.io/block/reference/.
 
@@ -243,9 +244,9 @@ Exits 1. Since v0.3.0.
 
 ### BLK3001 — an artifact could not be downloaded
 
-The artifact block.lock names could not be fetched: the host refused, the transfer broke, or the request timed out. Nothing was installed, and no partial file was kept — a download is written to a temporary file and only named once its digest is known.
+The artifact block.lock names could not be fetched: the host refused, the transfer broke, the request timed out, or the artifact is a private release asset and no token that can read it is set. Nothing was installed, and no partial file was kept — a download is written to a temporary file and only named once its digest is known.
 
-Fix: Retry. If it persists, check network access to the host in the message; a release CDN blocked by a proxy is the usual cause in CI.
+Fix: Retry. If it persists, check network access to the host in the message; a release CDN blocked by a proxy is the usual cause in CI. A private release asset needs GITHUB_TOKEN (or GH_TOKEN) set to a token that can read the repository, on sync as well as on lock.
 
 Exits 1. Since v0.1.0.
 
@@ -264,6 +265,14 @@ The download cache under $BLOCK_HOME holds a blob whose bytes do not hash to the
 Fix: Check the permissions on $BLOCK_HOME, then delete the file the message names. Deleting the whole cache directory is always safe: it is rebuilt from block.lock.
 
 Exits 1. Since v0.1.0.
+
+### BLK3004 — an artifact is larger than block will download
+
+The artifact is bigger than the size block transfers — as the upstream's API reports it, as the response's Content-Length announces it, or as the bytes actually arrive when neither said. The transfer is stopped and the partial file discarded, so an upstream that answers with an endless body cannot fill the disk. No tool block installs comes anywhere near the limit.
+
+Fix: Check what is at the URL in the message: an artifact this size is not the tool it claims to be. For a `[tools.<name>.source]` of your own, check the asset template names the right file. For a registry tool, report it at https://github.com/nao1215/block-registry/issues.
+
+Exits 1. Since v0.5.0.
 
 ## BLK4xxx — installing into the store under `$BLOCK_HOME`
 

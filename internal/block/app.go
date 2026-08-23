@@ -323,6 +323,9 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 		// when that thing moves: a channel resolves to the tag under it.
 		entry.Version = r.Identity()
 	}
+	// Whether the repository is private is asked once per tool, and only
+	// when an artifact is actually being pinned: a kept pin already says.
+	private, privateKnown := false, false
 	for _, p := range plats {
 		if _, ok := entry.Artifact(p); ok {
 			continue
@@ -338,11 +341,27 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 		if err != nil {
 			return nil, err
 		}
-		sha, err := a.digestFor(ctx, prev, p, art, check)
+		// An artifact the upstream already says is too large is refused
+		// here, before a pin nothing could ever install is written.
+		if err := a.Fetcher.CheckSize(art.URL, art.Size); err != nil {
+			return nil, err
+		}
+		pinned := lockfile.Artifact{Platform: p.String(), URL: art.URL}
+		if art.APIURL != "" && !privateKnown {
+			if private, err = a.Releases.Private(ctx, src.Repo); err != nil {
+				return nil, err
+			}
+			privateKnown = true
+		}
+		if private {
+			pinned.APIURL = art.APIURL
+		}
+		sha, err := a.digestFor(ctx, prev, pinned, art.SHA256, check)
 		if err != nil {
 			return nil, err
 		}
-		entry.SetArtifact(lockfile.Artifact{Platform: p.String(), URL: art.URL, SHA256: sha})
+		pinned.SHA256 = sha
+		entry.SetArtifact(pinned)
 	}
 	return entry, nil
 }
@@ -351,12 +370,12 @@ func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, 
 // must: the upstream's own digest when it publishes one, else the digest
 // already locked for the very same URL, else — outside check mode — the
 // digest of one download.
-func (a *App) digestFor(ctx context.Context, prev *lockfile.Tool, p platform.Platform, art resolver.Artifact, check bool) (string, error) {
-	if art.SHA256 != "" {
-		return art.SHA256, nil
+func (a *App) digestFor(ctx context.Context, prev *lockfile.Tool, art lockfile.Artifact, upstream string, check bool) (string, error) {
+	if upstream != "" {
+		return upstream, nil
 	}
 	if prev != nil {
-		if old, ok := prev.Artifact(p); ok && old.URL == art.URL {
+		if old, ok := prevArtifact(prev, art.Platform); ok && old.URL == art.URL {
 			return old.SHA256, nil
 		}
 	}
@@ -366,11 +385,40 @@ func (a *App) digestFor(ctx context.Context, prev *lockfile.Tool, p platform.Pla
 		return "", nil
 	}
 	fmt.Fprintf(a.Stderr, "downloading %s\n", art.URL)
-	_, sha, _, err := a.Fetcher.Fetch(ctx, art.URL, "")
+	_, sha, err := a.fetchArtifact(ctx, art, "")
 	if err != nil {
 		return "", err
 	}
 	return sha, nil
+}
+
+// fetchArtifact downloads one artifact and returns the cached blob and its
+// digest. A public artifact comes from the URL block.lock records. A private
+// release asset cannot: that URL answers a browser session and nothing else,
+// so the lockfile also records the asset's API URL, and the download goes
+// there with the token — to the host that already saw the token when the
+// release was resolved, and to no other. Without a token for that host the
+// download is refused up front, rather than tried and reported as "not
+// found", which is what the upstream would say and not what is wrong.
+func (a *App) fetchArtifact(ctx context.Context, art lockfile.Artifact, want string) (path, sha string, err error) {
+	from := art.URL
+	if art.APIURL != "" {
+		if !a.Fetcher.Credential.Allows(art.APIURL) {
+			return "", "", diag.DownloadFailed.Errorf("download %s: it is a private release asset, and no GITHUB_TOKEN (or GH_TOKEN) is set for %s", art.URL, assetHost(art.APIURL))
+		}
+		from = art.APIURL
+	}
+	path, sha, _, err = a.Fetcher.Fetch(ctx, from, want)
+	return path, sha, err
+}
+
+// assetHost names the host an API URL is served by, for a message.
+func assetHost(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return rawURL
+	}
+	return u.Host
 }
 
 // resolve turns a constraint into a release: the newest version it allows, or
@@ -445,7 +493,7 @@ func artifactChanges(prev, next *lockfile.Tool) []string {
 		switch {
 		case !ok:
 			out = append(out, "artifact for "+a.Platform+" added")
-		case before.URL != a.URL, a.SHA256 == "", before.SHA256 != a.SHA256:
+		case before.URL != a.URL, before.APIURL != a.APIURL, a.SHA256 == "", before.SHA256 != a.SHA256:
 			out = append(out, "artifact for "+a.Platform)
 		}
 	}
@@ -759,7 +807,7 @@ func (a *App) install(ctx context.Context, t *lockfile.Tool) (string, error) {
 	if a.Store.IsInstalled(dir, t.Bin) {
 		return "cached", nil
 	}
-	blob, _, _, err := a.Fetcher.Fetch(ctx, art.URL, art.SHA256)
+	blob, _, err := a.fetchArtifact(ctx, art, art.SHA256)
 	if err != nil {
 		return "", err
 	}
