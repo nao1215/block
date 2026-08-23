@@ -28,6 +28,7 @@ import (
 // a temp project directory.
 type harness struct {
 	*App
+	fake   *fakegh.Server
 	srv    *httptest.Server
 	stdout *bytes.Buffer
 	stderr *bytes.Buffer
@@ -45,7 +46,7 @@ func newHarness(t *testing.T, snapshot string) *harness {
 	}
 	st := &store.Store{Root: filepath.Join(t.TempDir(), "home")}
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	h := &harness{srv: srv, stdout: out, stderr: errOut}
+	h := &harness{fake: fake, srv: srv, stdout: out, stderr: errOut}
 	h.App = &App{
 		Dir:      t.TempDir(),
 		Platform: platform.Platform{OS: "linux", Arch: "amd64"},

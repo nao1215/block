@@ -10,9 +10,11 @@ toc: true
 | `block lock --check` | yes | never | never | no | no |
 | `block sync` | never | never | locked URLs, when not cached | yes | no |
 | `block exec <cmd>` | never | never | never | never | yes |
+| `block which <cmd>` | never | never | never | never | no |
 | `block status [--json]` | never | never | never | never | no |
 | `block list [ecosystem]` | never | never | never | never | no |
 | `block explain <code>` | never | never | never | never | no |
+| `block completion <shell>` | never | never | never | never | no |
 
 "never" is a guarantee, not a default: there is no flag that turns any of those
 cells into a yes.
@@ -81,6 +83,23 @@ fails, without resolving or writing anything, when the lockfile is missing,
 disagrees with `block.toml`, lacks this platform, or an artifact's checksum
 does not match.
 
+Several tools are downloaded and installed at once — a few at a time, bounded
+by a limit block manages internally; it is not a flag or a setting. The report
+is still one line per tool, in lockfile order, printed once every tool has
+finished:
+
+```console
+$ block sync
+foundry  1.7.4   installed
+hermes   1.13.0  installed
+```
+
+Nothing about a single install changes because others run beside it: every
+artifact is still verified against the locked SHA-256, served from the
+content-addressed cache when it is already there, and moved into the store
+with one atomic rename. The first failure stops the rest and is the error
+reported, so a sync that fails fails for one named reason.
+
 ## `block exec`
 
 Runs a command with every executable from `block.lock` first on `PATH`, and
@@ -96,6 +115,41 @@ It never downloads, installs or resolves — but it does check, offline, that
 the toolchain is the one `block.toml` asks for and that the install is intact.
 `SIGINT` and `SIGTERM` reach the child, so a node or a local test network
 shuts down the way it would outside block.
+
+## `block which`
+
+Prints the absolute path of the executable `block exec` would run for a
+command — the one the project's installed toolchain provides:
+
+```console
+$ block which solc
+/home/me/.local/share/block/tools/solc/0.8.30-1a2b3c4d5e6f/solc
+```
+
+Unlike the shell's `which`, it never consults `PATH`. The answer comes from
+`block.toml`, `block.lock` and the store, so a same-named binary installed some
+other way does not change it. From a nested directory it resolves to the
+enclosing project, exactly as `exec` does.
+
+It fails as `exec` would, with the same codes: a missing lockfile (BLK1003), a
+lockfile that no longer matches `block.toml` (BLK1005), a tool that is locked
+but not yet installed, and a command no locked tool provides:
+
+```console
+$ block which forge
+block: BLK4004: foundry 1.7.4 is not installed; run "block sync"
+
+$ block which node
+block: BLK5001: block.toml does not lock a tool providing the command "node"
+```
+
+One line on stdout, nothing else, so a script can take it as it is:
+
+```console
+$ SOLC="$(block which solc)" && "$SOLC" --version
+```
+
+`which` never downloads, installs or resolves anything.
 
 ## `block status`
 
@@ -216,6 +270,43 @@ find the same entry. Like `list`, it is offline and read-only.
 The whole set is at [Error codes](/errors/), generated from the same registry
 this command reads, so a code cannot mean one thing in a terminal and another
 in a browser.
+
+## Shell completion
+
+`block completion` prints the script that lets a shell complete block's
+commands and flags. Load it once from your shell's startup file:
+
+```console
+$ echo 'source <(block completion bash)' >> ~/.bashrc
+```
+
+```console
+$ echo 'source <(block completion zsh)' >> ~/.zshrc
+```
+
+On zsh, a file in `fpath` works as well, so long as `compinit` runs after it:
+
+```console
+$ block completion zsh > "${fpath[1]}/_block"
+```
+
+```console
+$ block completion fish > ~/.config/fish/completions/block.fish
+```
+
+bash can also take the script from its completion directory instead of
+`~/.bashrc`:
+
+```console
+$ block completion bash > /etc/bash_completion.d/block
+```
+
+Completion is dynamic where it can be. Inside a project, `block lock <TAB>`
+offers the tools of `block.toml` and `block which <TAB>` the commands of
+`block.lock`; anywhere, `block list <TAB>` offers the ecosystems and
+`block explain <TAB>` the error codes built into the binary. Completing reads
+those files and that table and does nothing else: it never resolves, downloads
+or installs.
 
 ## `block version`
 

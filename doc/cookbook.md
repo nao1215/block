@@ -769,6 +769,18 @@ deploy: toolchain
 One `block exec` around a whole script is usually better than one per command:
 the toolchain is on `PATH` for everything inside it.
 
+A tool that wants the path of another tool rather than its name — an editor
+plugin, a linter's `--solc` flag, a Hardhat config — gets it from `block which`,
+which prints the absolute path `block exec` would run and never looks at
+`PATH`:
+
+```shell
+solhint --solc "$(block which solc)" 'contracts/**/*.sol'
+```
+
+It fails where `exec` would — not synced, not locked, not a command the project
+provides — so a Makefile that uses it cannot silently pick up a system copy.
+
 ```json
 {
   "scripts": {

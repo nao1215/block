@@ -1,0 +1,309 @@
+# `block which` prints the executable `block exec` would run for a command:
+# the one inside the store that block.toml and block.lock resolve to, never
+# anything PATH happens to hold. It reads the project the way exec does and
+# refuses for the same reasons. Run with: make e2e
+version: "1"
+
+suite:
+  name: block which
+
+scenarios:
+  - name: which prints the absolute path of the installed executable
+    env: &t1
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}/t1"
+    steps:
+      - fixture:
+          file: block.toml
+          content: &foundry |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      - run:
+          command: block which forge
+          # Offline: the answer comes from the two files and the store.
+          env:
+            BLOCK_GITHUB_API_URL: "http://127.0.0.1:1"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '^\S.*[/\\]home[/\\]tools[/\\]foundry[/\\]1\.7\.4-[0-9a-f]{12}[/\\]forge${env:BLOCK_EXE}\n$'
+          stderr:
+            equals: ""
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      # The path it printed is a file that exists and can be run.
+      - run:
+          shell: true
+          command: test -x "$(block which forge)"
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: "\"$(block which forge)\" --version"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              forge 1.7.4 (fake)
+              args: --version
+      # Every command of the tool resolves into the same install.
+      - run:
+          shell: true
+          command: '[ "$(dirname "$(block which forge)")" = "$(dirname "$(block which cast)")" ]'
+      - assert:
+          exit_code: 0
+
+  # What which prints is what exec runs: the tool itself reports the path it
+  # was started from, and the two agree.
+  - name: which names the executable exec runs
+    skip:
+      os: windows
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *foundry
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: '[ "$(block which forge)" = "$(block exec sh -c ''command -v forge'')" ]'
+      - assert:
+          exit_code: 0
+
+  - name: which resolves from a nested directory to the enclosing project
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *foundry
+      - fixture:
+          file: contracts/src/.keep
+          content: ""
+      - run:
+          shell: true
+          command: block lock && block sync && block which forge > expected.txt
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: cd contracts/src && block which forge
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '[/\\]tools[/\\]foundry[/\\]1\.7\.4-[0-9a-f]{12}[/\\]forge${env:BLOCK_EXE}\n$'
+      - run:
+          shell: true
+          command: cd contracts/src && [ "$(block which forge)" = "$(cat ../../expected.txt)" ]
+      - assert:
+          exit_code: 0
+
+  # A forge of its own on PATH, ahead of everything: which does not look
+  # there, so the answer is block's forge and not that one.
+  - name: which ignores a same-named executable on PATH
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *foundry
+      - fixture:
+          file: elsewhere/forge
+          mode: "0755"
+          content: |
+            #!/bin/sh
+            echo "not block's forge"
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: PATH="${workdir}/elsewhere${env:BLOCK_PATH_SEP}$PATH" block which forge
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '[/\\]home[/\\]tools[/\\]foundry[/\\]1\.7\.4-[0-9a-f]{12}[/\\]forge${env:BLOCK_EXE}\n$'
+      - assert:
+          stdout:
+            not_contains: "elsewhere"
+
+  - name: which fails for a command no locked tool provides
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *foundry
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      - run:
+          command: block which solc
+      - assert:
+          exit_code: 1
+          stdout:
+            equals: ""
+          stderr:
+            equals: 'block: BLK5001: block.toml does not lock a tool providing the command "solc"
+
+'
+      # A tool name is not a command name: foundry provides forge, and it is
+      # forge that which answers for.
+      - run:
+          command: block which foundry
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK5001: block.toml does not lock a tool providing the command "foundry"
+
+'
+      # And a command PATH has is still not one block provides.
+      - run:
+          command: block which sh
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: 'BLK5001: block.toml does not lock a tool providing the command "sh"'
+
+  - name: which fails for a tool that is locked but not synced
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *foundry
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+      - run:
+          command: block which forge
+      - assert:
+          exit_code: 1
+          stdout:
+            equals: ""
+          stderr:
+            equals: 'block: BLK4004: foundry 1.7.4 is not installed; run "block sync"
+
+'
+          # It did not install anything on the way to the answer.
+          changes:
+            created: []
+            modified: []
+            deleted: []
+      - assert:
+          dir:
+            path: home
+            exists: false
+
+  - name: which refuses without a lockfile
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *foundry
+      - run:
+          command: block which forge
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK1003: block.lock not found; run "block lock" and "block sync"
+
+'
+          changes:
+            created: []
+      # A subdirectory is not a project of its own — the enclosing one is
+      # found from it — so the refusal is about that project's lockfile.
+      - run:
+          shell: true
+          command: mkdir -p contracts && cd contracts && block which forge
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "BLK1003: block.lock not found"
+
+  - name: which refuses outside a project
+    env: *t1
+    steps:
+      - run:
+          command: block which forge
+      - assert:
+          exit_code: 1
+          stdout:
+            equals: ""
+          stderr:
+            equals: "block: BLK1001: block.toml not found in the current directory or any parent\n"
+          changes:
+            created: []
+
+  - name: which refuses a stale lockfile rather than answering from it
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: *foundry
+      - run:
+          shell: true
+          command: block lock && block sync
+      - assert:
+          exit_code: 0
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.6"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          command: block which forge
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: |
+              block: BLK1005: block.lock is stale; run "block lock"
+                foundry: block.toml wants "1.6" but block.lock was resolved from "1.7"
+
+  - name: which takes exactly one command
+    steps:
+      - run:
+          command: block which
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "accepts 1 arg(s), received 0"
+      - run:
+          command: block which forge cast
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "accepts 1 arg(s), received 2"
+      - run:
+          command: block which --help
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "block which forge"
+              - "does not look at PATH"
+              - 'run "block sync"'

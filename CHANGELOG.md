@@ -44,6 +44,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pin unchanged by a token, an oversized asset refused at lock and at sync,
   a tar and a zip with too many entries, a zip link target too long, and a
   nested `block.toml` that is a directory or a dangling link.
+- `block which <command>`: prints the absolute path of the executable
+  `block exec <command>` would run, resolved from `block.toml`, `block.lock`
+  and the store — never from `PATH`, so a same-named binary elsewhere on the
+  machine does not change the answer. It fails exactly where exec would: a
+  missing or stale lockfile, a tool locked but not yet installed (BLK4004,
+  run `block sync`), and a command no locked tool provides (BLK5001). One
+  line on stdout, nothing downloaded, installed or resolved.
+- `block completion bash|zsh|fish` prints a shell completion script. Beyond
+  commands and flags, completion is dynamic: `block lock <TAB>` offers the
+  tools of `block.toml`, `block which <TAB>` the commands of `block.lock`,
+  `block list <TAB>` the ecosystems of the embedded registry and
+  `block explain <TAB>` the error codes. Completing never resolves,
+  downloads or installs.
+
+### Changed
+- `block sync` downloads and installs several tools at once rather than one
+  after another, bounded by a small limit block manages internally — there
+  is no flag, variable or setting for it. The report is still one line per
+  tool in lockfile order, printed once every tool has finished; the first
+  failure cancels the rest and is the error reported. Checksum
+  verification, the content-addressed cache, the atomic install, the
+  private-asset token handling and the size limit are unchanged.
 
 ## [0.4.0] - 2026-08-22
 

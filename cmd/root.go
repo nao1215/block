@@ -21,7 +21,6 @@ import (
 	"github.com/nao1215/block/internal/github"
 	"github.com/nao1215/block/internal/manifest"
 	"github.com/nao1215/block/internal/platform"
-	"github.com/nao1215/block/internal/recipe"
 	"github.com/nao1215/block/internal/shim"
 	"github.com/nao1215/block/internal/store"
 	"github.com/nao1215/block/registry"
@@ -92,9 +91,12 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 sync never resolves. exec never installs. lock is the only operation that
 can move a pin.
 
+  block which   prints the executable exec would run for a command
   block status  shows what block.toml, block.lock and the store say
   block list    shows the tools block supports, all or by ecosystem
   block explain names what one of block's BLK error codes means
+
+  block completion bash|zsh|fish  prints a shell completion script
 
 ` + Links,
 		// The same answer as `block version`, printed by the same code: a
@@ -115,11 +117,41 @@ can move a pin.
 		newLockCmd(stdout, stderr),
 		newSyncCmd(stdout, stderr),
 		newExecCmd(stdout, stderr),
+		newWhichCmd(stdout, stderr),
 		newStatusCmd(stdout, stderr),
 		newListCmd(stdout),
 		newExplainCmd(stdout),
 		newVersionCmd(stdout),
 	)
+	// cobra's own completion command, added here rather than left to
+	// Execute so that it exists as soon as the tree does: `block completion
+	// bash` is a documented invocation, and the documentation checks ask the
+	// tree whether it accepts one. The generated scripts call back into
+	// `block __complete`, which runs the functions in complete.go and nothing
+	// else — no resolution, no download, no install.
+	root.InitDefaultCompletionCmd()
+	if completion, _, err := root.Find([]string{"completion"}); err == nil && completion != root {
+		// A shell it has no script for is a refusal, not a help screen.
+		completion.Args = cobra.ArbitraryArgs
+		completion.RunE = func(_ *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return errors.New("completion needs a shell: bash, zsh, fish or powershell")
+			}
+			return fmt.Errorf("no completion script for %q: choose bash, zsh, fish or powershell", args[0])
+		}
+		completion.Short = "Print a shell completion script for bash, zsh, fish or PowerShell"
+		completion.Long = `completion prints the script that lets a shell complete block's commands,
+flags, the tools of the current project and the ecosystems and error codes
+block knows. Load it once from your shell's startup file:
+
+  bash  echo 'source <(block completion bash)' >> ~/.bashrc
+  zsh   echo 'source <(block completion zsh)' >> ~/.zshrc
+  fish  block completion fish > ~/.config/fish/completions/block.fish
+
+Completing reads block.toml and block.lock when the working directory is in
+a project, and the registry and error table built into the binary. It never
+resolves, downloads or installs.`
+	}
 	return root
 }
 
@@ -198,6 +230,7 @@ lock is the only command that moves a pin. Commit block.lock.
 
 With --check, lock performs the same resolution but writes nothing:
 exit 0 when block.lock is current, 2 when it would change, 1 on error.`,
+		ValidArgsFunction: completeManifestTools,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := newApp(stdout, stderr)
 			if err != nil {
@@ -266,6 +299,39 @@ exec never downloads, installs or resolves anything; run "block sync" first.`,
 			if code != 0 {
 				return &ExitError{Code: code}
 			}
+			return nil
+		},
+	}
+}
+
+func newWhichCmd(stdout, stderr io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "which <command>",
+		Short: "Print the executable exec would run for a command",
+		Long: `which prints the absolute path of the executable "block exec <command>"
+runs: the one the project's installed toolchain provides for that command.
+
+  block which forge
+  /home/me/.local/share/block/tools/foundry/1.7.4-1a2b3c4d5e6f/forge
+
+Unlike the shell's which, it does not look at PATH: the answer comes from
+block.toml, block.lock and the store, and a same-named executable elsewhere
+on the machine does not change it. It fails — as exec would — when the
+lockfile is missing or stale, when the tool is locked but not yet installed
+(run "block sync"), and when no locked tool provides the command. which never
+downloads, installs or resolves anything.`,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeLockedCommands,
+		RunE: func(_ *cobra.Command, args []string) error {
+			app, err := newApp(stdout, stderr)
+			if err != nil {
+				return err
+			}
+			path, err := app.Which(args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(stdout, path)
 			return nil
 		},
 	}
@@ -370,7 +436,8 @@ anything to block.toml. list is read-only and offline — it reads the registry
 snapshot embedded in this binary, resolves nothing, downloads nothing, and
 needs neither block.toml nor block.lock. Project-local tools are not listed;
 a project's own toolchain is its block.toml and block.lock.`,
-		Args: cobra.MaximumNArgs(1),
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeEcosystems,
 		RunE: func(_ *cobra.Command, args []string) error {
 			reg, err := registry.Builtin()
 			if err != nil {
@@ -408,17 +475,6 @@ a project's own toolchain is its block.toml and block.lock.`,
 			return tw.Flush()
 		},
 	}
-}
-
-// commandNames reduces archive-relative executable paths to the command
-// names a user types. What "the command name" is belongs to the recipe
-// package, which is where every other caller asks.
-func commandNames(bins []string) []string {
-	out := make([]string, len(bins))
-	for i, b := range bins {
-		out[i] = recipe.CommandName(b)
-	}
-	return out
 }
 
 func newVersionCmd(stdout io.Writer) *cobra.Command {

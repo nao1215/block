@@ -23,6 +23,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/nao1215/block/internal/diag"
 	"github.com/nao1215/block/internal/fetch"
 	"github.com/nao1215/block/internal/lockfile"
@@ -740,18 +742,59 @@ func (a *App) Sync(ctx context.Context) error {
 	// to the store, so a cache kept for years holds artifacts, not leftovers.
 	a.Fetcher.Sweep(staleAfter)
 	a.Store.SweepTemp(staleAfter)
+	states, err := a.installAll(ctx, l.Tools)
+	if err != nil {
+		return err
+	}
 	tw := tabwriter.NewWriter(a.Stdout, 0, 0, 2, ' ', 0) //nolint:mnd // column padding
-	for _, t := range l.Tools {
-		state, err := a.install(ctx, &t)
-		if err != nil {
-			return fmt.Errorf("%s: %w", t.Name, err)
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", t.Name, t.Version, state)
+	for i, t := range l.Tools {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", t.Name, t.Version, states[i])
 	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
 	return a.ensureShims(l)
+}
+
+// syncJobs is how many tools a sync downloads and installs at once. A
+// toolchain is a handful of archives from a handful of hosts, and what bounds
+// the wall clock is the slowest of them rather than their sum; more than a few
+// in flight would only contend for the disk and trip a release host's rate
+// limit. It is a constant, not a setting: nothing about the result depends on
+// it, and a knob whose value changes nothing observable is a knob nobody
+// should have to learn.
+const syncJobs = 4
+
+// installAll installs every tool, up to syncJobs of them at a time, and
+// returns their states in lockfile order. The first failure cancels the
+// context the others are downloading under, and is the error reported — the
+// rest stopped because of it, and saying so would bury the cause under its
+// consequences.
+//
+// Tools are independent in everything they touch: each has its own install
+// directory, each download lands in its own temporary file and is published
+// under its digest by a rename, and two tools that share an artifact both
+// arrive at the same content-addressed blob. Nothing is printed until every
+// tool is done, so the report reads the same whatever order they finished in.
+func (a *App) installAll(ctx context.Context, tools []lockfile.Tool) ([]string, error) {
+	states := make([]string, len(tools))
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(syncJobs)
+	for i := range tools {
+		g.Go(func() error {
+			t := &tools[i]
+			state, err := a.install(ctx, t)
+			if err != nil {
+				return fmt.Errorf("%s: %w", t.Name, err)
+			}
+			states[i] = state
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return states, nil
 }
 
 // ensureShims makes the commands this project locks runnable by their own

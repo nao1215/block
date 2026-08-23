@@ -50,9 +50,11 @@ Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
 | `block lock [tool...]` | resolve `block.toml` into `block.lock` — the only command that moves a pin |
 | `block sync` | install what `block.lock` pins, or fail |
 | `block exec <cmd>` | run a command with the locked toolchain on `PATH` |
+| `block which <cmd>` | the executable `exec` would run, as an absolute path — never `PATH` |
 | `block status [--json]` | what the two files and the store say, read-only |
 | `block list [ecosystem]` | the tools block can install |
 | `block explain <code>` | what a `BLK` error code means |
+| `block completion <shell>` | a completion script for bash, zsh or fish |
 
 `sync` never resolves, `exec` never installs, and nothing updates by itself.
 `foundry = "nightly"` works too: it pins the release under the tag that moves.
