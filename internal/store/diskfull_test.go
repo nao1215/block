@@ -5,6 +5,8 @@ package store
 import (
 	"errors"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -52,5 +54,33 @@ func TestWriteFailedTellsAFullDiskFromAnUnwritableStore(t *testing.T) {
 	msg := writeFailed("marking the install complete", syscall.ENOSPC).Error()
 	if !strings.Contains(msg, "no room left on the disk") || !strings.Contains(msg, "quota") {
 		t.Errorf("message = %q", msg)
+	}
+}
+
+// A raw executable is copied from the download cache into the store, and only
+// one end of that copy is the store. A cached artifact that has gone missing
+// is the cache's problem, and reporting it as a store that cannot be written
+// would send the reader to check the permissions of a directory block had no
+// trouble with.
+func TestInstallDoesNotBlameTheStoreForAnUnreadableSource(t *testing.T) {
+	t.Parallel()
+	s := &Store{Root: t.TempDir()}
+	dir, err := s.InstallDir("solc", "0.8.30", "0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Install(filepath.Join(t.TempDir(), "gone"), "solc-static-linux", dir, []string{"solc"}, 0)
+	if err == nil {
+		t.Fatal("Install() accepted a source that is not there")
+	}
+	if code := diag.Of(err); code == diag.StoreUnwritable || code == diag.DiskFull {
+		t.Errorf("code = %s, want the store not to be blamed for the cache (%v)", code, err)
+	}
+	if !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "install solc-static-linux") {
+		t.Errorf("err = %v, want the missing source named", err)
+	}
+	// And nothing was published: the install directory is not there.
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("a failed install left %s behind: %v", dir, err)
 	}
 }

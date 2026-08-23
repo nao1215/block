@@ -235,7 +235,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 			return writeFailed("creating "+filepath.Dir(target), err)
 		}
 		if err := copyExecutable(src, target); err != nil {
-			return writeFailed("installing "+assetName, err)
+			return fmt.Errorf("install %s: %w", assetName, err)
 		}
 	default:
 		return diag.ExecutableMissing.Errorf("raw executable %s needs exactly one bin name", assetName)
@@ -285,6 +285,12 @@ func ensureExecutable(dir string, bins []string) error {
 }
 
 // copyExecutable copies a raw binary into place with the executable bit set.
+//
+// A copy has two ends and only one of them is the install directory. Reading
+// the cached artifact is not a write into the store, so a failure there keeps
+// the plain error it has always had rather than being reported as one; only
+// the destination goes through [writeFailed], where a filesystem with no room
+// left earns a code of its own.
 func copyExecutable(src, dst string) error {
 	in, err := os.Open(src) //nolint:gosec // cache path
 	if err != nil {
@@ -294,13 +300,23 @@ func copyExecutable(src, dst string) error {
 	const execMode = 0o755
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, execMode) //nolint:gosec // inside the temp install dir
 	if err != nil {
-		return err
+		return writeFailed("creating "+dst, err)
 	}
 	if _, err := io.Copy(out, in); err != nil {
 		_ = out.Close()
+		// io.Copy does not say which end gave out, so only a failure the
+		// operating system attributes to the disk is named as the store's.
+		if fserr.OutOfSpace(err) {
+			return writeFailed("writing "+dst, err)
+		}
 		return err
 	}
-	return out.Close()
+	// A close is the destination alone: it is where the last of the buffered
+	// bytes are written, which is often where a full disk is first noticed.
+	if err := out.Close(); err != nil {
+		return writeFailed("writing "+dst, err)
+	}
+	return nil
 }
 
 // BinDirs returns the directories that must be prepended to PATH so that the
