@@ -292,6 +292,9 @@ scenarios:
           dir:
             path: home/cache
             count: 1
+      # The gate never opened: how many of the two stopped downloads had
+      # reached it before the cancellation depends on the race, so that is
+      # not asserted beyond its bound.
       - http:
           runner: fakegh
           method: GET
@@ -303,7 +306,7 @@ scenarios:
               - path: "$.opened"
                 equals: false
               - path: "$.arrived"
-                equals: 2
+                lte: 2
 
   # A private asset beside public ones: the private one is had from the API
   # with the token, through a redirect to a signed URL that refuses a request
