@@ -294,6 +294,44 @@ func TestParseChannelPins(t *testing.T) {
 	}
 }
 
+// A constraint that named one release of a channel could only ever have
+// resolved to that release, so the pin beside it has to be that release and
+// nothing else on the line — the hand edit this check exists to catch.
+func TestParseNamedChannelReleasePins(t *testing.T) {
+	t.Parallel()
+	const commit = "5e88010a83d1b87b8f4d13058e42a2949d3e9dc0"
+	const other = "2b2c1b6f0a94d1b87b8f4d13058e42a2949d3e9dc"
+	lock := func(constraint, release string) []byte {
+		return []byte("version = 1\n[[tools]]\nname = \"foundry\"\nconstraint = \"" + constraint + "\"\nversion = \"" + release + "\"\nbin = [\"forge\"]\n" +
+			"[[tools.artifacts]]\nplatform = \"linux/amd64\"\nurl = \"https://example.com/f.tar.gz\"\nsha256 = \"" + sha + "\"\n")
+	}
+	tag := "nightly-" + commit
+	l, err := Parse(lock(tag, tag))
+	if err != nil {
+		t.Fatalf("Parse(named release pin) = %v", err)
+	}
+	if got, _ := l.Tool("foundry"); got.Constraint != tag || got.Version != tag {
+		t.Errorf("pin = %q / %q, want both %q", got.Constraint, got.Version, tag)
+	}
+	for _, bad := range []struct{ name, constraint, release string }{
+		{"another night of the same line", tag, "nightly-" + other},
+		{"the moving tag it was not asked for", tag, "nightly"},
+		{"a version", tag, "1.7.4"},
+	} {
+		t.Run(bad.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := Parse(lock(bad.constraint, bad.release)); err == nil {
+				t.Errorf("Parse(%q, %q) was accepted", bad.constraint, bad.release)
+			}
+		})
+	}
+	// The floating form still accepts any release of its line, which is what
+	// keeps a re-lock from staling every existing channel pin.
+	if _, err := Parse(lock("nightly", "nightly-"+other)); err != nil {
+		t.Errorf("Parse(floating channel pin) = %v", err)
+	}
+}
+
 func TestWriteReportsAnUnwritableDirectory(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" || os.Getuid() == 0 {

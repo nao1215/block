@@ -425,10 +425,10 @@ func assetHost(rawURL string) string {
 
 // resolve turns a constraint into a release: the newest version it allows, or
 // — for a channel — whatever that channel points at right now, pinned to the
-// tag under it.
+// tag under it, or the one release of a channel the constraint named outright.
 func (a *App) resolve(ctx context.Context, src recipe.Source, c version.Constraint) (resolver.Resolution, error) {
 	if c.IsChannel() {
-		return resolver.ResolveChannel(ctx, a.Releases, src, c.Channel())
+		return resolver.ResolveChannelConstraint(ctx, a.Releases, src, c)
 	}
 	return resolver.Resolve(ctx, a.Releases, src, c)
 }
