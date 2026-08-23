@@ -1,19 +1,19 @@
 {
-    "version": "0.4.0",
+    "version": "0.5.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/nao1215/block/releases/download/v0.4.0/block_0.4.0_windows_amd64.zip",
+            "url": "https://github.com/nao1215/block/releases/download/v0.5.0/block_0.5.0_windows_amd64.zip",
             "bin": [
                 "block.exe"
             ],
-            "hash": "cfb98a3c6ab7db4624322faf2cf3ef4f063a10904a5f43d6c40a59bc67d2c602"
+            "hash": "20e40746476ae7f4251588d798af3ed7893a33f2be8a080b55cf3e538536b5a6"
         },
         "arm64": {
-            "url": "https://github.com/nao1215/block/releases/download/v0.4.0/block_0.4.0_windows_arm64.zip",
+            "url": "https://github.com/nao1215/block/releases/download/v0.5.0/block_0.5.0_windows_arm64.zip",
             "bin": [
                 "block.exe"
             ],
-            "hash": "6e42e79c22d9a37ae129124d12dea9ba5281be279f7ff0b51d405ce9c6bb80c0"
+            "hash": "0024b2689e0e45ab16607179c261ba7c9728eb6333f8ca562e68761e5c6f34b1"
         }
     },
     "homepage": "https://github.com/nao1215/block",
