@@ -227,28 +227,126 @@ func (a *App) Lock(ctx context.Context, names []string, check bool) error {
 	return nil
 }
 
-// plan builds the lockfile block lock would write. In check mode nothing is
-// downloaded: an artifact whose digest could only be learned by downloading
-// is left empty, which the comparison reports as a change — it is one, since
-// such an artifact is always a new or moved URL.
-func (a *App) plan(ctx context.Context, m *manifest.Manifest, old *lockfile.Lock, only map[string]bool, check bool) (*lockfile.Lock, []lockResult, error) {
-	next := &lockfile.Lock{Version: lockfile.FormatVersion}
-	var results []lockResult
+// toolPlan is everything block knows about one tool before it talks to
+// anybody: the recipe source its manifest entry resolves to, the pin already
+// recorded for it, and the platforms this lock has to cover.
+//
+// It exists so that the offline half of lock happens as one pass over the
+// whole toolchain, before the half that fetches. All of it comes from
+// block.toml, the registry and block.lock — no request answers any of these
+// questions — which is what makes the checks below possible up front rather
+// than tool by tool as the downloads go by.
+type toolPlan struct {
+	tool manifest.Tool
+	src  recipe.Source
+	// prev is the pin block.lock already holds, or nil.
+	prev  *lockfile.Tool
+	plats []platform.Platform
+	// resolve says whether this tool is re-resolved against upstream, which
+	// is every tool unless the command line named a few.
+	resolve bool
+}
+
+// sourceHash is what a pin records to detect an edited recipe: a fingerprint
+// for a project-local source, and nothing for a registry tool, whose recipe
+// travels with the block binary rather than with the project.
+func (p toolPlan) sourceHash() string {
+	if p.tool.Source == nil {
+		return ""
+	}
+	return p.src.Hash()
+}
+
+// keeps reports whether the previous pin is carried over verbatim: the tool
+// was not named for re-resolution, and neither the constraint nor the recipe
+// it was resolved from has changed since.
+func (p toolPlan) keeps() bool {
+	return !p.resolve && p.prev != nil &&
+		p.prev.Constraint == p.tool.Constraint.String() && p.prev.Source == p.sourceHash()
+}
+
+// planTools reads the whole toolchain out of block.toml, the registry and
+// block.lock. Nothing here is fetched.
+func (a *App) planTools(m *manifest.Manifest, old *lockfile.Lock, only map[string]bool) ([]toolPlan, error) {
+	plans := make([]toolPlan, 0, len(m.Tools))
 	for _, t := range m.Tools {
 		src, err := a.sourceFor(t)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		var prev *lockfile.Tool
 		if old != nil {
 			prev, _ = old.Tool(t.Name)
 		}
-		entry, err := a.lockTool(ctx, t, src, prev, a.platformsFor(m, prev, src), len(only) == 0 || only[t.Name], check)
+		plans = append(plans, toolPlan{
+			tool:    t,
+			src:     src,
+			prev:    prev,
+			plats:   a.platformsFor(m, prev, src),
+			resolve: len(only) == 0 || only[t.Name],
+		})
+	}
+	return plans, nil
+}
+
+// checkPlatforms refuses a toolchain some tool cannot be locked for, before
+// any of the others is fetched.
+//
+// Which platforms a source ships is in the recipe — a declared list, or the
+// keys of its target table — so "this tool has no build for darwin/arm64" is
+// answerable from block.toml and the registry alone. Left to resolution it
+// would still be answered, but only when the tool's turn came: a manifest
+// whose last tool ships nothing for a declared platform would have downloaded
+// the artifacts of every tool before it, and then written no lockfile. The
+// whole toolchain is therefore asked first, and the refusal is the one
+// resolution would have produced, word for word.
+//
+// A platform a kept pin already covers is not asked about: its artifact is in
+// block.lock and is copied across, so the source is never consulted for it.
+func (a *App) checkPlatforms(plans []toolPlan) error {
+	for _, p := range plans {
+		keeps := p.keeps()
+		for _, pl := range p.plats {
+			if keeps {
+				if _, ok := p.prev.Artifact(pl); ok {
+					continue
+				}
+			}
+			if p.src.Supports(pl) {
+				continue
+			}
+			return fmt.Errorf("%s: %w", p.tool.Name,
+				&recipe.UnsupportedPlatformError{Platform: pl, Supported: p.src.SupportedPlatforms()})
+		}
+	}
+	return nil
+}
+
+// plan builds the lockfile block lock would write. In check mode nothing is
+// downloaded: an artifact whose digest could only be learned by downloading
+// is left empty, which the comparison reports as a change — it is one, since
+// such an artifact is always a new or moved URL.
+//
+// The offline pass comes first and covers every tool: what each one resolves
+// to, and whether it can be resolved for the platforms asked for at all.
+// Only then does anything reach the network.
+func (a *App) plan(ctx context.Context, m *manifest.Manifest, old *lockfile.Lock, only map[string]bool, check bool) (*lockfile.Lock, []lockResult, error) {
+	plans, err := a.planTools(m, old, only)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := a.checkPlatforms(plans); err != nil {
+		return nil, nil, err
+	}
+	next := &lockfile.Lock{Version: lockfile.FormatVersion}
+	var results []lockResult
+	for _, p := range plans {
+		entry, err := a.lockTool(ctx, p, check)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", t.Name, err)
+			return nil, nil, fmt.Errorf("%s: %w", p.tool.Name, err)
 		}
 		next.Tools = append(next.Tools, *entry)
-		results = append(results, result(prev, entry))
+		results = append(results, result(p.prev, entry))
 	}
 	next.Sort()
 	return next, results, nil
@@ -284,27 +382,26 @@ func (a *App) platformsFor(m *manifest.Manifest, prev *lockfile.Tool, src recipe
 	return out
 }
 
-// lockTool pins one tool. With resolve set, the tool is re-resolved against
-// upstream and every artifact is re-rendered from the current recipe, so a
-// recipe that renamed an asset takes effect even when the version is
-// unchanged. Without it the previous pin is kept verbatim — that is what
-// naming other tools on the command line means — except that a platform it
-// does not cover yet is resolved at the pinned version.
-func (a *App) lockTool(ctx context.Context, t manifest.Tool, src recipe.Source, prev *lockfile.Tool, plats []platform.Platform, resolve, check bool) (*lockfile.Tool, error) {
+// lockTool pins one tool from its plan. With the plan set to resolve, the tool
+// is re-resolved against upstream and every artifact is re-rendered from the
+// current recipe, so a recipe that renamed an asset takes effect even when the
+// version is unchanged. Otherwise the previous pin is kept verbatim — that is
+// what naming other tools on the command line means — except that a platform
+// it does not cover yet is resolved at the pinned version.
+func (a *App) lockTool(ctx context.Context, p toolPlan, check bool) (*lockfile.Tool, error) {
+	t, src, prev, plats := p.tool, p.src, p.prev, p.plats
 	entry := &lockfile.Tool{
 		Name:            t.Name,
 		Constraint:      t.Constraint.String(),
 		Bin:             append([]string(nil), src.Bin...),
 		StripComponents: src.StripComponents,
-	}
-	if t.Source != nil {
-		entry.Source = src.Hash()
+		Source:          p.sourceHash(),
 	}
 	var resolution resolver.Resolution
 	// resolved says whether resolution describes entry.Version; a kept pin
 	// leaves it unset until a missing platform forces an exact lookup.
 	resolved := false
-	keep := !resolve && prev != nil && prev.Constraint == entry.Constraint && prev.Source == entry.Source
+	keep := p.keeps()
 	switch {
 	case keep:
 		entry.Version = prev.Version

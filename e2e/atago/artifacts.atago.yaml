@@ -82,6 +82,71 @@ scenarios:
           changes:
             created: []
 
+  # Which platforms a source ships for is in the recipe, so the whole
+  # toolchain is checked before any of it is fetched. "foo" sorts first and
+  # publishes no digest, so locking it costs a download — and that download
+  # must not happen for a lockfile that was never going to be written.
+  - name: an unsupported platform is refused before anything is downloaded
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+
+            [tools.maconly]
+            version = "0.1"
+            [tools.maconly.source]
+            type = "github_release"
+            repo = "example/maconly"
+            asset = "maconly_{version}_{os}_{arch}.tar.gz"
+            platforms = ["${env:BLOCK_OTHER_PLATFORM}"]
+            bin = ["maconly"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          # The message is the one resolution itself would have produced.
+          stderr:
+            equals: "block: BLK2007: maconly: unsupported platform ${env:BLOCK_PLATFORM} (available: ${env:BLOCK_OTHER_PLATFORM})\n"
+          stdout:
+            equals: ""
+          # Nothing was fetched, nothing was cached, and no lockfile — whole
+          # or partial — was left behind.
+          changes:
+            created: []
+            modified: []
+      - assert:
+          file:
+            path: block.lock
+            exists: false
+      # Take the unsupported tool out and the very same manifest locks, so
+      # the check that runs first refuses nothing it should not.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foo]
+            version = "1.2"
+            [tools.foo.source]
+            type = "github_release"
+            repo = "example/foo"
+            asset = "foo_{version}_{os}_{arch}.tar.gz"
+            bin = ["foo"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "foo  locked 1.2.0"
+          stderr:
+            equals: "downloading ${env:FAKEGH_URL}/download/example/foo/v1.2.0/foo_1.2.0_${env:BLOCK_ASSET_PLATFORM}.tar.gz\n"
+
   - name: a release missing the expected asset names what it does have
     env: *t1
     steps:

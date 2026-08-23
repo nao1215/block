@@ -20,7 +20,9 @@ import (
 	"github.com/nao1215/block/internal/lockfile"
 	"github.com/nao1215/block/internal/manifest"
 	"github.com/nao1215/block/internal/platform"
+	"github.com/nao1215/block/internal/recipe"
 	"github.com/nao1215/block/internal/store"
+	"github.com/nao1215/block/internal/version"
 	"github.com/nao1215/block/registry"
 )
 
@@ -1608,5 +1610,90 @@ func TestLockRefusesAnUnparsableChannelConstraint(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "<channel>-<commit>") {
 		t.Errorf("err = %v, want it to name the shape that would work", err)
+	}
+}
+
+// Which platforms a source ships for is in the recipe, so a toolchain that
+// cannot be locked is refused before any of it is fetched. Left to
+// resolution, the tools before the unsupported one would have been downloaded
+// and then thrown away with the lockfile that was never written.
+func TestLockChecksEveryPlatformBeforeDownloadingAnything(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "/t1")
+	// "foo" sorts before "maconly" and publishes no digest, so locking it
+	// costs a download — the one that must not happen here.
+	h.manifest(t, "[tools.foo]\nversion = \"1.2\"\n[tools.foo.source]\ntype = \"github_release\"\nrepo = \"example/foo\"\nasset = \"foo_{version}_{os}_{arch}.tar.gz\"\nbin = [\"foo\"]\n"+
+		"[tools.maconly]\nversion = \"0.1\"\n[tools.maconly.source]\ntype = \"github_release\"\nrepo = \"example/maconly\"\nasset = \"maconly_{version}_{os}_{arch}.tar.gz\"\nplatforms = [\"darwin/arm64\"]\nbin = [\"maconly\"]\n")
+	err := h.Lock(context.Background(), nil, false)
+	if diag.Of(err) != diag.PlatformUnsupported {
+		t.Fatalf("Lock() = %v, want %s", err, diag.PlatformUnsupported)
+	}
+	// The message is the one resolution would have produced, word for word.
+	const want = "maconly: unsupported platform linux/amd64 (available: darwin/arm64)"
+	if err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
+	}
+	if h.stderr.Len() != 0 {
+		t.Errorf("something was downloaded before the refusal: %q", h.stderr)
+	}
+	// Nothing reached the cache, and no lockfile was written.
+	if _, err := os.Stat(h.Fetcher.Dir); !os.IsNotExist(err) {
+		t.Errorf("the cache directory exists: %v", err)
+	}
+	if _, err := os.Stat(h.LockPath()); err == nil {
+		t.Error("a refused lock wrote block.lock")
+	}
+}
+
+// The preflight asks only about the platforms that still need resolving. A
+// pin block is keeping already carries its artifacts and never consults the
+// source for them, so a recipe that has since stopped claiming a platform
+// must not retroactively refuse a lock that would have kept working.
+func TestCheckPlatformsSkipsWhatAKeptPinAlreadyCovers(t *testing.T) {
+	t.Parallel()
+	linux := platform.Platform{OS: "linux", Arch: "amd64"}
+	darwin := platform.Platform{OS: "darwin", Arch: "arm64"}
+	// A registry tool — no source fingerprint — whose recipe now claims one
+	// platform fewer than the lockfile covers.
+	narrowed := recipe.Source{
+		Type: recipe.TypeGitHubRelease, Repo: "example/foo",
+		Asset: "foo_{version}_{os}_{arch}.tar.gz", Platforms: []string{"linux/amd64"}, Bin: []string{"foo"},
+	}
+	pinned := &lockfile.Tool{
+		Name: "foo", Constraint: "1.2", Version: "1.2.0", Bin: []string{"foo"},
+		Artifacts: []lockfile.Artifact{
+			{Platform: "darwin/arm64", URL: "https://x/a", SHA256: strings.Repeat("a", 64)},
+			{Platform: "linux/amd64", URL: "https://x/b", SHA256: strings.Repeat("b", 64)},
+		},
+	}
+	kept := toolPlan{
+		tool:  manifest.Tool{Name: "foo", Constraint: version.MustParseConstraint("1.2")},
+		src:   narrowed,
+		prev:  pinned,
+		plats: []platform.Platform{darwin, linux},
+	}
+	if !kept.keeps() {
+		t.Fatal("the plan does not describe a kept pin")
+	}
+	a := &App{}
+	if err := a.checkPlatforms([]toolPlan{kept}); err != nil {
+		t.Errorf("checkPlatforms() refused a platform the pin already covers: %v", err)
+	}
+	// Re-resolving the same tool is a different question, and gets the
+	// refusal: nothing would be carried over.
+	resolving := kept
+	resolving.resolve = true
+	err := a.checkPlatforms([]toolPlan{resolving})
+	if diag.Of(err) != diag.PlatformUnsupported || !strings.Contains(err.Error(), "foo: unsupported platform darwin/arm64") {
+		t.Errorf("checkPlatforms() = %v, want %s", err, diag.PlatformUnsupported)
+	}
+	// So is a platform the kept pin does not cover yet.
+	adding := kept
+	adding.prev = &lockfile.Tool{
+		Name: "foo", Constraint: "1.2", Version: "1.2.0", Bin: []string{"foo"},
+		Artifacts: []lockfile.Artifact{{Platform: "linux/amd64", URL: "https://x/b", SHA256: strings.Repeat("b", 64)}},
+	}
+	if diag.Of(a.checkPlatforms([]toolPlan{adding})) != diag.PlatformUnsupported {
+		t.Error("checkPlatforms() allowed a platform nothing can deliver")
 	}
 }
