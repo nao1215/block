@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/nao1215/block/internal/diag"
+	"github.com/nao1215/block/internal/fserr"
 )
 
 // maxFileBytes caps a single extracted file, and maxTotalBytes and maxEntries
@@ -76,7 +77,28 @@ const (
 // leading path components from every member (entries that do not have that
 // many components are skipped, as tar --strip-components does). dst must
 // already exist and should be empty.
+//
+// A compressed artifact is smaller than what it becomes, sometimes by a great
+// deal, so the write that runs the filesystem out of room is usually one of
+// these. That failure is named rather than passed on as whatever syscall
+// noticed it: see [diag.DiskFull].
 func Extract(src, dst, name string, strip int) error {
+	return diskFull(extract(src, dst, name, strip))
+}
+
+// diskFull names a failure that turns out to be a filesystem with no room
+// left. Every other error is passed on exactly as it was: the ones extraction
+// raises itself already carry the code that says what was wrong with the
+// archive, and this one says nothing about the archive at all.
+func diskFull(err error) error {
+	if !fserr.OutOfSpace(err) {
+		return err
+	}
+	return diag.DiskFull.Errorf("unpacking the archive: there is no room left on the disk, or a quota is exhausted: %w", err)
+}
+
+// extract is [Extract] without the disk-space reading of its failures.
+func extract(src, dst, name string, strip int) error {
 	switch {
 	case strings.HasSuffix(name, ".tar.gz"), strings.HasSuffix(name, ".tgz"):
 		return extractTar(src, dst, strip, func(r io.Reader) (io.Reader, error) {

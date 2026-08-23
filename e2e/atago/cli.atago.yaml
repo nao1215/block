@@ -119,6 +119,32 @@ scenarios:
           stdout:
             contains: "BLK1003  block.lock not found"
 
+  # A disk that ran out mid-install is the one failure a reader cannot fix by
+  # editing anything, so the code has to say what to go and free.
+  - name: explain describes the disk-space refusal
+    steps:
+      - run:
+          command: block explain BLK4006
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "BLK4006  the disk is full or a quota is exhausted"
+              - "no room left, or this user has reached a quota on it."
+              - "unpacking an artifact into the store and while writing a download"
+              - "Free space on the filesystem that holds $BLOCK_HOME"
+              - "Exits 1. Since v0.6.0."
+      # Its neighbour keeps its own meaning: a store that cannot be written is
+      # a permissions problem, and says so without mentioning a full disk.
+      - run:
+          command: block explain BLK4005
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "BLK4005  the store could not be written"
+              - "reported as BLK4006."
+
   - name: explain refuses a code that names nothing
     steps:
       - run:
