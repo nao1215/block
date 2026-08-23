@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-23
+
+A release about what happens before the first byte moves. A channel can be
+pinned by the tag of one of its releases rather than only by the tag that
+floats, `block lock` finds out that a tool has no build for a platform you
+declared before it downloads anything for the tools that do, and a disk that
+runs out mid-install now says so with a code instead of a bare syscall error.
+
 ### Added
 - A channel can be asked for by the tag of one of its releases:
   `foundry = "nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3"`. It is the
@@ -34,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   download the artifacts of every tool before it and then write no lockfile.
   The refusal is the same BLK2007, with the same alternatives listed; only
   the downloads that preceded it are gone.
+- The Security page now opens with what block installs and why: prebuilt
+  artifacts an upstream published, never a source build, so no dependency
+  resolver, build script or system toolchain is part of what runs while a
+  tool is installed. It says what that does not buy as well — a digest pins
+  the bytes, not the safety of what is in them or the identity of whoever
+  published them.
 
 ## [0.5.0] - 2026-08-23
 
@@ -427,7 +441,8 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/nao1215/block/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/nao1215/block/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nao1215/block/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nao1215/block/compare/v0.2.0...v0.3.0
