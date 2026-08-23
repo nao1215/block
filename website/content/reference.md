@@ -266,7 +266,9 @@ away the digest GitHub publishes beside the asset.
 There is no third type. No `install = "curl … | bash"`, no
 `command = "make install"`, no package-manager shell-out, and no
 arbitrary-script escape hatch — a recipe is data block interprets, and adding
-a tool can never add a way to run something. block also does not manage the
+a tool can never add a way to run something. Building a tool from source is
+outside the model for the same reason; [Security](/security/#what-block-installs)
+says why block draws the line there. block also does not manage the
 Go, Rust, Node or Python toolchains themselves, which is where a
 general-purpose version manager belongs; a blockchain CLI distributed only
 through npm, PyPI or crates.io is therefore not in the registry.

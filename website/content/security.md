@@ -1,11 +1,52 @@
 ---
 title: Security
-description: "What block guarantees when it downloads and runs third-party binaries on your machine and in CI."
+description: "What block does and does not guarantee when it installs and runs third-party binaries on your machine and in CI."
 toc: true
 ---
 
 block fetches prebuilt binaries from the internet and puts them on your
-`PATH`. These are the promises it keeps while doing that.
+`PATH`. These are the promises it keeps while doing that, and the ones it does
+not make.
+
+## What block installs
+
+block installs artifacts an upstream has already built and published: a GitHub
+release asset, or a prebuilt archive on the vendor's own download server. It
+does not build a tool from source. `go install`, `cargo install`, `go build`,
+`cargo build`, `make`, `cmake`, `forge build` and any other build or install
+script an upstream documents are outside what a recipe can ask for, because a
+recipe is data and has no field to put a command in.
+[Reference](/reference/#registry-and-source-types) has the two source types and
+what each may point at.
+
+That is a boundary block draws on purpose rather than a gap in the recipes.
+Building from source makes the source tree, the dependency resolver, every
+transitive dependency, the build script, the compiler and runtime versions, the
+native libraries and the system toolchain part of what runs while a tool is
+installed, with network access throughout. Leaving all of it out keeps
+installation to one shape, which is the shape the rest of this page is about:
+
+```text
+published artifact -> resolve -> download -> digest check -> block.lock -> sync
+```
+
+Fewer inputs at install time is worth more in this domain than in most. A
+blockchain repository's CI and its developers' machines often hold signing
+keys, deployer credentials, RPC keys and cloud tokens, and a tool installation
+runs with all of that within reach. block would rather install fewer kinds of
+thing than run more code there. General-purpose managers such as
+[mise](https://mise.jdx.dev/) and [aqua](https://aquaproj.github.io/) support a
+wider set of installation sources, including source builds, which is what a
+general-purpose manager is for; block's set is narrower, for a narrower
+catalogue.
+
+What this does not claim: a digest says the bytes are the bytes that were
+locked, not that they are safe, and not that whoever published them is who they
+say they are. An upstream whose account is taken over can publish a malicious
+release, and block will pin that release like any other. What `block.lock`
+rules out is the artifact changing underneath a lockfile that did not: the same
+lockfile installs the same bytes on every machine, and anything else is a
+refusal rather than a substitution.
 
 ## Transport
 
