@@ -134,8 +134,9 @@ scenarios:
       - assert:
           exit_code: 0
       - run:
-          shell: true
-          command: PATH="${workdir}/elsewhere${env:BLOCK_PATH_SEP}$PATH" block which forge
+          command: block which forge
+          env:
+            PATH: "${workdir}/elsewhere${env:BLOCK_PATH_SEP}${env:PATH}"
       - assert:
           exit_code: 0
           stdout:
