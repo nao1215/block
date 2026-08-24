@@ -809,10 +809,72 @@ scenarios:
             bin = ["forge", "cast", "anvil", "chisel"]
       - run:
           command: block lock
+      # The refusal says why the tag was passed over, because a pre-release,
+      # a draft and a tag with no release behind it call for different fixes.
       - assert:
           exit_code: 1
           stderr:
-            contains: 'block: BLK2002: foundry: no published release of foundry-rs/foundry matches "1.9"'
+            equals: 'block: BLK2002: foundry: no published release of foundry-rs/foundry matches "1.9" (checked the newest 1 matching tag: 1 is a pre-release)
+
+'
+          changes:
+            created: []
+
+  - name: a tag pushed with no release behind it is reported as such
+    env:
+      BLOCK_HOME: "${workdir}/home"
+      BLOCK_GITHUB_API_URL: "${env:FAKEGH_URL}"
+    steps:
+      # v1.7.6 is a tag only: the API has no release under it.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7.6"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK2002: foundry: no published release of foundry-rs/foundry matches "1.7.6" (checked the newest 1 matching tag: 1 has no release)
+
+'
+          changes:
+            created: []
+
+  - name: a published release that carries no assets at all says so
+    env: *t1
+    steps:
+      # example/noassets tags releases without attaching binaries, as a
+      # project built from source does. That is BLK2004 like any missing
+      # asset, but the message must not read as if the recipe merely named
+      # the file wrong.
+      - fixture:
+          file: block.toml
+          content: |
+            [tools.noassets]
+            version = "1"
+
+            [tools.noassets.source]
+            type = "github_release"
+            repo = "example/noassets"
+            asset = "noassets_{version}_{os}_{arch}.tar.gz"
+            bin = ["noassets"]
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - 'block: BLK2004: noassets: release v1.0.0 of example/noassets publishes no assets at all, so there is no "noassets_1.0.0_'
+          changes:
+            created: []
 
   - name: a tag without a release falls back to the next older release
     env:

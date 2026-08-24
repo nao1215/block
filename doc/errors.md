@@ -171,9 +171,9 @@ Exits 1. Since v0.1.0.
 
 ### BLK2002 — the matching tags have no published release
 
-Tags satisfying the constraint exist, but the newest of them are drafts, pre-releases, or tags pushed before their release was published. block only pins a published, non-draft, non-pre-release release.
+Tags satisfying the constraint exist, but none of the newest ones has a release block will pin: each is a tag pushed with no release behind it, a draft, or a pre-release. block only pins a published, non-draft, non-pre-release release. The message counts how many of the tags it checked fell into each of the three.
 
-Fix: Wait for the release to be published, or pin a version that already has one.
+Fix: For a tag with no release or a draft, wait for the upstream to publish. For a pre-release, either wait for a final release or, when the line only ever ships pre-releases, pin an older version that has a published release. An upstream that publishes nothing but pre-releases cannot be pinned by version.
 
 Exits 1. Since v0.1.0.
 
@@ -187,7 +187,7 @@ Exits 1. Since v0.1.0.
 
 ### BLK2004 — the release does not carry the expected asset
 
-The release was found, but it publishes no file with the name the recipe renders for this version and platform. Upstreams rename their assets, and a recipe is a rule about those names. The message lists what the release does carry.
+The release was found, but it publishes no file with the name the recipe renders for this version and platform. Upstreams rename their assets, and a recipe is a rule about those names. The message lists what the release does carry, or says that the release publishes no assets at all — a project that is built from source rather than shipped as binaries.
 
 Fix: For a registry tool, report it at https://github.com/nao1215/block-registry/issues — the recipe needs updating. For a `[tools.<name>.source]` of your own, correct the asset template against the names in the message.
 

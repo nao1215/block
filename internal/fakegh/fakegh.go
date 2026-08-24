@@ -269,6 +269,11 @@ func Fixtures() []Repo {
 			{tag: "v1.0.0", at: 1, twice: true, bins: []string{"dupasset"},
 				assets: platformAssets("dupasset_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},
 		}},
+		{owner: "example", name: "noassets", releases: []release{
+			// A published release with nothing attached: a project that is
+			// built from source and tags releases without shipping binaries.
+			{tag: "v1.0.0", at: 1},
+		}},
 		{owner: "example", name: "nobin", releases: []release{
 			{tag: "v1.0.0", at: 1, bins: []string{"something-else"},
 				assets: platformAssets("nobin_1.0.0_{os}_{arch}.tar.gz", allPlatforms, nil, nil)},

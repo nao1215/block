@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- BLK2002 says why each of the tags it checked was passed over — a tag
+  pushed with no release behind it, a draft, or a pre-release — instead of
+  only that no published release matched. A line that has only ever shipped
+  pre-releases, such as `hyperledger-labs/yui-relayer`, now reads
+  `checked the newest 10 matching tags: 10 are pre-releases`, and
+  `block explain BLK2002` names the fix for each of the three.
+- BLK2004 for a release that publishes no assets at all says so, rather than
+  listing an empty set of assets as if the recipe had merely named the file
+  wrong.
+
 ## [0.6.0] - 2026-08-23
 
 A release about what happens before the first byte moves. A channel can be
