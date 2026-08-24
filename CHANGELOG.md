@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-24
+
+A release about one refusal saying what it saw. `block lock` no longer
+answers "no published release" without saying whether the tags it checked had
+no release behind them, were drafts, or were pre-releases, and a release that
+carries no assets at all says so instead of listing none.
+
 ### Changed
 - BLK2002 says why each of the tags it checked was passed over — a tag
   pushed with no release behind it, a draft, or a pre-release — instead of
@@ -452,7 +459,8 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/nao1215/block/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/nao1215/block/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/nao1215/block/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nao1215/block/compare/v0.3.0...v0.4.0
