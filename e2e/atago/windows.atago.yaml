@@ -111,7 +111,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains: "shims: zipper"
+            contains: "commands: zipper"
       - assert:
           file:
             path: home/shims/zipper.exe

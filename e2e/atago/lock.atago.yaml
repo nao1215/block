@@ -663,7 +663,7 @@ scenarios:
           stdout:
             equals: |
               geth  1.17.4  installed
-              shims: geth
+              commands: geth
       - run:
           command: block exec geth version
       - assert:

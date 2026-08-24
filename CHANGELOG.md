@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `block sync --verbose` reports the shim directory, the files the run wrote
+  into it and every command it holds. That is the machine-wide view, which is
+  what the default report deliberately no longer prints.
+- A cookbook recipe for pinning the Solidity compiler alongside Foundry.
+  `forge` downloads a `solc` of its own through svm unless it is handed one,
+  so `foundry = "1.7"` on its own leaves the compiler outside `block.lock`;
+  the recipe pins both and builds with
+  `block exec forge build --use "$(block which solc)" --offline`.
+
+### Changed
+- `block sync` reports the commands of the project in front of it rather than
+  the shim files it wrote. The shim directory is global — it holds what every
+  project on the machine ever synced, and every file in it is rewritten
+  whenever the block binary it points at changes — so a Foundry project that
+  had upgraded block was told it had synced `gaiad`, `hermes` and `besu`. The
+  last line is now `commands: anvil, cast, chisel, forge`, taken from
+  `block.lock`, and it is printed whether or not anything was installed, so a
+  second sync says what the project provides too. Nothing is deleted, and how
+  a shim resolves and runs a command is unchanged.
+
 ## [0.6.1] - 2026-08-24
 
 A release about one refusal saying what it saw. `block lock` no longer

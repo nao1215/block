@@ -83,7 +83,7 @@ scenarios:
               cometbft  1.7.4   installed
               foundry   1.7.4   installed
               hermes    1.13.0  installed
-              shims: anvil, cast, chisel, cometbft, forge, hermes
+              commands: anvil, cast, chisel, cometbft, forge, hermes
       - http:
           runner: fakegh
           method: GET
@@ -220,7 +220,7 @@ scenarios:
               hermes    1.13.0  installed
               nested    1.0.0   installed
               zipper    3.0.0   installed
-              shims: anvil, cast, chisel, cometbft, foo, forge, hermes, nested, zipper
+              commands: anvil, cast, chisel, cometbft, foo, forge, hermes, nested, zipper
       - http:
           runner: fakegh
           method: GET
@@ -371,7 +371,7 @@ scenarios:
               cometbft  1.7.4  installed
               foundry   1.7.4  installed
               secret    1.0.0  installed
-              shims: anvil, cast, chisel, cometbft, forge, secret
+              commands: anvil, cast, chisel, cometbft, forge, secret
       - http:
           runner: fakegh
           method: GET
@@ -438,7 +438,7 @@ scenarios:
               cometbft  1.7.4   installed
               foundry   1.7.4   cached
               hermes    1.13.0  installed
-              shims: cometbft, hermes
+              commands: anvil, cast, chisel, cometbft, forge, hermes
       - http:
           runner: fakegh
           method: GET
@@ -468,6 +468,7 @@ scenarios:
               cometbft  1.7.4   cached
               foundry   1.7.4   cached
               hermes    1.13.0  cached
+              commands: anvil, cast, chisel, cometbft, forge, hermes
           changes:
             created: []
             modified: []

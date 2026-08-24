@@ -19,6 +19,7 @@ never installs, and `lock` is the only operation that can move a pin.
 | Start pinning a toolchain in an existing repository | [Pin a toolchain in five lines](#pin-a-toolchain-in-five-lines) |
 | Find out which tool to name for my chain | [Find the tool for a chain](#find-the-tool-for-a-chain) |
 | Pin Foundry, and only Foundry | [Pin one tool](#pin-one-tool) |
+| Pin the Solidity compiler Forge uses, not just Foundry | [Pin the Solidity compiler too](#pin-the-solidity-compiler-too) |
 | Pin an exact version rather than a line | [Choose how tightly to pin](#choose-how-tightly-to-pin) |
 | Make CI install the same toolchain as my laptop | [Lock for a platform you are not on](#lock-for-a-platform-you-are-not-on) |
 | Set up a new machine from a checkout | [Reproduce the toolchain elsewhere](#reproduce-the-toolchain-elsewhere) |
@@ -151,6 +152,63 @@ inside `block exec`:
 block exec cast --version
 block exec anvil --version
 ```
+
+## Pin the Solidity compiler too
+
+Pinning Foundry does not pin the compiler. `forge` fetches the `solc` a project
+asks for through svm, its own compiler downloader, and keeps it under
+`~/.svm/`, so a project whose `block.toml` names only Foundry compiles with a
+binary `block.lock` says nothing about:
+
+```toml
+[tools]
+foundry = "1.7"
+solc    = "0.8.28"
+```
+
+```shell
+block lock
+block sync
+block exec forge build --use "$(block which solc)" --offline
+```
+
+```text
+Compiling 1 files with Solc 0.8.28
+Solc 0.8.28 finished in 3.69ms
+Compiler run successful!
+```
+
+`solc = "0.8.28"` in `foundry.toml` chooses a compiler version; it does not
+choose where the binary comes from, and `forge` will still download one to
+satisfy it. `block which solc` prints the absolute path of the compiler in the
+store, `--use` hands `forge` that file instead of svm's, and `--offline` turns
+a download it would have made anyway into a refusal:
+
+```shell
+block exec forge build --offline
+```
+
+```text
+Error: can't install missing solc 0.8.28 in offline mode
+```
+
+Every `forge` command that may compile takes the same two flags — `forge test`,
+`forge create` and `forge script` as well as `forge build` — so put them in the
+Makefile target or the CI step rather than typing them:
+
+```makefile
+SOLC := $(shell block which solc)
+
+build:
+	block exec forge build --use "$(SOLC)" --offline
+
+test:
+	block exec forge test --use "$(SOLC)" --offline
+```
+
+`pragma solidity ^0.8.20` is not a pin either: it is the range of compilers a
+source file will accept, checked by whichever compiler is running. The pin is
+`block.lock`, and `--use` is what makes `forge` obey it.
 
 ## Choose how tightly to pin
 
@@ -309,6 +367,7 @@ block exec forge test
 ```text
 foundry  1.7.1   installed
 hermes   1.13.3  installed
+commands: anvil, cast, chisel, forge, hermes
 ```
 
 `sync` reads `block.lock` and nothing else: no registry lookup, no GitHub API,

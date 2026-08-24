@@ -52,9 +52,13 @@ type App struct {
 	Store    *store.Store
 	// Self is the block binary the shims point at. Empty means "ask the
 	// operating system", which is what every real run does.
-	Self   string
-	Stdout io.Writer
-	Stderr io.Writer
+	Self string
+	// Verbose asks for the parts of a report that are about the machine
+	// rather than about this project — what the shim directory holds for
+	// every project that ever synced, and not only this one's commands.
+	Verbose bool
+	Stdout  io.Writer
+	Stderr  io.Writer
 }
 
 // ManifestPath is the project's block.toml.
@@ -898,6 +902,14 @@ func (a *App) installAll(ctx context.Context, tools []lockfile.Tool) ([]string, 
 // names. The shims are global and version-free — which version each one runs
 // is decided per invocation from the working directory — so this only ever
 // adds names that have never been synced before.
+//
+// What it reports is this project's commands, every time, and never the rest
+// of the directory. The two are not the same list: the directory also holds
+// what every other project on this machine ever synced, and block rewrites
+// all of them when the binary they point at changes. Printing what was
+// written would then answer "what did this sync do" with gaiad and besu —
+// names this project does not lock and this reader did not ask for. The
+// machine-wide view is a real thing to want, so --verbose still prints it.
 func (a *App) ensureShims(l *lockfile.Lock) error {
 	self := a.Self
 	if self == "" {
@@ -918,14 +930,50 @@ func (a *App) ensureShims(l *lockfile.Lock) error {
 	if err != nil {
 		return err
 	}
-	if len(created) == 0 {
-		return nil
+	if len(commands) > 0 {
+		fmt.Fprintf(a.Stdout, "commands: %s\n", strings.Join(commands, ", "))
 	}
-	fmt.Fprintf(a.Stdout, "shims: %s\n", strings.Join(created, ", "))
-	if !shim.OnPath(a.Store) {
+	if a.Verbose {
+		if err := a.reportShimDir(created); err != nil {
+			return err
+		}
+	}
+	// Said once, when this project's first shim is written, rather than after
+	// every sync. A rebuild of somebody else's commands is not this reader's
+	// cue to change their PATH.
+	if sharesAny(created, commands) && !shim.OnPath(a.Store) {
 		fmt.Fprintf(a.Stderr, "note: add %s to PATH to run these directly, or keep using \"block exec\"\n", shim.Dir(a.Store))
 	}
 	return nil
+}
+
+// reportShimDir prints the machine-wide half of the picture: where the shims
+// are, which files this run wrote, and every command the directory serves —
+// this project's and every other project's.
+func (a *App) reportShimDir(created []string) error {
+	dir := shim.Dir(a.Store)
+	fmt.Fprintf(a.Stdout, "shim directory: %s\n", dir)
+	if len(created) > 0 {
+		fmt.Fprintf(a.Stdout, "shims written: %s\n", strings.Join(created, ", "))
+	}
+	served, err := shim.Served(a.Store)
+	if err != nil {
+		return err
+	}
+	if len(served) > 0 {
+		fmt.Fprintf(a.Stdout, "shims present: %s\n", strings.Join(served, ", "))
+	}
+	return nil
+}
+
+// sharesAny reports whether the two lists have a member in common.
+func sharesAny(a, b []string) bool {
+	for _, s := range a {
+		if slices.Contains(b, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // staleAfter is how old a temporary file or directory must be before a sync

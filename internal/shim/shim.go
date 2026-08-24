@@ -246,6 +246,23 @@ func commandsIn(dir string) ([]string, error) {
 	return out, nil
 }
 
+// Served lists every command the shim directory holds, sorted: this project's
+// and every other project's, because one directory serves the machine. A
+// directory that does not exist yet serves nothing, which is not an error.
+//
+// It reads the directory rather than the marker so that the answer is the
+// files a shell would actually find, which is the question anyone asking has.
+func Served(st *store.Store) ([]string, error) {
+	commands, err := commandsIn(Dir(st))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, diag.StoreUnwritable.Wrap(err)
+	}
+	return mergeCommands(commands, nil), nil
+}
+
 // mergeCommands unions two command lists, sorted and without duplicates.
 func mergeCommands(a, b []string) []string {
 	seen := map[string]bool{}

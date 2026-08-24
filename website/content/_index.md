@@ -26,7 +26,7 @@ go run github.com/nao1215/block@latest exec forge --version
 foundry  locked 1.7.1
 wrote block.lock
 foundry  1.7.1  installed
-shims: anvil, cast, chisel, forge
+commands: anvil, cast, chisel, forge
 forge Version: 1.7.1-v1.7.1
 ```
 

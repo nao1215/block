@@ -51,7 +51,7 @@ scenarios:
             equals: |
               foundry  1.7.4   installed
               hermes   1.13.0  installed
-              shims: anvil, cast, chisel, forge, hermes
+              commands: anvil, cast, chisel, forge, hermes
           changes:
             created:
               - home/cache/sha256/*
@@ -93,7 +93,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "foundry  1.7.4  cached\n"
+            equals: "foundry  1.7.4  cached\ncommands: anvil, cast, chisel, forge\n"
           stderr:
             equals: ""
           changes:
@@ -141,7 +141,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "foundry  1.7.4  cached\n"
+            equals: "foundry  1.7.4  cached\ncommands: anvil, cast, chisel, forge\n"
           changes:
             created: []
             modified: []
@@ -173,7 +173,7 @@ scenarios:
           stdout:
             equals: |
               foundry  1.7.4  installed
-              shims: anvil, cast, chisel, forge
+              commands: anvil, cast, chisel, forge
       - assert:
           dir:
             path: fresh/cache/sha256

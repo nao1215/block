@@ -61,6 +61,7 @@ wrote block.lock
 $ block sync
 foundry  1.7.1   installed
 hermes   1.13.3  installed
+commands: anvil, cast, chisel, forge, hermes
 
 $ block exec forge test
 ```

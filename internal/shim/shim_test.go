@@ -63,6 +63,43 @@ func TestIsShim(t *testing.T) {
 	}
 }
 
+// Served answers what a shell would find in the directory: every command
+// every project on this machine has synced, and nothing else. `block sync
+// --verbose` is what asks.
+func TestServedListsTheWholeDirectory(t *testing.T) {
+	t.Parallel()
+	st := &store.Store{Root: t.TempDir()}
+
+	// Before the first sync there is no directory, which is not an error.
+	served, err := Served(st)
+	if err != nil || len(served) != 0 {
+		t.Fatalf("Served(before any sync) = %v, %v", served, err)
+	}
+
+	binary := self(t)
+	if _, err := Ensure(st, binary, []string{"forge", "cast"}); err != nil {
+		t.Fatal(err)
+	}
+	// Another project, another tool, one directory.
+	if _, err := Ensure(st, binary, []string{"hermes"}); err != nil {
+		t.Fatal(err)
+	}
+	served, err = Served(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(served, ",") != "cast,forge,hermes" {
+		t.Errorf("Served() = %v, want cast, forge and hermes", served)
+	}
+	// The marker and any leftover temporary file are block's bookkeeping, not
+	// commands.
+	for _, name := range served {
+		if strings.HasPrefix(name, ".") {
+			t.Errorf("Served() named %q, which is not a command", name)
+		}
+	}
+}
+
 func TestEnsureCreatesAndReuses(t *testing.T) {
 	t.Parallel()
 	st := &store.Store{Root: t.TempDir()}

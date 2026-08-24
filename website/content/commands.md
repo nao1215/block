@@ -114,7 +114,27 @@ finished:
 $ block sync
 foundry  1.7.4   installed
 hermes   1.13.0  installed
+commands: anvil, cast, chisel, forge, hermes
 ```
+
+The last line is what this project's toolchain now provides — the commands
+`block.lock` names, whether they were installed just now or were already
+there. It is about the project, not the machine: the shim directory those
+commands live in is shared with every other project you have synced, and
+`--verbose` is what prints that wider view:
+
+```console
+$ block sync --verbose
+foundry  1.7.4   installed
+hermes   1.13.0  installed
+commands: anvil, cast, chisel, forge, hermes
+shim directory: /home/me/.local/share/block/shims
+shims written: anvil, cast, chisel, forge, hermes
+shims present: anvil, cast, chisel, forge, gaiad, geth, hermes
+```
+
+`shims present` is every command the directory serves, including the ones
+other projects put there. Nothing is ever removed from it.
 
 Nothing about a single install changes because others run beside it: every
 artifact is still verified against the locked SHA-256, served from the

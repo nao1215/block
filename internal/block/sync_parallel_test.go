@@ -102,7 +102,7 @@ func TestSyncDownloadsToolsSideBySide(t *testing.T) {
 		t.Fatalf("Sync() = %v; the downloads did not run side by side", err)
 	}
 	// The report is in lockfile order whatever order the downloads finished in.
-	want := "cometbft  1.7.4   installed\nfoundry   1.7.4   installed\nhermes    1.13.0  installed\nshims: anvil, cast, chisel, cometbft, forge, hermes\n"
+	want := "cometbft  1.7.4   installed\nfoundry   1.7.4   installed\nhermes    1.13.0  installed\ncommands: anvil, cast, chisel, cometbft, forge, hermes\n"
 	if h.stdout.String() != want {
 		t.Errorf("Sync() stdout = %q, want %q", h.stdout, want)
 	}
@@ -193,7 +193,7 @@ func TestSyncMixesCachedAndDownloaded(t *testing.T) {
 	if err := h.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	want := "cometbft  1.7.4   installed\nfoundry   1.7.4   cached\nhermes    1.13.0  installed\nshims: cometbft, hermes\n"
+	want := "cometbft  1.7.4   installed\nfoundry   1.7.4   cached\nhermes    1.13.0  installed\ncommands: anvil, cast, chisel, cometbft, forge, hermes\n"
 	if h.stdout.String() != want {
 		t.Errorf("Sync() stdout = %q, want %q", h.stdout, want)
 	}
