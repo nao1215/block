@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -18,6 +19,9 @@ import (
 // tools this project has never heard of.
 func TestSyncReportsThisProjectsCommandsAndNotTheRestOfTheMachine(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
 	ctx := context.Background()
 
 	// Project A locks hermes and syncs it, leaving a global "hermes" shim.
@@ -72,6 +76,9 @@ func TestSyncReportsThisProjectsCommandsAndNotTheRestOfTheMachine(t *testing.T) 
 // run wrote into it, and every command it serves.
 func TestSyncVerboseReportsTheWholeShimDirectory(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tools are shell scripts")
+	}
 	ctx := context.Background()
 
 	a := newHarness(t, "/t1")
