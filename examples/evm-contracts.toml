@@ -4,6 +4,13 @@
 # The compiler is pinned exactly. Contract bytecode depends on the compiler
 # version, so "newest 0.8.x" would mean a verified deployment stops matching
 # its source the day upstream publishes a patch.
+#
+# Pinning it here is half the job: forge downloads a compiler of its own
+# unless it is handed one, so build with
+#
+#   block exec forge build --use "$(block which solc)" --offline
+#
+# See "Pin the Solidity compiler too" in the cookbook.
 platforms = ["darwin/arm64", "linux/amd64"]
 
 [tools]

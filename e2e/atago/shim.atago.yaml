@@ -46,16 +46,17 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            contains: "shims: anvil, cast, chisel, forge"
-      # The second project needs no new shims: which version "forge" runs is
-      # decided per invocation, not baked into the file.
+            contains: "commands: anvil, cast, chisel, forge"
+      # The second project needs no new shim files — which version "forge"
+      # runs is decided per invocation, not baked into the file — and its
+      # report still names the commands its own toolchain provides.
       - run:
           shell: true
           command: cd project-b && block lock && block sync
       - assert:
           exit_code: 0
           stdout:
-            not_contains: "shims:"
+            contains: "commands: anvil, cast, chisel, forge"
       - run:
           shell: true
           command: cd project-a && forge --version
@@ -575,3 +576,135 @@ scenarios:
             contains:
               - 'block: BLK4004: foundry 1.6.0 is not installed; run "block sync"'
               - "exit 1"
+
+  # What `block sync` reports is the project in front of it. The shim
+  # directory is global — one file per command, shared by every project on the
+  # machine — and block rewrites all of it whenever the binary those files
+  # point at changes, which is what upgrading block does. A report built from
+  # the files that were written then answers "what did this sync do" with
+  # every tool the machine has ever installed: a Foundry project was told it
+  # had synced gaiad, hermes and besu. Nothing is deleted and nothing about
+  # resolution changes; only what is printed.
+  - name: sync reports this project's commands and not the rest of the machine
+    env: *shimmed
+    steps:
+      - fixture:
+          file: project-a/block.toml
+          content: |
+            [tools.hermes]
+            version = "1.13"
+
+            [tools.hermes.source]
+            type = "github_release"
+            repo = "informalsystems/hermes"
+            asset = "hermes-v{version}-{arch}-{os}.tar.gz"
+            bin = ["hermes"]
+
+            [tools.hermes.source.os]
+            linux = "unknown-linux-gnu"
+            darwin = "apple-darwin"
+            windows = "pc-windows-msvc"
+
+            [tools.hermes.source.arch]
+            amd64 = "x86_64"
+            arm64 = "aarch64"
+
+            [tools.cometbft]
+            version = "1.7"
+
+            [tools.cometbft.source]
+            type = "github_release"
+            repo = "cometbft/cometbft"
+            asset = "cometbft_{version}_{os}_{arch}.tar.gz"
+            bin = ["cometbft"]
+      - fixture:
+          file: project-b/block.toml
+          content: |
+            [tools.foundry]
+            version = "1.7"
+
+            [tools.foundry.source]
+            type = "github_release"
+            repo = "foundry-rs/foundry"
+            asset = "foundry_v{version}_{os}_{arch}.tar.gz"
+            bin = ["forge", "cast", "anvil", "chisel"]
+      # Project A syncs first and leaves hermes and cometbft in the shared
+      # directory.
+      - run:
+          shell: true
+          command: cd project-a && block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "commands: cometbft, hermes"
+      # Project B locks neither of them.
+      - run:
+          shell: true
+          command: cd project-b && block lock && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "foundry  1.7.4  installed"
+              - "commands: anvil, cast, chisel, forge"
+      - assert:
+          stdout:
+            not_contains:
+              - hermes
+              - cometbft
+      # Already synced, and still the same report: the commands come from this
+      # project's block.lock, not from what the last run happened to write.
+      - run:
+          shell: true
+          command: cd project-b && block sync
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: |
+              foundry  1.7.4  cached
+              commands: anvil, cast, chisel, forge
+      # block is upgraded, which is the case that used to list the machine:
+      # every shim points at a binary that is gone, so every one is rewritten
+      # — project A's included.
+      - run:
+          shell: true
+          command: mkdir -p upgraded && cp "$(command -v block)" "upgraded/block${BLOCK_EXE}"
+      - run:
+          shell: true
+          command: cd project-b && "../upgraded/block${BLOCK_EXE}" sync
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "commands: anvil, cast, chisel, forge"
+      - assert:
+          stdout:
+            not_contains:
+              - hermes
+              - cometbft
+      # --verbose is where the machine-wide view lives, for anyone who wants
+      # it: the directory, and everything in it.
+      - run:
+          shell: true
+          command: cd project-b && block sync --verbose
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "commands: anvil, cast, chisel, forge"
+              - "shims present: anvil, cast, chisel, cometbft, forge, hermes"
+      # Project A's shims were never deleted, and still run its pinned
+      # versions.
+      - run:
+          shell: true
+          command: test -e "home/shims/hermes${BLOCK_EXE}" && test -e "home/shims/cometbft${BLOCK_EXE}"
+      - assert:
+          exit_code: 0
+      - run:
+          shell: true
+          command: cd project-a && hermes --version && cometbft version
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "hermes 1.13.0 (fake)"
+              - "cometbft 1.7.4 (fake)"

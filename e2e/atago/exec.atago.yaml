@@ -462,7 +462,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "foundry  1.7.4  installed\n"
+            equals: "foundry  1.7.4  installed\ncommands: anvil, cast, chisel, forge\n"
       - run:
           command: block exec cast --version
       - assert:

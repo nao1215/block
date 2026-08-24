@@ -244,12 +244,18 @@ exit 0 when block.lock is current, 2 when it would change, 1 on error.`,
 }
 
 func newSyncCmd(stdout, stderr io.Writer) *cobra.Command {
-	return &cobra.Command{
+	var verbose bool
+	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Install the toolchain pinned in block.lock",
 		Long: `sync downloads, verifies and installs every artifact block.lock names for
 this machine. Artifacts are cached under $BLOCK_HOME and shared between
 projects, so a warm cache makes sync an offline operation.
+
+It reports one line per tool and then the commands this project's toolchain
+provides. The shim directory it writes them into is shared with every other
+project on the machine; --verbose adds where that directory is and everything
+it holds, which is about the machine rather than about this project.
 
 sync never resolves a version and never writes block.lock. It fails when
 block.lock is missing, disagrees with block.toml, lacks this platform, or an
@@ -261,9 +267,12 @@ in CI.`,
 			if err != nil {
 				return err
 			}
+			app.Verbose = verbose
 			return app.Sync(cmd.Context())
 		},
 	}
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "also report the shim directory and every command it holds")
+	return cmd
 }
 
 func newExecCmd(stdout, stderr io.Writer) *cobra.Command {

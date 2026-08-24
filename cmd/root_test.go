@@ -180,7 +180,7 @@ func TestWorkflow(t *testing.T) {
 		t.Errorf("exec before sync = %d, %q", code, errOut)
 	}
 	code, out, _ = run(t, dir, "sync")
-	if code != 0 || out != "foundry  1.7.4  installed\nshims: anvil, cast, chisel, forge\n" {
+	if code != 0 || out != "foundry  1.7.4  installed\ncommands: anvil, cast, chisel, forge\n" {
 		t.Errorf("sync = %d, %q", code, out)
 	}
 	code, out, errOut := run(t, dir, "exec", "--", "forge", "--version")
@@ -203,7 +203,7 @@ func TestWorkflow(t *testing.T) {
 	if code != exitNeedsWork || out != "foundry  1.7.4 -> 1.7.5\n" {
 		t.Errorf("lock --check (outdated) = %d, %q", code, out)
 	}
-	if code, out, _ := run(t, dir, "sync"); code != 0 || out != "foundry  1.7.4  cached\n" {
+	if code, out, _ := run(t, dir, "sync"); code != 0 || out != "foundry  1.7.4  cached\ncommands: anvil, cast, chisel, forge\n" {
 		t.Errorf("sync keeps the pin = %d, %q", code, out)
 	}
 	code, out, _ = run(t, dir, "lock", "foundry")
@@ -214,7 +214,7 @@ func TestWorkflow(t *testing.T) {
 	if err := os.Mkdir(sub, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if code, out, _ := run(t, sub, "sync"); code != 0 || out != "foundry  1.7.5  installed\n" {
+	if code, out, _ := run(t, sub, "sync"); code != 0 || out != "foundry  1.7.5  installed\ncommands: anvil, cast, chisel, forge\n" {
 		t.Errorf("sync from subdir = %d, %q", code, out)
 	}
 	if code, out, _ := run(t, sub, "exec", "forge"); code != 0 || !strings.Contains(out, "forge 1.7.5 (fake)") {

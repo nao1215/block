@@ -484,7 +484,7 @@ func TestLockAppliesRegistryRecipeChangesAtTheSameVersion(t *testing.T) {
 	if err := h.Sync(ctx); err != nil {
 		t.Fatalf("a registry change must not stale an existing lock: %v", err)
 	}
-	if h.stdout.String() != "foundry  1.7.4  cached\n" || h.lockText(t) != before {
+	if h.stdout.String() != "foundry  1.7.4  cached\ncommands: anvil, cast, chisel, forge\n" || h.lockText(t) != before {
 		t.Errorf("sync = %q, lock changed = %v", h.stdout, h.lockText(t) != before)
 	}
 
@@ -509,7 +509,7 @@ func TestLockAppliesRegistryRecipeChangesAtTheSameVersion(t *testing.T) {
 	if err := h.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.stdout.String() != "foundry  1.7.4  installed\n" {
+	if h.stdout.String() != "foundry  1.7.4  installed\ncommands: forge\n" {
 		t.Errorf("sync = %q", h.stdout)
 	}
 }
@@ -661,14 +661,14 @@ func TestSyncAndExecContract(t *testing.T) {
 	if err := h.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.stdout.String() != "foundry  1.7.4  installed\nshims: anvil, cast, chisel, forge\n" {
+	if h.stdout.String() != "foundry  1.7.4  installed\ncommands: anvil, cast, chisel, forge\n" {
 		t.Errorf("Sync() stdout = %q", h.stdout)
 	}
 	if h.lockText(t) != before {
 		t.Error("sync rewrote block.lock")
 	}
 	h.reset()
-	if err := h.Sync(ctx); err != nil || h.stdout.String() != "foundry  1.7.4  cached\n" {
+	if err := h.Sync(ctx); err != nil || h.stdout.String() != "foundry  1.7.4  cached\ncommands: anvil, cast, chisel, forge\n" {
 		t.Errorf("Sync(again) = %q, %v", h.stdout, err)
 	}
 	dirs, err := h.Env()
@@ -941,7 +941,7 @@ func TestSyncAndExecRejectDamagedInstalls(t *testing.T) {
 	if err := h.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.stdout.String() != "foundry  1.7.4  installed\n" {
+	if h.stdout.String() != "foundry  1.7.4  installed\ncommands: anvil, cast, chisel, forge\n" {
 		t.Errorf("sync = %q, want a reinstall", h.stdout)
 	}
 	if _, err := h.Env(); err != nil {

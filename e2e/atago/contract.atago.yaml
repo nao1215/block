@@ -48,7 +48,7 @@ scenarios:
           stdout:
             equals: |
               foundry  1.7.4  installed
-              shims: anvil, cast, chisel, forge
+              commands: anvil, cast, chisel, forge
 
       # Time passes: upstream publishes 1.7.5. Everything below runs against
       # the new upstream.
@@ -61,7 +61,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "foundry  1.7.4  cached\n"
+            equals: "foundry  1.7.4  cached\ncommands: anvil, cast, chisel, forge\n"
           changes:
             created: []
             modified: []
@@ -126,7 +126,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            equals: "foundry  1.7.5  installed\n"
+            equals: "foundry  1.7.5  installed\ncommands: anvil, cast, chisel, forge\n"
       - run:
           command: block exec forge --version
       - assert:
@@ -183,7 +183,7 @@ scenarios:
             equals: |
               foundry  1.7.4   installed
               hermes   1.13.0  installed
-              shims: anvil, cast, chisel, forge, hermes
+              commands: anvil, cast, chisel, forge, hermes
       - run:
           command: block exec hermes version
           env:
