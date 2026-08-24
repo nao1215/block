@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-24
+
+A release about `block sync` answering the question it was asked. The shim
+directory is global — one file per command for every project on the machine —
+and sync reported what it wrote into it, so a Foundry project that had
+upgraded block was told it had synced tools it has never locked. It now
+reports the project's own toolchain, and `--verbose` is where the
+machine-wide view moved to. The cookbook gains the recipe for the other half
+of pinning Foundry: the Solidity compiler Forge would otherwise fetch itself.
+
 ### Added
 - `block sync --verbose` reports the shim directory, the files the run wrote
   into it and every command it holds. That is the machine-wide view, which is
@@ -480,7 +490,8 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/nao1215/block/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/nao1215/block/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/nao1215/block/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/nao1215/block/compare/v0.4.0...v0.5.0
