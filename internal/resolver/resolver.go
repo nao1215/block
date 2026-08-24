@@ -114,16 +114,23 @@ func Resolve(ctx context.Context, rel Releases, src recipe.Source, c version.Con
 		return Exact(ctx, rel, src, vs[len(vs)-1])
 	}
 	lookups := 0
+	var skipped skippedTags
 	for i := len(vs) - 1; i >= 0 && lookups < maxReleaseLookups; i-- {
 		lookups++
 		r, err := rel.ReleaseByTag(ctx, src.Repo, src.Tag(vs[i]))
 		if errors.Is(err, github.ErrNotFound) {
+			skipped.noRelease++
 			continue
 		}
 		if err != nil {
 			return Resolution{}, err
 		}
-		if r.Draft || r.Prerelease {
+		if r.Draft {
+			skipped.drafts++
+			continue
+		}
+		if r.Prerelease {
+			skipped.prereleases++
 			continue
 		}
 		res := Resolution{Version: vs[i], Tag: src.Tag(vs[i]), Release: r}
@@ -132,7 +139,40 @@ func Resolve(ctx context.Context, rel Releases, src recipe.Source, c version.Con
 		}
 		return res, nil
 	}
-	return Resolution{}, diag.NoPublishedRelease.Errorf("no published release of %s matches %q (checked the newest %d tags)", src.Repo, c, lookups)
+	return Resolution{}, diag.NoPublishedRelease.Errorf("no published release of %s matches %q (checked the newest %s: %s)",
+		src.Repo, c, plural(lookups, "matching tag", "matching tags"), skipped)
+}
+
+// skippedTags counts why each tag [Resolve] looked at was passed over, so the
+// refusal can say which of the three it was: a tag pushed with no release
+// behind it, a draft, or a pre-release. They call for different fixes, and
+// "no published release" alone does not tell them apart.
+type skippedTags struct {
+	noRelease, drafts, prereleases int
+}
+
+// String reads "2 have no release, 1 is a draft, 3 are pre-releases", naming
+// only the reasons that occurred.
+func (s skippedTags) String() string {
+	var parts []string
+	if s.noRelease > 0 {
+		parts = append(parts, plural(s.noRelease, "has no release", "have no release"))
+	}
+	if s.drafts > 0 {
+		parts = append(parts, plural(s.drafts, "is a draft", "are drafts"))
+	}
+	if s.prereleases > 0 {
+		parts = append(parts, plural(s.prereleases, "is a pre-release", "are pre-releases"))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// plural renders n with the singular or plural form of what it counts.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 // Exact resolves an already chosen version, for example to add a platform to
@@ -313,6 +353,8 @@ func ArtifactFor(res Resolution, src recipe.Source, p platform.Platform) (Artifa
 	}
 	matches := res.Release.AssetsNamed(name)
 	switch {
+	case len(res.Release.Assets) == 0:
+		return Artifact{}, diag.AssetMissing.Errorf("release %s of %s publishes no assets at all, so there is no %q to download", res.Tag, src.Repo, name)
 	case len(matches) == 0:
 		names := make([]string, 0, len(res.Release.Assets))
 		for _, x := range res.Release.Assets {

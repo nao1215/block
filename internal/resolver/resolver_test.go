@@ -118,6 +118,13 @@ func TestResolvePicksNewestPublishedRelease(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `has no asset "t_1.7.4_darwin_arm64.tar.gz" (assets: t_1.7.4_linux_amd64.tar.gz)`) {
 		t.Errorf("Artifact(missing) error = %v", err)
 	}
+	// A release with nothing attached is the same code, but the message
+	// must not read as if the recipe merely named the file wrong.
+	bare := Resolution{Version: res.Version, Tag: res.Tag, Release: rel("v1.7.4", false)}
+	_, err = ArtifactFor(bare, src(), platform.Platform{OS: "linux", Arch: "amd64"})
+	if diag.Of(err) != diag.AssetMissing || !strings.Contains(err.Error(), `publishes no assets at all, so there is no "t_1.7.4_linux_amd64.tar.gz" to download`) {
+		t.Errorf("Artifact(no assets) error = %v", err)
+	}
 	limited := src()
 	limited.Platforms = []string{"linux/amd64"}
 	_, err = ArtifactFor(res, limited, platform.Platform{OS: "darwin", Arch: "arm64"})
@@ -210,7 +217,21 @@ func TestResolveErrors(t *testing.T) {
 		t.Errorf("error = %v", err)
 	}
 	_, err = Resolve(ctx, &fake{tags: []string{"v2.0.0"}, releases: map[string]*github.Release{"v2.0.0": rel("v2.0.0", true)}}, src(), version.MustParseConstraint("2"))
-	if err == nil || err.Error() != `no published release of o/r matches "2" (checked the newest 1 tags)` {
+	if err == nil || err.Error() != `no published release of o/r matches "2" (checked the newest 1 matching tag: 1 is a pre-release)` {
+		t.Errorf("error = %v", err)
+	}
+	// A tag the upstream pushed without a release behind it is told apart
+	// from a pre-release, and a mixture counts each reason.
+	_, err = Resolve(ctx, &fake{tags: []string{"v2.0.0"}, releases: map[string]*github.Release{}}, src(), version.MustParseConstraint("2"))
+	if err == nil || err.Error() != `no published release of o/r matches "2" (checked the newest 1 matching tag: 1 has no release)` {
+		t.Errorf("error = %v", err)
+	}
+	draft := rel("v2.1.0", false)
+	draft.Draft = true
+	mixed := &fake{tags: []string{"v2.0.0", "v2.1.0", "v2.2.0", "v2.3.0"}, releases: map[string]*github.Release{
+		"v2.1.0": draft, "v2.2.0": rel("v2.2.0", true), "v2.3.0": rel("v2.3.0", true)}}
+	_, err = Resolve(ctx, mixed, src(), version.MustParseConstraint("2"))
+	if err == nil || err.Error() != `no published release of o/r matches "2" (checked the newest 4 matching tags: 1 has no release, 1 is a draft, 2 are pre-releases)` {
 		t.Errorf("error = %v", err)
 	}
 	boom := errors.New("boom")
@@ -234,7 +255,7 @@ func TestResolveErrors(t *testing.T) {
 	}
 	f := &fake{tags: tags, releases: map[string]*github.Release{"v1.0.0": rel("v1.0.0", false)}}
 	_, err = Resolve(ctx, f, src(), version.MustParseConstraint("1"))
-	if err == nil || !strings.Contains(err.Error(), "checked the newest 10 tags") || len(f.lookups) != maxReleaseLookups {
+	if err == nil || !strings.Contains(err.Error(), "checked the newest 10 matching tags: 10 have no release") || len(f.lookups) != maxReleaseLookups {
 		t.Errorf("error = %v, lookups = %d", err, len(f.lookups))
 	}
 }
