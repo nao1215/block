@@ -45,7 +45,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: "go.mod"
+          go-version: "stable"
 
       - name: Check that the example manifests still resolve
         env:
@@ -87,7 +87,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: "go.mod"
+          go-version: "stable"
 
       # block installs what an upstream published, not the runtimes and
       # libraries it was linked against. The probe below runs those binaries,

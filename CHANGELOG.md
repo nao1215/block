@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `github.com/spf13/pflag` updated to 1.0.10. The `go` directive stays at 1.25.0.
+- The unit-test matrix ceiling tracks the newest Go release instead of `"1"`, which setup-go was still resolving to 1.26 after 1.27 shipped, and the artifact-producing, E2E, coverage and registry jobs build with the current stable toolchain rather than the go.mod floor.
+
 ## [0.7.0] - 2026-08-24
 
 A release about `block sync` answering the question it was asked. The shim
