@@ -45,8 +45,12 @@ jobs:
           - "ubuntu-latest"
           - "windows-latest"
           - "macos-latest"
+        # "stable" rather than "1" for the ceiling: setup-go resolves "1" from
+        # its own manifest, which lags a fresh Go release, so "1" was still
+        # handing out 1.26 after 1.27.0 shipped -- the ceiling and the 1.26 leg
+        # were testing the same thing.
         go:
-          - "1"
+          - "stable"
           - "1.26"
           - "1.25"
       fail-fast: false
