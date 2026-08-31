@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Install block with go install, Homebrew, Scoop, a prebuilt .deb/.rpm/.apk package or a release archive, put the shims on PATH, and verify the release signatures.
+description: Install block with go install, Homebrew, a prebuilt .deb/.rpm/.apk package or a release archive, put the shims on PATH, and verify the release signatures.
 toc: true
 ---
 
@@ -23,13 +23,6 @@ macOS and Linux, through Homebrew:
 
 ```shell
 brew install --cask nao1215/tap/block
-```
-
-Windows, through Scoop:
-
-```shell
-scoop bucket add nao1215 https://github.com/nao1215/block
-scoop install nao1215/block
 ```
 
 ## Prebuilt packages and binaries

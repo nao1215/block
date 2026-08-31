@@ -83,7 +83,6 @@ go install github.com/nao1215/block@latest
 
 ```shell
 brew install --cask nao1215/tap/block        # macOS, Linux
-scoop bucket add nao1215 https://github.com/nao1215/block && scoop install nao1215/block
 ```
 
 The [releases page](https://github.com/nao1215/block/releases) also has `.deb`,
