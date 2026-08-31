@@ -126,25 +126,3 @@ homebrew_casks:
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/block"]
           end
 
-# Scoop distribution for Windows, the one platform CI tests on every push but no
-# package manager could reach. The bucket lives in this repository under
-# `bucket/`, which Scoop accepts the same as a dedicated bucket repository:
-#
-#   scoop bucket add nao1215 https://github.com/nao1215/block
-#   scoop install nao1215/block
-#
-# Keeping it here means GoReleaser publishes the manifest with the workflow's
-# built-in GITHUB_TOKEN — there is no cross-repository token to provision, and
-# no second repository whose only content is one generated JSON file. Skipped by
-# `--skip=publish` (release-smoke), so snapshot builds stay hermetic.
-scoops:
-  - name: block
-    repository:
-      owner: nao1215
-      name: block
-      branch: main
-    directory: bucket
-    homepage: "https://github.com/nao1215/block"
-    description: "Lock your blockchain toolchain: pin Foundry, Hermes and friends per project and reproduce them in CI"
-    license: MIT
-    commit_msg_template: "chore(scoop): update the bucket manifest for {{ .Tag }}"

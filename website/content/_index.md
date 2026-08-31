@@ -122,5 +122,5 @@ multi-chain tree, and one that brings its own tool.
 go install github.com/nao1215/block@latest
 ```
 
-Homebrew, Scoop, prebuilt packages and release archives are on the
+Homebrew, prebuilt packages and release archives are on the
 [install page](/install/).

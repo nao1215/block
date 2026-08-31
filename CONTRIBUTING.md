@@ -133,7 +133,7 @@ is worth doing in order:
 The **Release** workflow then builds every artifact, smoke-tests them before
 publishing anything, signs `checksums.txt` with cosign keylessly, attaches an
 SPDX SBOM per artifact and GitHub build provenance, publishes the release, and
-updates the Homebrew cask and the Scoop bucket.
+updates the Homebrew cask.
 
 It needs one secret beyond the workflow's own `GITHUB_TOKEN`:
 `TAP_GITHUB_TOKEN`, a token that can write to
