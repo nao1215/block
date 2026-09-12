@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-12
+
 ### Changed
 
 - The E2E suite runs with atago v0.22.0. The 194 scenarios were run locally against it before the pin moved.
