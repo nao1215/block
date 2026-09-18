@@ -1,4 +1,4 @@
-.PHONY: build test e2e doc doc-check demo favicon registry-verify registry-sync registry-live examples-live docs-smoke coverage clean vet fmt lint shellcheck website website-serve changelog help
+.PHONY: build test e2e doc doc-check demo favicon registry-verify registry-sync registry-live examples-live docs-smoke coverage clean vet fmt lint shellcheck website website-serve changelog bench bench-compare help
 
 APP         = block
 VERSION     = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -74,6 +74,12 @@ website: ## Build the documentation website into website/public (requires hugo)
 website-serve: ## Serve the documentation website locally with live reload
 	cd website && hugo server
 
+bench: ## Measure block with the himorime suite in bench/ (requires himorime on PATH)
+	himorime run bench
+
+bench-compare: ## Compare main with the working tree on the himorime suite (BASE=main)
+	himorime compare --against $${BASE:-main} bench
+
 vet: ## Start go vet
 	$(GO_VET) $(GO_PACKAGES)
 
@@ -84,7 +90,7 @@ lint: ## Run golangci-lint (requires golangci-lint v2)
 	golangci-lint run ./...
 
 shellcheck: ## Lint the shell scripts (requires shellcheck)
-	shellcheck scripts/*.sh e2e/run.sh
+	shellcheck scripts/*.sh e2e/run.sh bench/gen.sh
 
 .DEFAULT_GOAL := help
 help:
