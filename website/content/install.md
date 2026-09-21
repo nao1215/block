@@ -14,7 +14,7 @@ binary itself.
 go install github.com/nao1215/block@latest
 ```
 
-Building from source needs Go 1.25 or newer. On an older Go, take a prebuilt
+Building from source needs Go 1.26 or newer. On an older Go, take a prebuilt
 binary or a package below.
 
 ## Package managers
