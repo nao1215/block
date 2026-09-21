@@ -17,9 +17,8 @@
 # measured (see bench/README.md).
 version: "1"
 
-suite:
-  name: block
-  description: Start-up, installing a locked tool from the download cache, a sync with nothing to do, running a tool through block exec, and a missing block.lock.
+name: block
+description: Start-up, installing a locked tool from the download cache, a sync with nothing to do, running a tool through block exec, and a missing block.lock.
 
 build:
   command: [go, build, -trimpath, -o, "${artifact}", .]
@@ -48,10 +47,10 @@ defaults:
     latency:
       max_percent: 10
       min_difference: 1ms
-    cpu:
+    cpu_total:
       max_percent: 15
       min_difference: 2ms
-    memory:
+    peak_rss:
       max_percent: 15
       min_difference: 2MiB
 
