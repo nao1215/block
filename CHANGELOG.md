@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-09-28
+
 ### Fixed
 
 - A version constraint in `block.toml` that carries build metadata (`"1.8.0-rc1+build"`) or an empty pre-release (`"0.0.0-+"`) is now refused as a manifest error (`BLK1002`) that says what is wrong. It used to be accepted, name a pre-release no tag could have, and fail later as "no release satisfies the constraint". Build metadata does not select a release, so write the constraint without it. A version with a second `+` inside its build metadata (`1.0.0+b+c`) is refused as well.
@@ -519,7 +521,10 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/nao1215/block/compare/v0.7.2...v0.7.3
+[0.7.2]: https://github.com/nao1215/block/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/nao1215/block/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/nao1215/block/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/nao1215/block/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/nao1215/block/compare/v0.5.0...v0.6.0
