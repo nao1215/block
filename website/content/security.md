@@ -120,7 +120,7 @@ sha256sum --check --ignore-missing checksums.txt
 ```
 
 The build provenance is also attached to the release as
-`multiple.intoto.jsonl`, so an archive can be checked offline with
+`multiple.intoto.jsonl`, so a downloaded archive can be checked against that file with
 [slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
 
 ```shell

@@ -129,7 +129,7 @@ gh attestation verify block_0.1.0_linux_amd64.tar.gz --repo nao1215/block
 ```
 
 The same provenance is also attached to the release as `multiple.intoto.jsonl`,
-so an archive can be checked offline with
+so a downloaded archive can be checked against that file with
 [slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
 
 ```shell
