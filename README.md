@@ -12,6 +12,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/nao1215/block.svg)](https://pkg.go.dev/github.com/nao1215/block)
 ![GitHub](https://img.shields.io/github/license/nao1215/block)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/nao1215/block/total)](https://github.com/nao1215/block/releases)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nao1215/block/badge)](https://scorecard.dev/viewer/?uri=github.com/nao1215/block)
 
 ![demo](./doc/img/demo.gif)
 
