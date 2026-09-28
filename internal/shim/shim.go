@@ -407,7 +407,7 @@ func SameDir(a, b string) bool {
 		// Windows paths differ only in case.
 		return true
 	}
-	ai, err := os.Stat(a)
+	ai, err := os.Stat(a) //nolint:gosec // G703: a is an entry of the user's own PATH, only stat-ed to compare identity
 	if err != nil {
 		return false
 	}
