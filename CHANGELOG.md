@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Release artifacts now ship with SLSA build provenance as a release asset (`multiple.intoto.jsonl`), which `slsa-verifier verify-artifact` checks offline against a downloaded archive. The release run verifies every published archive against it before finishing. The GitHub attestation checked by `gh attestation verify` is still published.
+
 ## [0.7.2] - 2026-09-21
 
 ### Changed
