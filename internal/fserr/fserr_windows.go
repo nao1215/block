@@ -11,10 +11,10 @@ import "syscall"
 // stable. An NTFS disk quota is reported as ERROR_DISK_FULL as well: to a
 // process that has reached one, the volume is full.
 const (
-	errorHandleDiskFull syscall.Errno = 39
-	errorDiskFull       syscall.Errno = 112
+	errHandleDiskFull syscall.Errno = 39  // ERROR_HANDLE_DISK_FULL
+	errDiskFull       syscall.Errno = 112 // ERROR_DISK_FULL
 )
 
 // outOfSpace are the error codes a Windows write returns when the volume has
 // no room left.
-var outOfSpace = []error{errorHandleDiskFull, errorDiskFull} //nolint:gochecknoglobals // the immutable table
+var outOfSpace = []error{errHandleDiskFull, errDiskFull} //nolint:gochecknoglobals // the immutable table

@@ -20,14 +20,14 @@ func link(self, target string) error {
 }
 
 func copyFile(self, target string) error {
-	in, err := os.Open(self)
+	in, err := os.Open(self) //nolint:gosec // G304: the running block binary
 	if err != nil {
 		return err
 	}
 	defer in.Close() //nolint:errcheck // read-only
 
 	tmp := target + ".tmp"
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileMode)
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileMode) //nolint:gosec // G304: a temporary path place picked inside block's own shim directory
 	if err != nil {
 		return err
 	}
