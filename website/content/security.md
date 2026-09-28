@@ -123,11 +123,14 @@ The build provenance is also attached to the release as
 `multiple.intoto.jsonl`, so a downloaded archive can be checked against that file with
 [slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
 
+Releases carry provenance from v0.7.3 on. Replace 0.7.3 below with the
+version you downloaded.
+
 ```shell
-slsa-verifier verify-artifact block_0.1.0_linux_amd64.tar.gz \
+slsa-verifier verify-artifact block_0.7.3_linux_amd64.tar.gz \
   --provenance-path multiple.intoto.jsonl \
   --source-uri github.com/nao1215/block \
-  --source-tag v0.1.0
+  --source-tag v0.7.3
 ```
 
 ## Reading a refusal
