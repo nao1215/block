@@ -57,7 +57,7 @@ jobs:
       # The shell scripts are the e2e bootstrap and the release/registry
       # helpers: errors there hide behind "the suite passed" or "the sync
       # ran", so they get the same review the Go does.
-      - uses: reviewdog/action-shellcheck@0722bbdb0d47f04c1b53b8734d2422ac63a45ec6 # v1.32.1
+      - uses: reviewdog/action-shellcheck@0a90156c6e0553996a217f0a9e09be6b0f6bee4c # v1.34.0
         with:
           reporter: github-pr-review
           level: error
