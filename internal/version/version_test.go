@@ -31,6 +31,15 @@ func TestParse(t *testing.T) {
 		{in: "1.x.4", wantErr: true},
 		{in: "1..4", wantErr: true},
 		{in: "99999999999999999999.0.0", wantErr: true},
+		// Semver's identifier rules: none of them may be empty, and "+"
+		// opens the build field once, so it cannot appear inside it.
+		{in: "1.0.0+", wantErr: true},
+		{in: "1.0.0-rc+", wantErr: true},
+		{in: "1.0.0-a..b", wantErr: true},
+		{in: "1.0.0+a..b", wantErr: true},
+		{in: "1.0.0+b+c", wantErr: true},
+		{in: "1.0.0-rc+b+c", wantErr: true},
+		{in: "1.0.0+b.+c", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
@@ -125,6 +134,34 @@ func TestParseConstraint(t *testing.T) {
 		if _, err := ParseConstraint(bad); err == nil {
 			t.Errorf("ParseConstraint(%q) accepted", bad)
 		}
+	}
+	// Semver forbids an empty pre-release, an empty build field and an empty
+	// identifier in either. A constraint also has no use for build metadata:
+	// it does not select a release, and a constraint carrying it matched no
+	// version at all, so the refusal belongs at parse time.
+	for _, bad := range []string{
+		"0.0.0-+",        // empty pre-release and empty build
+		"1.8.0-+",        // the same on another release
+		"1.8.0-+b",       // empty pre-release before build metadata
+		"1.8.0-rc1+",     // empty build metadata
+		"1.8.0-rc1+b",    // build metadata on a pre-release
+		"1.8.0-rc1+a..b", // empty build identifier
+		"1.8.0-rc1+.b",   // leading empty build identifier
+		"1.8.0+b",        // build metadata on a release
+		"1.8.0+",         // empty build metadata on a release
+		"1.8+b",          // build metadata on a prefix
+		"1.8.0-a..b",     // empty pre-release identifier
+		"1.8.0-.rc",      // leading empty pre-release identifier
+		"1.8.0-rc.",      // trailing empty pre-release identifier
+		"1.8.0-.",        // nothing but a separator
+		"1.8.0-rc1+b+c",  // two build fields
+	} {
+		if c, err := ParseConstraint(bad); err == nil {
+			t.Errorf("ParseConstraint(%q) accepted with pre-release %q", bad, c.pre)
+		}
+	}
+	if _, err := ParseConstraint("1.8.0-rc1+b"); err == nil || !strings.Contains(err.Error(), "build metadata") {
+		t.Errorf("ParseConstraint(1.8.0-rc1+b) error = %v, want it to name the build metadata", err)
 	}
 	if !MustParseConstraint("1.7.4").IsExact() || MustParseConstraint("1.7").IsExact() {
 		t.Error("IsExact is wrong")
@@ -305,7 +342,7 @@ func TestParseKeepsTheFormatsUpstreamsUse(t *testing.T) {
 // pre-release is held to the same rule.
 func TestParseRefusesAnEmptyPreRelease(t *testing.T) {
 	t.Parallel()
-	for _, s := range []string{"1.7.4-", "1.7-", "1.7.4-+b", "1.7.4-+"} {
+	for _, s := range []string{"1.7.4-", "1.7-", "1.7.4-+b", "1.7.4-+", "0.0.0-+"} {
 		if v, err := Parse(s); err == nil {
 			t.Errorf("Parse(%q) = %q, want an error", s, v)
 		}

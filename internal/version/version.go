@@ -137,7 +137,8 @@ func checkAlphabet(s string) error {
 // checkIdentifiers holds a pre-release or a build-metadata field to semver's
 // own shape: dot-separated identifiers, each non-empty. It is what stops "..",
 // a leading "." and a trailing "." from reaching a directory name, since a dot
-// is a legal separator but an empty identifier is not.
+// is a legal separator but an empty identifier is not. A "+" is refused too:
+// it opens the build field exactly once, so an identifier never contains one.
 func checkIdentifiers(what, field string) error {
 	if field == "" {
 		return fmt.Errorf("empty %s", what)
@@ -145,6 +146,9 @@ func checkIdentifiers(what, field string) error {
 	for _, id := range strings.Split(field, ".") {
 		if id == "" {
 			return fmt.Errorf("empty %s identifier", what)
+		}
+		if strings.Contains(id, "+") {
+			return fmt.Errorf("%s identifier %q contains a \"+\"", what, id)
 		}
 	}
 	return nil
@@ -307,7 +311,8 @@ type Constraint struct {
 // ParseConstraint parses a constraint. Operators, ranges and wildcards are
 // rejected so that block.toml stays trivially readable; what is accepted is a
 // dotted release prefix, one of those with an exact pre-release after it, a
-// channel name, or one named release of a channel.
+// channel name, or one named release of a channel. A pre-release is held to
+// semver's identifier rules, and build metadata is not accepted at all.
 func ParseConstraint(s string) (Constraint, error) {
 	if s == "" {
 		return Constraint{}, errors.New("version constraint is empty")
@@ -321,6 +326,13 @@ func ParseConstraint(s string) (Constraint, error) {
 	// configure and no ambiguity to resolve.
 	if s[0] < '0' || s[0] > '9' {
 		return parseChannelConstraint(s)
+	}
+	// Build metadata does not select a release — semver leaves it out of
+	// precedence, and Matches compares only the pre-release — so a constraint
+	// that carried it named a pre-release no parsed version could have, and
+	// matched nothing. It is refused here, where the message can say why.
+	if i := strings.IndexByte(s, '+'); i >= 0 {
+		return Constraint{}, fmt.Errorf("invalid version constraint %q: build metadata (%q) does not select a release; write the constraint without it", s, s[i:])
 	}
 	core, pre, hasPre := strings.Cut(s, "-")
 	parts := strings.Split(core, ".")

@@ -1101,6 +1101,56 @@ scenarios:
           stderr:
             contains: 'block: BLK6001: foo: refusing insecure url http://mirror.example.com/foo_1.2.0.tar.gz: only https is allowed'
 
+  # Semver forbids an empty pre-release, an empty build field and an empty
+  # identifier in either, and build metadata does not select a release. A
+  # constraint written that way used to parse, name a pre-release no tag could
+  # have, and only fail later as "nothing matches"; it is a manifest error.
+  - name: a constraint with an empty pre-release or build metadata is refused as a manifest error
+    env: *t1
+    steps:
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "0.0.0-+"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK1002: block.toml: tool "foundry": invalid version constraint "0.0.0-+": build metadata ("+") does not select a release; write the constraint without it
+
+'
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.8.0-rc1+build"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK1002: block.toml: tool "foundry": invalid version constraint "1.8.0-rc1+build": build metadata ("+build") does not select a release; write the constraint without it
+
+'
+      - fixture:
+          file: block.toml
+          content: |
+            [tools]
+            foundry = "1.8.0-rc..1"
+      - run:
+          command: block lock
+      - assert:
+          exit_code: 1
+          stderr:
+            equals: 'block: BLK1002: block.toml: tool "foundry": invalid version constraint "1.8.0-rc..1": empty pre-release identifier
+
+'
+          file:
+            path: block.lock
+            exists: false
+
   - name: a missing repository is reported as not found
     env: *t1
     steps:
