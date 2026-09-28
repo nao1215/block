@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestLookPathTriesPathExtInOrder(t *testing.T) { //nolint:paralleltest // sets PATHEXT
+func TestLookPathTriesPathExtInOrder(t *testing.T) {
 	t.Setenv("PATHEXT", ".COM;.EXE;.BAT")
 	first := t.TempDir()
 	second := t.TempDir()
@@ -56,7 +56,7 @@ func TestLookPathTriesPathExtInOrder(t *testing.T) { //nolint:paralleltest // se
 	}
 }
 
-func TestLookPathFallsBackToTheDefaultPathExt(t *testing.T) { //nolint:paralleltest // sets PATHEXT
+func TestLookPathFallsBackToTheDefaultPathExt(t *testing.T) {
 	t.Setenv("PATHEXT", "")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "forge.cmd"), []byte("x"), 0o644); err != nil {

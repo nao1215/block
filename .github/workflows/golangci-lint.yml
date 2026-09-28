@@ -28,3 +28,33 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.14.0
+
+  # A linter only sees the files that build for its GOOS, so the job above
+  # never read the *_windows.go files, and findings in them went through
+  # unnoticed. This one covers the other systems block ships for (see
+  # .goreleaser.yml). Cross-compiling costs seconds, so every leg runs on
+  # every change.
+  golangci-lint-cross:
+    name: golangci-lint (${{ matrix.goos }})
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [darwin, windows]
+    runs-on: ubuntu-latest
+    env:
+      GOOS: ${{ matrix.goos }}
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26"
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.14.0

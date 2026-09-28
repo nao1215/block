@@ -39,7 +39,7 @@ func LookPath(name, path string) (string, error) {
 		}
 		for _, ext := range exts {
 			candidate := filepath.Join(dir, name+ext)
-			if st, err := os.Stat(candidate); err == nil && st.Mode().IsRegular() {
+			if st, err := os.Stat(candidate); err == nil && st.Mode().IsRegular() { //nolint:gosec // G703: an entry of the user's own PATH and PATHEXT, only stat-ed to find the command they asked for
 				return candidate, nil
 			}
 		}
