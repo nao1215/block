@@ -119,6 +119,17 @@ cosign verify-blob \
 sha256sum --check --ignore-missing checksums.txt
 ```
 
+The build provenance is also attached to the release as
+`multiple.intoto.jsonl`, so an archive can be checked offline with
+[slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
+
+```shell
+slsa-verifier verify-artifact block_0.1.0_linux_amd64.tar.gz \
+  --provenance-path multiple.intoto.jsonl \
+  --source-uri github.com/nao1215/block \
+  --source-tag v0.1.0
+```
+
 ## Reading a refusal
 
 Every refusal on this page carries a code, and the ones in this section are the
