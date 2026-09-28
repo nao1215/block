@@ -125,12 +125,22 @@ func (g *gate) enter(ctx context.Context) bool {
 		g.cond.Broadcast()
 	}
 	if !g.opened {
-		timer := time.AfterFunc(g.timeout, g.cond.Broadcast)
+		// Both wakeups record why they fired under the lock before
+		// broadcasting. A bare Broadcast can land between the waiter's check
+		// and its Wait, or before a deadline the waiter computes itself, and
+		// the waiter then sleeps with nothing left to wake it.
+		expired := false
+		wake := func() {
+			g.cond.L.Lock()
+			expired = true
+			g.cond.L.Unlock()
+			g.cond.Broadcast()
+		}
+		timer := time.AfterFunc(g.timeout, wake)
 		defer timer.Stop()
-		stop := context.AfterFunc(ctx, g.cond.Broadcast)
+		stop := context.AfterFunc(ctx, wake)
 		defer stop()
-		deadline := time.Now().Add(g.timeout)
-		for !g.opened && ctx.Err() == nil && time.Now().Before(deadline) {
+		for !g.opened && !expired {
 			g.cond.Wait()
 		}
 	}
