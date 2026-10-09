@@ -51,7 +51,7 @@ jobs:
         # were testing the same thing.
         go:
           - "stable"
-          - "1.26.9"
+          - "1.26"
       fail-fast: false
     runs-on: ${{ matrix.os }}
 
