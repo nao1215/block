@@ -5,6 +5,9 @@ env:
 before:
   hooks:
     - go mod tidy
+    - sh -c 'GOROOT="$(go env GOROOT)" CGO_ENABLED=0 GOOS=linux go-licenses save . --save_path=third_party_licenses/linux --force'
+    - sh -c 'GOROOT="$(go env GOROOT)" CGO_ENABLED=0 GOOS=darwin go-licenses save . --save_path=third_party_licenses/darwin --force'
+    - sh -c 'GOROOT="$(go env GOROOT)" CGO_ENABLED=0 GOOS=windows go-licenses save . --save_path=third_party_licenses/windows --force'
 builds:
   - main: .
     ldflags:
@@ -24,6 +27,14 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    # Listing files replaces goreleaser's defaults, so the project's own
+    # LICENSE, README and CHANGELOG are named here too.
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+      - src: "third_party_licenses/{{ .Os }}/**/*"
+        dst: THIRD_PARTY_LICENSES
 nfpms:
   - maintainer: Naohiro CHIKAMATSU <n.chika156@gmail.com>
     description: "Lock your blockchain toolchain: pin Foundry, Hermes and friends per project and reproduce them in CI"
@@ -33,6 +44,10 @@ nfpms:
       - deb
       - rpm
       - apk
+    contents:
+      - src: ./third_party_licenses/linux
+        dst: /usr/share/doc/block/THIRD_PARTY_LICENSES
+        type: tree
 
 checksum:
   name_template: "checksums.txt"
