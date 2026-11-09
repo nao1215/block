@@ -55,3 +55,4 @@ cover.html
 
 # atago's run state: which scenarios failed last time, for --failed.
 /.atago/
+/third_party_licenses/
