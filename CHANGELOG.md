@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-11-09
+
 ### Changed
 
+- The prebuilt binaries are built with Go 1.27.3. The v0.7.3 binaries were built with Go 1.27.1, before the standard library fixes released with Go 1.27.2 and 1.27.3, such as GO-2026-6617 in `net/http` and GO-2026-6809 in `crypto/x509`.
 - Release archives and Linux packages now include the license texts of the linked dependencies under THIRD_PARTY_LICENSES/. CI checks dependency licenses on Linux, Windows, and macOS.
 
 ## [0.7.3] - 2026-09-28
@@ -525,7 +528,8 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.7.4...HEAD
+[0.7.4]: https://github.com/nao1215/block/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/nao1215/block/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/nao1215/block/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/nao1215/block/compare/v0.7.0...v0.7.1
