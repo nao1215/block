@@ -209,7 +209,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 		}
 	}
 	parent := filepath.Dir(dir)
-	if err := os.MkdirAll(parent, dirMode); err != nil {
+	if err := os.MkdirAll(parent, dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
 		return writeFailed("creating "+parent, err)
 	}
 	// Everything is built in a sibling temporary directory and renamed into
@@ -231,7 +231,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
 			return writeFailed("creating "+filepath.Dir(target), err)
 		}
 		if err := copyExecutable(src, target); err != nil {
@@ -249,7 +249,7 @@ func (s *Store) Install(src, assetName, dir string, bins []string, strip int) er
 	// The marker goes in last, so the rename publishes a directory that is
 	// complete by construction.
 	const markerMode = 0o644
-	if err := os.WriteFile(filepath.Join(tmp, markerName), []byte(assetName+"\n"), markerMode); err != nil {
+	if err := os.WriteFile(filepath.Join(tmp, markerName), []byte(assetName+"\n"), markerMode); err != nil { // #nosec G306 -- the marker names the installed asset and is as readable as the tool beside it
 		return writeFailed("marking the install complete", err)
 	}
 	if err := os.Rename(tmp, dir); err != nil {
@@ -292,13 +292,13 @@ func ensureExecutable(dir string, bins []string) error {
 // the destination goes through [writeFailed], where a filesystem with no room
 // left earns a code of its own.
 func copyExecutable(src, dst string) error {
-	in, err := os.Open(src) //nolint:gosec // cache path
+	in, err := os.Open(src) // #nosec G304 -- cache path
 	if err != nil {
 		return err
 	}
 	defer in.Close() //nolint:errcheck // read-only
 	const execMode = 0o755
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, execMode) //nolint:gosec // inside the temp install dir
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, execMode) // #nosec G302 G304 -- inside the temp install dir
 	if err != nil {
 		return writeFailed("creating "+dst, err)
 	}

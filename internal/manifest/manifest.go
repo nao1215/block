@@ -92,7 +92,7 @@ type rawTool struct {
 
 // Load reads and parses the manifest at path.
 func Load(path string) (*Manifest, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // the path is the project's own block.toml
+	data, err := os.ReadFile(path) // #nosec G304 -- the path is the project's own block.toml
 	if err != nil {
 		return nil, err
 	}

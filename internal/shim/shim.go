@@ -115,7 +115,7 @@ func Ensure(st *store.Store, self string, commands []string) ([]string, error) {
 		return nil, diag.StoreUnwritable.Errorf("identifying the block binary at %s: %w", self, err)
 	}
 	dir := Dir(st)
-	if err := os.MkdirAll(dir, dirMode); err != nil {
+	if err := os.MkdirAll(dir, dirMode); err != nil { // #nosec G301 -- the shim directory goes on PATH and needs the 0755 of a bin directory
 		return nil, diag.StoreUnwritable.Wrap(err)
 	}
 	// The shims are global: the directory also holds the commands every other
@@ -281,7 +281,7 @@ func mergeCommands(a, b []string) []string {
 // fileDigest is the SHA-256 of the file at path. It is what tells one block
 // binary from another when both live at the same path.
 func fileDigest(path string) (string, error) {
-	f, err := os.Open(path) //nolint:gosec // the running binary
+	f, err := os.Open(path) // #nosec G304 -- the running binary
 	if err != nil {
 		return "", err
 	}
@@ -305,7 +305,7 @@ func fileDigest(path string) (string, error) {
 // a shim from a file somebody else put there, and once this run writes a
 // marker of its own there is nothing left to guess.
 func readMarker(dir, self, digest string) (commands []string, stale bool, err error) {
-	data, readErr := os.ReadFile(filepath.Join(dir, markerName)) //nolint:gosec // block's own store
+	data, readErr := os.ReadFile(filepath.Join(dir, markerName)) // #nosec G304 -- block's own store
 	switch {
 	case readErr == nil:
 		if m, ok := parseMarker(string(data)); ok {
@@ -371,7 +371,7 @@ func writeMarker(dir, self, digest string, commands []string) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Chmod(tmp, fileMode); err != nil {
+	if err := os.Chmod(tmp, fileMode); err != nil { // #nosec G302 -- a shim is an executable on PATH and needs 0755
 		_ = os.Remove(tmp)
 		return err
 	}
@@ -407,7 +407,7 @@ func SameDir(a, b string) bool {
 		// Windows paths differ only in case.
 		return true
 	}
-	ai, err := os.Stat(a) //nolint:gosec // G703: a is an entry of the user's own PATH, only stat-ed to compare identity
+	ai, err := os.Stat(a) // #nosec G703 -- a is an entry of the user's own PATH, only stat-ed to compare identity
 	if err != nil {
 		return false
 	}

@@ -131,7 +131,7 @@ func stripName(name string, n int) (string, bool) {
 }
 
 func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reader, error)) error {
-	f, err := os.Open(src) //nolint:gosec // cache path
+	f, err := os.Open(src) // #nosec G304 -- cache path
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, dirMode); err != nil {
+			if err := os.MkdirAll(target, dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
 				return err
 			}
 		case tar.TypeReg:
@@ -226,7 +226,7 @@ func extractZip(src, dst string, strip int) error {
 		mode := zf.Mode()
 		switch {
 		case mode.IsDir():
-			if err := os.MkdirAll(target, dirMode); err != nil {
+			if err := os.MkdirAll(target, dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
 				return err
 			}
 		case mode&os.ModeSymlink != 0:
@@ -290,7 +290,7 @@ func symlink(dst, target, linkname, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
 		return err
 	}
 	if err := os.Symlink(filepath.FromSlash(linkname), target); err != nil {
@@ -319,7 +319,7 @@ func hardlink(dst, target, linkname, name string) error {
 	if st, err := os.Lstat(resolved); err != nil || !st.Mode().IsRegular() {
 		return diag.UnsupportedEntry.Errorf("refusing to extract %q: it links to %q, which the archive did not write", name, linkname)
 	}
-	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
 		return err
 	}
 	if err := os.Link(resolved, target); err != nil {
@@ -359,7 +359,7 @@ func copyLinked(resolved, target string) error {
 	if err != nil {
 		return err
 	}
-	in, err := os.Open(resolved) //nolint:gosec // inside the destination, already checked
+	in, err := os.Open(resolved) // #nosec G304 -- inside the destination, already checked
 	if err != nil {
 		return err
 	}
@@ -368,7 +368,7 @@ func copyLinked(resolved, target string) error {
 	if st.Mode()&0o100 != 0 {
 		perm = execMode
 	}
-	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm) //nolint:gosec // inside the destination
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm) // #nosec G304 -- inside the destination
 	if err != nil {
 		return err
 	}
@@ -444,7 +444,7 @@ func driveLetter(name string) bool {
 
 // writeFile writes one archive member and reports how many bytes it held.
 func writeFile(target string, r io.Reader, mode os.FileMode) (int64, error) {
-	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
 		return 0, err
 	}
 	perm := os.FileMode(fileMode)
@@ -456,7 +456,7 @@ func writeFile(target string, r io.Reader, mode os.FileMode) (int64, error) {
 	// case-insensitive filesystem "tool" and "TOOL" are one file, and an
 	// archive that relies on which of them lands last means different things
 	// on macOS and on Linux.
-	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm) //nolint:gosec // inside the install dir
+	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm) // #nosec G304 -- inside the install dir
 	if errors.Is(err, os.ErrExist) {
 		return 0, diag.DuplicateEntry.Errorf("refusing to extract %q: the archive already wrote that file (names differing only in case are one file on some filesystems)", filepath.Base(target))
 	}

@@ -79,7 +79,7 @@ func fallback(st *store.Store, command string, args []string, depth int,
 		fmt.Fprintln(stderr, notFound)
 		return exitFailure
 	}
-	cmd := exec.Command(bin, args...) //nolint:gosec,noctx // the command the user typed, found on their own PATH; signals stop it, not a context (see block.RunCommand)
+	cmd := exec.Command(bin, args...) /* #nosec G204 -- the command the user typed, found on their own PATH; signals stop it, not a context (see block.RunCommand) */ //nolint:noctx
 	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", depthEnv, depth+1))
 	code, err := block.RunCommand(cmd, command, stdin, stdout, stderr)
 	if err != nil {
@@ -112,7 +112,7 @@ func next(st *store.Store, command string) (string, bool) {
 		}
 		// A shim copied into another directory is still this binary.
 		if selfInfo != nil {
-			if info, err := os.Stat(bin); err == nil && os.SameFile(info, selfInfo) { //nolint:gosec // a PATH entry, resolved for comparison only
+			if info, err := os.Stat(bin); err == nil && os.SameFile(info, selfInfo) { // #nosec G703 -- a PATH entry, resolved for comparison only
 				continue
 			}
 		}
