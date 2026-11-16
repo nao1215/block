@@ -168,7 +168,8 @@ func extractTar(src, dst string, strip int, decompress func(io.Reader) (io.Reade
 		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+			// #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+			if err := os.MkdirAll(target, dirMode); err != nil {
 				return err
 			}
 		case tar.TypeReg:
@@ -226,7 +227,8 @@ func extractZip(src, dst string, strip int) error {
 		mode := zf.Mode()
 		switch {
 		case mode.IsDir():
-			if err := os.MkdirAll(target, dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+			// #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+			if err := os.MkdirAll(target, dirMode); err != nil {
 				return err
 			}
 		case mode&os.ModeSymlink != 0:
@@ -290,7 +292,8 @@ func symlink(dst, target, linkname, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+	// #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
 		return err
 	}
 	if err := os.Symlink(filepath.FromSlash(linkname), target); err != nil {
@@ -319,7 +322,8 @@ func hardlink(dst, target, linkname, name string) error {
 	if st, err := os.Lstat(resolved); err != nil || !st.Mode().IsRegular() {
 		return diag.UnsupportedEntry.Errorf("refusing to extract %q: it links to %q, which the archive did not write", name, linkname)
 	}
-	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+	// #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
 		return err
 	}
 	if err := os.Link(resolved, target); err != nil {
@@ -444,7 +448,8 @@ func driveLetter(name string) bool {
 
 // writeFile writes one archive member and reports how many bytes it held.
 func writeFile(target string, r io.Reader, mode os.FileMode) (int64, error) {
-	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil { // #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+	// #nosec G301 -- installed tools live in a directory every user of the machine reads, as with go install
+	if err := os.MkdirAll(filepath.Dir(target), dirMode); err != nil {
 		return 0, err
 	}
 	perm := os.FileMode(fileMode)
