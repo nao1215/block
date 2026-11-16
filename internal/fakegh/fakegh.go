@@ -819,7 +819,7 @@ var knownTargets = map[string]bool{ //nolint:gochecknoglobals // immutable table
 
 func (s *Server) writeArchive(w http.ResponseWriter, name string, rel release) {
 	w.Header().Set("Content-Type", "application/octet-stream")
-	_, _ = w.Write(buildArchive(name, rel)) //nolint:gosec // generated archive bytes, not user input
+	_, _ = w.Write(buildArchive(name, rel)) // #nosec G705 -- generated archive bytes, not user input
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -975,7 +975,7 @@ func buildZip(members []entry) []byte {
 	zw := zip.NewWriter(&buf)
 	for _, m := range members {
 		hdr := &zip.FileHeader{Name: m.name, Method: zip.Deflate, Modified: epoch}
-		mode, content := os.FileMode(m.mode), m.content //nolint:gosec // fixture modes are small constants
+		mode, content := os.FileMode(m.mode), m.content // #nosec G115 -- fixture modes are small constants
 		switch {
 		case strings.HasSuffix(m.name, "/"):
 			mode |= os.ModeDir

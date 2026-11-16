@@ -194,7 +194,7 @@ func (f *Fetcher) verifyCached(want string) (bool, error) {
 // cached under the same digest replaces nothing.
 func (f *Fetcher) download(ctx context.Context, rawURL, want string) (string, error) {
 	const dirMode = 0o755
-	if err := os.MkdirAll(filepath.Join(f.Dir, "sha256"), dirMode); err != nil {
+	if err := os.MkdirAll(filepath.Join(f.Dir, "sha256"), dirMode); err != nil { // #nosec G301 -- the download cache is shared with the installed tools and needs the same 0755
 		return "", f.cacheErr(err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -342,7 +342,7 @@ func isLoopback(host string) bool {
 
 // SHA256File hashes a file on disk.
 func SHA256File(path string) (string, error) {
-	f, err := os.Open(path) //nolint:gosec // caller-controlled cache path
+	f, err := os.Open(path) // #nosec G304 -- caller-controlled cache path
 	if err != nil {
 		return "", err
 	}

@@ -113,7 +113,7 @@ func (l *Lock) Sort() {
 
 // Load reads the lockfile at path.
 func Load(path string) (*Lock, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // the path is the project's own block.lock
+	data, err := os.ReadFile(path) // #nosec G304 -- the path is the project's own block.lock
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func Write(path string, l *Lock) error {
 		return diag.LockUnwritable.Errorf("writing %s: %w", FileName, err)
 	}
 	const mode = 0o644
-	if err := os.Chmod(tmpName, mode); err != nil {
+	if err := os.Chmod(tmpName, mode); err != nil { // #nosec G302 -- block.lock is committed to the repository, so it gets the usual 0644 of a source file
 		_ = os.Remove(tmpName)
 		return diag.LockUnwritable.Errorf("writing %s: %w", FileName, err)
 	}

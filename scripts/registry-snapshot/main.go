@@ -58,7 +58,7 @@ func writeSnapshot(dir, source, revision string) error {
 		return err
 	}
 	const fileMode = 0o644
-	if err := os.WriteFile(filepath.Join(dir, snapshot.FileName), s.Format(), fileMode); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, snapshot.FileName), s.Format(), fileMode); err != nil { // #nosec G306 -- the snapshot is committed to the repository, so it gets the usual 0644 of a source file
 		return err
 	}
 	fmt.Printf("%s: %d recipes from %s at %s\n", filepath.Join(dir, snapshot.FileName), count, source, revision[:12])
@@ -67,7 +67,7 @@ func writeSnapshot(dir, source, revision string) error {
 
 func verifySnapshot(dir string) error {
 	path := filepath.Join(dir, snapshot.FileName)
-	data, err := os.ReadFile(path) //nolint:gosec // the repository's own file
+	data, err := os.ReadFile(path) // #nosec G304 -- the repository's own file
 	if err != nil {
 		return err
 	}

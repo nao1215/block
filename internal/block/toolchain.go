@@ -149,7 +149,7 @@ func (t *Toolchain) Command(name string, args []string) (*exec.Cmd, error) {
 			return nil, diag.CommandNotFound.Errorf("command %q not found in the locked toolchain or on PATH", name)
 		}
 	}
-	cmd := exec.Command(bin, args...) //nolint:gosec,noctx // running the user's command is the point; signals stop it, not a context (see RunCommand)
+	cmd := exec.Command(bin, args...) /* #nosec G204 -- running the user's command is the point; signals stop it, not a context (see RunCommand) */ //nolint:noctx
 	cmd.Env = append(os.Environ(), "PATH="+path)
 	return cmd, nil
 }
