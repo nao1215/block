@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-19
+
 ### Fixed
 
 - `agave` no longer claims Windows. Anza stopped publishing the Windows prebuilt from v4.4.0, so on Windows block resolved the newest release and pointed at an archive that does not exist. block now says that agave ships nothing for windows/amd64. The registry is synced to block-registry 1fc2a877bd2c.
@@ -545,7 +547,8 @@ is rather than what changed.
   real on a clean machine, so a promise that stops working fails in CI rather
   than in front of a reader.
 
-[Unreleased]: https://github.com/nao1215/block/compare/v0.7.4...HEAD
+[Unreleased]: https://github.com/nao1215/block/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/nao1215/block/compare/v0.7.4...v0.8.0
 [0.7.4]: https://github.com/nao1215/block/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/nao1215/block/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/nao1215/block/compare/v0.7.1...v0.7.2
