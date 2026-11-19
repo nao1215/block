@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run for the push before it; runs on
+# main and scheduled runs always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # registry/ is a vendored copy of block-registry, so the first thing to
   # check is that it still is one: a recipe edited here would otherwise ship
@@ -38,7 +44,7 @@ jobs:
         run: make doc-check
 
   unit_test:
-    name: Unit test (${{ matrix.os }}, go ${{ matrix.go }})
+    name: Unit test (${{ matrix.os }}, go ${{ matrix.go }}${{ matrix.shard && format(', {0}', matrix.shard) || '' }})
     strategy:
       matrix:
         os:
@@ -52,6 +58,29 @@ jobs:
         go:
           - "stable"
           - "1.26"
+        # Windows compiles the race-instrumented test binaries about three
+        # times slower than the other runners, and internal/archive alone runs
+        # for 40 seconds there, so a single Windows job was the longest in the
+        # pull request (207 s on main, 2026-11-16). Windows splits the packages
+        # in two: internal/archive and the rest. Every package still runs on
+        # every OS and Go version.
+        shard: [""]
+        include:
+          - os: "windows-latest"
+            go: "stable"
+            shard: "archive"
+          - os: "windows-latest"
+            go: "stable"
+            shard: "rest"
+          - os: "windows-latest"
+            go: "1.26"
+            shard: "archive"
+          - os: "windows-latest"
+            go: "1.26"
+            shard: "rest"
+        exclude:
+          - os: "windows-latest"
+            shard: ""
       fail-fast: false
     runs-on: ${{ matrix.os }}
 
@@ -65,4 +94,16 @@ jobs:
           go-version: ${{ matrix.go }}
 
       - name: Run tests with the race detector
+        if: matrix.shard == ''
         run: go test -race ./...
+
+      - name: Run internal/archive with the race detector
+        if: matrix.shard == 'archive'
+        run: go test -race ./internal/archive/
+
+      - name: Run every other package with the race detector
+        if: matrix.shard == 'rest'
+        shell: bash
+        run: |
+          mapfile -t packages < <(go list ./... | grep -v '^github.com/nao1215/block/internal/archive$')
+          go test -race "${packages[@]}"
