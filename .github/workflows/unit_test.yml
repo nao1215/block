@@ -44,7 +44,7 @@ jobs:
         run: make doc-check
 
   unit_test:
-    name: Unit test (${{ matrix.os }}, go ${{ matrix.go }}${{ matrix.shard && format(', {0}', matrix.shard) || '' }})
+    name: Unit test (${{ matrix.os }}, go ${{ matrix.go }})
     strategy:
       matrix:
         os:
@@ -58,29 +58,6 @@ jobs:
         go:
           - "stable"
           - "1.26"
-        # Windows compiles the race-instrumented test binaries about three
-        # times slower than the other runners, and internal/archive alone runs
-        # for 40 seconds there, so a single Windows job was the longest in the
-        # pull request (207 s on main, 2026-11-16). Windows splits the packages
-        # in two: internal/archive and the rest. Every package still runs on
-        # every OS and Go version.
-        shard: [""]
-        include:
-          - os: "windows-latest"
-            go: "stable"
-            shard: "archive"
-          - os: "windows-latest"
-            go: "stable"
-            shard: "rest"
-          - os: "windows-latest"
-            go: "1.26"
-            shard: "archive"
-          - os: "windows-latest"
-            go: "1.26"
-            shard: "rest"
-        exclude:
-          - os: "windows-latest"
-            shard: ""
       fail-fast: false
     runs-on: ${{ matrix.os }}
 
@@ -94,16 +71,4 @@ jobs:
           go-version: ${{ matrix.go }}
 
       - name: Run tests with the race detector
-        if: matrix.shard == ''
         run: go test -race ./...
-
-      - name: Run internal/archive with the race detector
-        if: matrix.shard == 'archive'
-        run: go test -race ./internal/archive/
-
-      - name: Run every other package with the race detector
-        if: matrix.shard == 'rest'
-        shell: bash
-        run: |
-          mapfile -t packages < <(go list ./... | grep -v '^github.com/nao1215/block/internal/archive$')
-          go test -race "${packages[@]}"
