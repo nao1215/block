@@ -115,6 +115,7 @@ The [releases page](https://github.com/nao1215/block/releases) also has `.deb`,
 | [Property-based tests](./internal/version/properties_test.go) | Version order that is not a total preorder, `Latest` picking a lower or non-matching tag, a spelling lost on the way to block.lock |
 | [Differential tests against golang.org/x/mod/semver](./internal/version/properties_test.go) | Pre-release precedence that disagrees with semver |
 | [Fuzzing](./internal/manifest/manifest_test.go) | Crashes and round trips that drift in block.toml, block.lock, recipes, versions and archive paths |
+| [Mutation testing](./.github/workflows/mutation.yml) | Conditions the unit tests run but do not check (89.81% efficacy on 2026-11-19) |
 | [Live registry check](./registry/live_test.go) | Recipes that point at an asset the upstream no longer publishes |
 | [Paired CI benchmarks](./bench/himorime.yaml) | Commands that got slower or use more memory |
 

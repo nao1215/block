@@ -94,6 +94,13 @@ The README's Testing table lists the techniques; this is how each one runs.
 - Property-based tests: [internal/version/properties_test.go](./internal/version/properties_test.go) uses [pgregory.net/rapid](https://pgregory.net/rapid) to check that `Parse` keeps the spelling, that `Compare` is antisymmetric and transitive, and that `Latest` returns the highest matching tag whatever order the tags arrive in. `go test` draws 100 cases per property; draw more with `go test ./internal/version -run 'TestPBT|TestDifferential' -rapid.checks=20000`. A failure prints the seed and writes the case under `testdata/rapid/`.
 - Differential tests: the same file compares `Compare` with [golang.org/x/mod/semver](https://pkg.go.dev/golang.org/x/mod/semver) on strict semver input. It is a test-only dependency; block's binary does not link it. Spellings block accepts beyond semver (`29.0`, `29.1rc1`) are not compared.
 - Fuzzing: `FuzzParse` (internal/manifest and internal/version), `FuzzParseConstraint` (internal/version), `FuzzParseMarshalRoundTrip` (internal/lockfile), `FuzzValidateBin` (internal/recipe) and `FuzzSafePath` (internal/archive). `go test` replays the seeds; `fuzz.yml` runs each target nightly. Run one with `go test ./internal/version -run '^$' -fuzz '^FuzzParse$' -fuzztime 1m`.
+- Mutation testing: [gremlins](https://github.com/go-gremlins/gremlins) v0.6.0 changes one expression at a time and runs the unit tests against each mutant; a mutant no test notices (lived) is a condition the tests run but do not check. `mutation.yml` mutates every package weekly and, on a pull request, only the lines it changes. Run it with `gremlins unleash --workers 2 --timeout-coefficient 10 .`. The E2E suite is not part of it, so code only the E2E scenarios reach shows as not covered.
+
+  | Date | Killed | Lived | Not covered | Timed out | Efficacy (killed / (killed + lived)) |
+  |---|---|---|---|---|---|
+  | 2026-11-19 | 811 | 92 | 334 | 0 | 89.81% |
+
+  The efficacy is a record, not a gate: some lived mutants are equivalent.
 - Live registry check: `make registry-live` (section 6), weekly in `registry-live.yml` on every supported platform.
 - Benchmarks: `make bench` measures `bench/himorime.yaml`; on a pull request `bench.yml` compares the base and the head on the same runner.
 
