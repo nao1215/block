@@ -107,6 +107,36 @@ func TestCompare(t *testing.T) {
 	}
 }
 
+// TestComparePreReleaseIdentifiersAreNumericOnlyWhenAllDigits pins semver
+// 11.4: an identifier is numeric only when it is made of digits, so "-1" (a
+// hyphen is legal in an identifier) is alphanumeric and sorts after every
+// numeric one, and numeric identifiers compare by value even when they are too
+// long for an int.
+func TestComparePreReleaseIdentifiersAreNumericOnlyWhenAllDigits(t *testing.T) {
+	t.Parallel()
+	ordered := [][]string{
+		{"1.0.0-rc.1", "1.0.0-rc.-1"},
+		{"1.0.0-rc.99", "1.0.0-rc.-1"},
+		{"1.0.0-rc.2", "1.0.0-rc.18446744073709551616"},
+		{"1.0.0-rc.99999999999999999999", "1.0.0-rc.100000000000000000000"},
+		{"1.0.0-rc.100000000000000000000", "1.0.0-rc.x"},
+	}
+	for _, pair := range ordered {
+		a, b := MustParse(pair[0]), MustParse(pair[1])
+		if got := Compare(a, b); got != -1 {
+			t.Errorf("Compare(%s, %s) = %d, want -1", a, b, got)
+		}
+		if got := Compare(b, a); got != 1 {
+			t.Errorf("Compare(%s, %s) = %d, want 1", b, a, got)
+		}
+	}
+	// A leading zero is not semver, but upstreams write it; it keeps meaning
+	// the number it spells.
+	if got := Compare(MustParse("1.0.0-rc.01"), MustParse("1.0.0-rc.1")); got != 0 {
+		t.Errorf("Compare(1.0.0-rc.01, 1.0.0-rc.1) = %d, want 0", got)
+	}
+}
+
 func TestSort(t *testing.T) {
 	t.Parallel()
 	vs := []Version{MustParse("1.7.4"), MustParse("1.7.10"), MustParse("1.7.1-rc1"), MustParse("0.2.0")}

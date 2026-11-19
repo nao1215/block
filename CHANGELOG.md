@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `agave` no longer claims Windows. Anza stopped publishing the Windows prebuilt from v4.4.0, so on Windows block resolved the newest release and pointed at an archive that does not exist. block now says that agave ships nothing for windows/amd64. The registry is synced to block-registry 1fc2a877bd2c.
+- Pre-release ordering follows semver for two kinds of identifier it got wrong. An identifier with a hyphen such as `-1` (in `1.0.0-rc.-1`) was read as the number -1 and sorted before `rc.1`; it is alphanumeric and now sorts after every numeric identifier. A numeric identifier too long for an integer was compared as text, so `rc.100000000000000000000` sorted before `rc.99999999999999999999`; numbers now compare by value at any length.
 
 ### Changed
 
