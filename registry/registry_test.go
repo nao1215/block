@@ -35,10 +35,9 @@ var recipes = map[string]want{
 		ecosystems: []string{"solana"}, description: "Solana validator client and CLI suite, including a local test validator",
 		sourceKind: recipe.TypeGitHubRelease, sample: "4.2.1",
 		artifacts: map[string]string{
-			"linux/amd64":   "solana-release-x86_64-unknown-linux-gnu.tar.bz2",
-			"darwin/amd64":  "solana-release-x86_64-apple-darwin.tar.bz2",
-			"darwin/arm64":  "solana-release-aarch64-apple-darwin.tar.bz2",
-			"windows/amd64": "solana-release-x86_64-pc-windows-msvc.tar.bz2",
+			"linux/amd64":  "solana-release-x86_64-unknown-linux-gnu.tar.bz2",
+			"darwin/amd64": "solana-release-x86_64-apple-darwin.tar.bz2",
+			"darwin/arm64": "solana-release-aarch64-apple-darwin.tar.bz2",
 		},
 		bins: []string{"bin/solana", "bin/solana-keygen", "bin/solana-test-validator", "bin/agave-ledger-tool"}, strip: 1,
 	},
