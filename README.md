@@ -107,6 +107,19 @@ The [releases page](https://github.com/nao1215/block/releases) also has `.deb`,
 - macOS
 - Windows
 
+## Testing
+
+| Technique | Bug class caught here |
+|---|---|
+| [Unit tests and atago E2E](./e2e/atago) | Wrong output, exit codes, files written and error codes of each command |
+| [Property-based tests](./internal/version/properties_test.go) | Version order that is not a total preorder, `Latest` picking a lower or non-matching tag, a spelling lost on the way to block.lock |
+| [Differential tests against golang.org/x/mod/semver](./internal/version/properties_test.go) | Pre-release precedence that disagrees with semver |
+| [Fuzzing](./internal/manifest/manifest_test.go) | Crashes and round trips that drift in block.toml, block.lock, recipes, versions and archive paths |
+| [Live registry check](./registry/live_test.go) | Recipes that point at an asset the upstream no longer publishes |
+| [Paired CI benchmarks](./bench/himorime.yaml) | Commands that got slower or use more memory |
+
+Commands and details: [CONTRIBUTING.md](./CONTRIBUTING.md#7-testing-techniques).
+
 ## Documentation
 
 | | |
