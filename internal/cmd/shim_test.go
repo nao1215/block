@@ -73,7 +73,7 @@ func blockBinary(t *testing.T) string {
 			return
 		}
 		blockBin = filepath.Join(buildDir, "block"+store.ExeSuffix)
-		out, err := exec.CommandContext(context.Background(), "go", "build", "-o", blockBin, "..").CombinedOutput()
+		out, err := exec.CommandContext(context.Background(), "go", "build", "-o", blockBin, "../..").CombinedOutput()
 		if err != nil {
 			errBuild = fmt.Errorf("building block: %w: %s", err, out)
 		}

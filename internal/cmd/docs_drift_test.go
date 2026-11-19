@@ -1,6 +1,6 @@
 // Documentation drift checks.
 //
-// They live in package cmd, and reach the repository through ../, so that
+// They live in package cmd, and reach the repository through ../../, so that
 // "would block accept this command line?" can be answered by building the
 // real root command rather than by exporting a parser nothing else needs.
 //
@@ -564,7 +564,7 @@ func assertRenderedAfter(t *testing.T, source, derived string) {
 }
 
 // repoPath makes a repository-relative path usable from inside cmd/.
-func repoPath(rel string) string { return filepath.Join("..", rel) }
+func repoPath(rel string) string { return filepath.Join("..", "..", rel) }
 
 func lastCommitUnix(path string) (int64, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

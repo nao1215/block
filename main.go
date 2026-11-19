@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nao1215/block/cmd"
+	"github.com/nao1215/block/internal/cmd"
 )
 
 func main() {
