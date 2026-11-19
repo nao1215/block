@@ -88,6 +88,15 @@ following the page from a clean machine gets to a working tool, so a page
 that starts promising something that does not work fails there rather than in
 front of them.
 
+### 7. Testing techniques
+The README's Testing table lists the techniques; this is how each one runs.
+
+- Property-based tests: [internal/version/properties_test.go](./internal/version/properties_test.go) uses [pgregory.net/rapid](https://pgregory.net/rapid) to check that `Parse` keeps the spelling, that `Compare` is antisymmetric and transitive, and that `Latest` returns the highest matching tag whatever order the tags arrive in. `go test` draws 100 cases per property; draw more with `go test ./internal/version -run 'TestPBT|TestDifferential' -rapid.checks=20000`. A failure prints the seed and writes the case under `testdata/rapid/`.
+- Differential tests: the same file compares `Compare` with [golang.org/x/mod/semver](https://pkg.go.dev/golang.org/x/mod/semver) on strict semver input. It is a test-only dependency; block's binary does not link it. Spellings block accepts beyond semver (`29.0`, `29.1rc1`) are not compared.
+- Fuzzing: `FuzzParse` (internal/manifest and internal/version), `FuzzParseConstraint` (internal/version), `FuzzParseMarshalRoundTrip` (internal/lockfile), `FuzzValidateBin` (internal/recipe) and `FuzzSafePath` (internal/archive). `go test` replays the seeds; `fuzz.yml` runs each target nightly. Run one with `go test ./internal/version -run '^$' -fuzz '^FuzzParse$' -fuzztime 1m`.
+- Live registry check: `make registry-live` (section 6), weekly in `registry-live.yml` on every supported platform.
+- Benchmarks: `make bench` measures `bench/himorime.yaml`; on a pull request `bench.yml` compares the base and the head on the same runner.
+
 ## Documentation
 Five things are user-facing, and a change to a command's output or flags
 updates the ones it touches in the same pull request as the code:

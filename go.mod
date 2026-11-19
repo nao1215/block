@@ -5,7 +5,9 @@ go 1.26.0
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/mod v0.43.0
 	golang.org/x/sync v0.25.0
+	pgregory.net/rapid v1.3.0
 )
 
 require (
