@@ -18,6 +18,12 @@ permissions:
 # and does not fail it. The comparison is written to the job summary.
 #
 # Started by hand, the job measures the ref it runs on without comparing.
+# A new push to a pull request cancels the run for the push before it; runs on
+# main and scheduled runs always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   bench:
     runs-on: ubuntu-latest
@@ -37,7 +43,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: nao1215/setup-himorime@cae68ae0fcf303571b53dde1a73582fbc596857a # v0.2.0
+      - uses: nao1215/setup-himorime@05b4d293796e34a46c59f1363e15841a18e83e92 # v0.2.1
         with:
           version: v0.6.1
       - name: Compare the base with the head

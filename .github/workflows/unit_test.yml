@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run for the push before it; runs on
+# main and scheduled runs always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # registry/ is a vendored copy of block-registry, so the first thing to
   # check is that it still is one: a recipe edited here would otherwise ship
