@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `agave` no longer claims Windows. Anza stopped publishing the Windows prebuilt from v4.4.0, so on Windows block resolved the newest release and pointed at an archive that does not exist. block now says that agave ships nothing for windows/amd64. The registry is synced to block-registry 1fc2a877bd2c.
+
 ### Changed
 
 - Dependencies: golang.org/x/sync v0.25.0, spf13/pflag v1.1.0.
