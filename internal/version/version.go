@@ -223,16 +223,15 @@ func Compare(a, b Version) int {
 func comparePre(a, b string) int {
 	as, bs := strings.Split(a, "."), strings.Split(b, ".")
 	for i := 0; i < len(as) && i < len(bs); i++ {
-		an, aerr := strconv.Atoi(as[i])
-		bn, berr := strconv.Atoi(bs[i])
+		anum, bnum := isNumericID(as[i]), isNumericID(bs[i])
 		switch {
-		case aerr == nil && berr == nil:
-			if an != bn {
-				return cmpInt(an, bn)
+		case anum && bnum:
+			if c := compareNumericID(as[i], bs[i]); c != 0 {
+				return c
 			}
-		case aerr == nil:
+		case anum:
 			return -1
-		case berr == nil:
+		case bnum:
 			return 1
 		default:
 			if c := strings.Compare(as[i], bs[i]); c != 0 {
@@ -241,6 +240,29 @@ func comparePre(a, b string) int {
 		}
 	}
 	return cmpInt(len(as), len(bs))
+}
+
+// isNumericID reports whether a pre-release identifier is numeric in semver's
+// sense: digits only. strconv.Atoi would also take "-1" and "+1", but a hyphen
+// is a legal identifier character, which makes "-1" alphanumeric.
+func isNumericID(id string) bool {
+	for i := range len(id) {
+		if id[i] < '0' || id[i] > '9' {
+			return false
+		}
+	}
+	return id != ""
+}
+
+// compareNumericID compares two numeric identifiers by value without
+// converting them, so one too long for an int still orders by its value. A
+// leading zero is not semver, but upstreams write it, and it is ignored.
+func compareNumericID(a, b string) int {
+	a, b = strings.TrimLeft(a, "0"), strings.TrimLeft(b, "0")
+	if c := cmpInt(len(a), len(b)); c != 0 {
+		return c
+	}
+	return strings.Compare(a, b)
 }
 
 func cmpInt(a, b int) int {
