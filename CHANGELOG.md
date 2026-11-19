@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dependencies: golang.org/x/sync v0.25.0, spf13/pflag v1.1.0.
+- CI runs the E2E suite with atago v0.26.3, the benchmarks with himorime v0.6.1 and govulncheck v1.10.0. The gitleaks workflow is renamed to `gitleaks.yml` and skips Dependabot's read-only runs. The README coverage badge now comes from octocovs-central-repo instead of an SVG committed to this repository, and the badges follow the order the other nao1215 tools use.
 - CI scans the repository with gosec and Trivy on every pull request (Trivy covers dependency vulnerabilities, committed secrets and misconfigurations, and also runs daily). Workflow actions are recorded in `.github/workflows/actions.lock`, which CI verifies against the pinned commits.
 
 ## [0.7.4] - 2026-11-09
