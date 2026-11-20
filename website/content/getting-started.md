@@ -4,9 +4,8 @@ description: "Declare a toolchain in block.toml, lock it, install it, and run yo
 toc: true
 ---
 
-This page takes a repository from nothing to a pinned toolchain. It assumes
-block is [installed](/install/); the whole path is four steps and two committed
-files.
+These four steps take a repository from nothing to a pinned toolchain in two
+committed files. They assume block is [installed](/install/).
 
 ## Declare a toolchain
 
@@ -27,7 +26,7 @@ A version is a dotted prefix: `"1"` is the newest 1.x.y, `"1.7"` the newest
 pre-releases are never selected. How tightly to pin, and why, is in the
 [cookbook](/cookbook/#choose-how-tightly-to-pin).
 
-Do not know what to write? Ask:
+`block list` shows what you can write:
 
 ```console
 $ block list ethereum
@@ -66,14 +65,14 @@ commands: anvil, cast, chisel, forge, hermes
 $ block exec forge test
 ```
 
-Commit both `block.toml` and `block.lock`. Everyone else — and CI — runs
+Commit both `block.toml` and `block.lock`. Everyone else, including CI, runs
 `block sync` and gets the same tools, byte for byte.
 
 ## Skip the prefix
 
 `block sync` puts one file per command in `$BLOCK_HOME/shims`. Add it to
-`PATH` once and the tools are just tools, switching with the directory you are
-in:
+`PATH` once and you can call the tools by name; the version switches with the
+directory you are in:
 
 ```shell
 export PATH="$HOME/.local/share/block/shims:$PATH"   # Unix
@@ -91,12 +90,11 @@ $ forge test     # the version this project locked
 There is no shell hook and nothing is written to your startup files. See
 [Commands](/commands/#shims-the-tools-by-their-own-names). `block which forge`
 prints which executable that is, and `block completion` gives your shell
-tab-completion for the rest — see
-[Shell completion](/commands/#shell-completion).
+tab-completion (see [Shell completion](/commands/#shell-completion)).
 
 ## Tools the registry does not have yet
 
-Define the source in your own project and use it today; nothing waits on a
+Define the source in your own project and use it without waiting for a
 registry pull request:
 
 ```toml
@@ -110,19 +108,19 @@ asset = "foo_{version}_{os}_{arch}.tar.gz"
 bin = ["foo"]
 ```
 
-The format is identical to a registry recipe, so promoting it later is a copy.
-The full set of fields is in [Bring your own tool](/cookbook/#bring-your-own-tool).
+The format is the same as a registry recipe, so you can later copy it into the
+registry. The full set of fields is in
+[Bring your own tool](/cookbook/#bring-your-own-tool).
 
 ## Where to go next
 
 [examples/](https://github.com/nao1215/block/tree/main/examples) has a
-ready-made manifest for eight kinds of repository — EVM contracts, an Ethereum
+ready-made manifest for eight kinds of repository: EVM contracts, an Ethereum
 node pair, a Cosmos appchain, a Solana program, Bitcoin, Starknet, a
 multi-chain tree, and one that brings its own tool. Each is checked on every
 push and re-resolved against the real upstreams weekly.
 
-The [cookbook](/cookbook/) is the practical reference: locking for a platform
-you are not on, moving one pin forward, caching the toolchain in CI, running an
-`anvil` devnet, and reading a refusal when block says no. [Commands](/commands/)
-is the per-command reference, and [Tools](/tools/) is everything block can
-install.
+The [cookbook](/cookbook/) covers locking for a platform you are not on, moving
+one pin forward, caching the toolchain in CI, running an `anvil` devnet, and
+reading a refusal. [Commands](/commands/) is the per-command reference, and
+[Tools](/tools/) lists everything block can install.

@@ -53,10 +53,10 @@ Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
 
 | | |
 |:--|:--|
-| `block lock [tool...]` | resolve `block.toml` into `block.lock` — the only command that moves a pin |
+| `block lock [tool...]` | resolve `block.toml` into `block.lock`; the only command that moves a pin |
 | `block sync` | install what `block.lock` pins, or fail |
 | `block exec <cmd>` | run a command with the locked toolchain on `PATH` |
-| `block which <cmd>` | the executable `exec` would run, as an absolute path — never `PATH` |
+| `block which <cmd>` | the absolute path of the executable `exec` would run, never a `PATH` lookup |
 | `block status [--json]` | what the two files and the store say, read-only |
 | `block list [ecosystem]` | the tools block can install |
 | `block explain <code>` | what a `BLK` error code means |
@@ -64,22 +64,16 @@ Which CLIs are available: [Tools](https://nao1215.github.io/block/tools/).
 
 `sync` never resolves, `exec` never installs, and nothing updates by itself.
 `foundry = "nightly"` works too: it pins the release under the tag that moves.
-So does `foundry = "nightly-<commit>"`, which names one nightly outright and
-never moves at all — [when to use which](https://nao1215.github.io/block/cookbook/#ask-for-one-particular-nightly).
+So does `foundry = "nightly-<commit>"`, which names one nightly and never
+moves ([when to use which](https://nao1215.github.io/block/cookbook/#ask-for-one-particular-nightly)).
 
-block installs prebuilt artifacts that upstreams publish, and does not build
-tools from source. `go install`, `cargo install`, `make` and upstream build
-scripts are outside what a recipe can ask for, so adding a tool cannot add a
-way to run something during installation. Every resolved artifact is pinned
-in `block.lock` with its SHA-256.
-
-That is a deliberate boundary. Not building at install time keeps a tool's
-dependency resolver, its build scripts and the system toolchain out of the
-step, which narrows the installation-time attack surface. It is worth having
-where CI and developer machines can reach signing keys and other credentials.
-It does not make an artifact safe: a digest pins what you get, not who built
-it. [Security](https://nao1215.github.io/block/security/#what-block-installs)
-has the reasoning and the limits.
+block installs prebuilt artifacts that upstreams publish and pins each one in
+`block.lock` with its SHA-256. A recipe cannot ask for `go install`,
+`cargo install`, `make` or an upstream build script, so adding a tool cannot
+add code that runs during installation. That matters on CI and developer
+machines that can reach signing keys. A digest pins what you get, though, and
+says nothing about who built it; [Security](https://nao1215.github.io/block/security/#what-block-installs)
+covers the limits.
 
 ## Install
 
@@ -136,14 +130,14 @@ Commands and details: [CONTRIBUTING.md](./CONTRIBUTING.md#7-testing-techniques).
 
 ## Related
 
-- [block-registry](https://github.com/nao1215/block-registry) — where the recipes are written
-- [setup-block](https://github.com/nao1215/setup-block) — GitHub Action that installs block and caches its toolchain
+- [block-registry](https://github.com/nao1215/block-registry): where the recipes are written
+- [setup-block](https://github.com/nao1215/setup-block): GitHub Action that installs block and caches its toolchain
 
 ## Contributing
 
 Issues and pull requests are welcome; see [CONTRIBUTING.md](./CONTRIBUTING.md).
-`make test`, `make e2e` and `make lint` are what CI runs. Contributions are not
-only about code: a GitHub Star also motivates development.
+`make test`, `make e2e` and `make lint` are what CI runs. A GitHub Star also
+helps.
 
 ## LICENSE
 

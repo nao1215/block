@@ -1,16 +1,16 @@
 # Cookbook
 
-Copyable recipes for pinning a blockchain toolchain. Every one of them runs as
-shown; swap the tool names and versions for yours.
+Copyable recipes for pinning a blockchain toolchain. Each runs as shown; swap
+in your own tool names and versions.
 
-Three lifecycle commands carry the whole workflow, and they never trade jobs:
+Three commands carry the workflow:
 
 ```text
 block.toml  ──block lock──▶  block.lock  ──block sync──▶  installed toolchain  ──block exec──▶  command
 ```
 
-`lock` resolves. `sync` installs. `exec` runs. `sync` never resolves, `exec`
-never installs, and `lock` is the only operation that can move a pin.
+`lock` resolves, `sync` installs and `exec` runs. `sync` never resolves,
+`exec` never installs, and only `lock` can move a pin.
 
 ## Find a recipe by task
 
@@ -63,20 +63,18 @@ foundry  locked 1.7.1
 wrote block.lock
 ```
 
-From then on, every machine and every runner gets the same toolchain from the
-same two committed files:
+Every machine and runner then gets the same toolchain from those two files:
 
 ```shell
 block sync
 block exec forge test
 ```
 
-There is no `block init`: the manifest is four lines, and a command that writes
-it for you is a command that has to guess what your project needs. If you would
-rather start from something, [examples/](../examples) has a manifest for each of
-eight kinds of repository — EVM contracts, an Ethereum node pair, a Cosmos
-appchain, a Solana program, Bitcoin, Starknet, a multi-chain tree, and one that
-brings its own tool.
+There is no `block init`, because a command that writes the four-line manifest
+would have to guess what your project needs. [examples/](../examples) has a
+manifest for eight kinds of repository: EVM contracts, an Ethereum node pair, a
+Cosmos appchain, a Solana program, Bitcoin, Starknet, a multi-chain tree, and
+one that brings its own tool.
 
 ## Find the tool for a chain
 
@@ -102,8 +100,7 @@ ignite           ignite          Scaffolds, builds and serves Cosmos SDK blockch
 osmosis          osmosisd        Osmosis appchain node (osmosisd), the Cosmos AMM
 ```
 
-Search the whole catalogue for a command you know the name of, rather than the
-tool that ships it:
+To find the tool that ships a command you know by name:
 
 ```shell
 block list ethereum | grep -w cast          # which tool gives me "cast"?
@@ -123,9 +120,9 @@ available ecosystems: aptos, avalanche, bitcoin, cardano, celestia, cosmos, ethe
 
 The same catalogue, rendered as a page: [Tools](/tools/).
 
-Listing is discovery, not selection. `block list ethereum` never adds anything
-to `block.toml` — "Ethereum" means contract development to one repository and
-validator operation to another, and block does not guess which you meant.
+`block list ethereum` never adds anything to `block.toml`. "Ethereum" means
+contract development to one repository and validator operation to another, and
+block does not guess which you meant.
 
 ## Pin one tool
 
@@ -144,8 +141,8 @@ block exec forge --version
 forge Version: 1.7.1-v1.7.1
 ```
 
-`foundry` is one entry but four commands — `forge`, `cast`, `anvil` and
-`chisel` — because that is how the upstream ships it. All four are on `PATH`
+`foundry` is one entry with four commands (`forge`, `cast`, `anvil` and
+`chisel`), because the upstream ships them together. All four are on `PATH`
 inside `block exec`:
 
 ```shell
@@ -192,9 +189,8 @@ block exec forge build --offline
 Error: can't install missing solc 0.8.28 in offline mode
 ```
 
-Every `forge` command that may compile takes the same two flags — `forge test`,
-`forge create` and `forge script` as well as `forge build` — so put them in the
-Makefile target or the CI step rather than typing them:
+`forge test`, `forge create` and `forge script` take the same two flags as
+`forge build`, so put them in the Makefile target or the CI step:
 
 ```makefile
 SOLC := $(shell block which solc)
@@ -206,15 +202,14 @@ test:
 	block exec forge test --use "$(SOLC)" --offline
 ```
 
-`pragma solidity ^0.8.20` is not a pin either: it is the range of compilers a
-source file will accept, checked by whichever compiler is running. The pin is
-`block.lock`, and `--use` is what makes `forge` obey it.
+`pragma solidity ^0.8.20` is the range of compilers a source file accepts,
+checked by whichever compiler runs. The pin is `block.lock`, and `--use` makes
+`forge` follow it.
 
 ## Choose how tightly to pin
 
-A version in `block.toml` is a dotted prefix, not an expression. There are no
-operators and no ranges, and a pre-release is only ever selected when it is
-named:
+A version in `block.toml` is a dotted prefix. There are no operators or
+ranges, and a pre-release is selected only when it is named:
 
 ```toml
 [tools]
@@ -224,13 +219,13 @@ hermes  = "1"          # newest 1.x.y at the last "block lock"
 reth    = "1.9.0-rc1"  # that pre-release and no other
 ```
 
-Whichever you write, the resolved version is written to `block.lock` and that
-is what installs. The prefix says how far a *future* `block lock` may move the
-pin, not how much freedom `sync` has — `sync` has none.
+The resolved version goes into `block.lock`, and that is what installs. The
+prefix only says how far a later `block lock` may move the pin; `sync` always
+installs exactly what is locked.
 
-Pin exactly when a version is part of your build's meaning: a Solidity compiler
-whose output must be reproducible, a chain binary that has to match the network
-you connect to. Pin the minor line when you want patches without a decision.
+Pin an exact version when the build depends on it, such as a Solidity compiler
+whose output must be reproducible or a chain binary that has to match the
+network. Pin the minor line to take patches without deciding each one.
 
 ## Follow a nightly without giving up the lockfile
 
@@ -246,12 +241,10 @@ $ block lock
 foundry  locked nightly-5e88010a83d1b87b8f4d13058e42a2949d3e9dc0
 ```
 
-`nightly` is a tag the upstream moves every night, and that is the one thing
-`block.lock` will not record. lock dereferences it and pins the release
-published for the commit under it — a tag that never moves again — with its URL
-and SHA-256, so everyone who runs `block sync` installs the same nightly, today
-and next month. The pin moves when you run `block lock` again, and never on its
-own:
+`nightly` is a tag the upstream moves every night, so `block.lock` does not
+record it. lock pins the release published for the commit under it, a tag that
+never moves, with its URL and SHA-256. Everyone who runs `block sync` installs
+the same nightly until you run `block lock` again:
 
 ```console
 $ block lock --check
@@ -260,18 +253,17 @@ $ echo $?
 2
 ```
 
-Which channels a tool has is the upstream's business: asking for one that is
-not published names the ones that are.
+The upstream decides which channels exist. Asking for one it does not publish
+lists the ones it does.
 
 ## Ask for one particular nightly
 
-`foundry = "nightly"` follows a tag the upstream moves — and an upstream is
-free to stop moving it. Foundry's `nightly` is where that has happened: the
-daily builds still arrive, each as a `nightly-<commit>` tag of its own, but the
-moving tag no longer catches up with them, so `"nightly"` keeps resolving to
-whichever build it was last pointed at.
+`foundry = "nightly"` follows a tag the upstream moves, and an upstream can stop
+moving it. Foundry has: daily builds still arrive as their own
+`nightly-<commit>` tags, but the moving tag no longer follows them, so
+`"nightly"` keeps resolving to the build it last pointed at.
 
-Name the tag instead, and there is nothing left to move:
+Name the tag instead:
 
 ```toml
 [tools]
@@ -283,29 +275,26 @@ $ block lock
 foundry  locked nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3
 ```
 
-Copy the tag from the upstream's releases page, or read it out of a `block.lock`
-that `"nightly"` already wrote. Everything after that is the same: the same
-assets, the same URL and SHA-256 in `block.lock`, the same `block sync`.
+Copy the tag from the upstream's releases page, or from a `block.lock` that
+`"nightly"` already wrote. The assets, the URL and SHA-256 in `block.lock`, and
+`block sync` work as before.
 
 | Written | `block lock` gives you | Running `block lock` again |
 | --- | --- | --- |
 | `foundry = "nightly"` | whatever the moving tag points at now | moves the pin when the upstream retagged |
 | `foundry = "nightly-<commit>"` | that build | writes the same pin back |
 
-Either way `block.lock` holds the same immutable thing, so a build is
-reproducible with both. What the second form adds is that the *manifest* is
-reproducible too: `block lock` on a fresh checkout gives everybody the build
-you chose, rather than the one that happened to be current. Use it when you are
-bisecting an upstream regression, when a nightly is part of what a bug report
-means — and, for now, when you want a Foundry nightly that is actually recent.
+Both forms lock an immutable build. With the second, `block lock` on a fresh
+checkout also gives everybody the build you chose instead of whatever is current.
+Use it to bisect an upstream regression, when a bug report names a nightly, and
+for now to get a recent Foundry nightly.
 
-Two ways to get it wrong, both said plainly: a commit the upstream does not
-publish is `BLK2003`, and a release line the recipe does not declare is
-`BLK2009`.
+A commit the upstream does not publish is `BLK2003`, and a release line the
+recipe does not declare is `BLK2009`.
 
 ## Lock for a platform you are not on
 
-Say every platform your team and your CI use, once:
+List every platform your team and CI use:
 
 ```toml
 platforms = ["darwin/arm64", "linux/amd64"]
@@ -318,29 +307,27 @@ foundry = "1.7"
 block lock
 ```
 
-Now `block.lock` carries a URL and a SHA-256 per platform, and the Linux runner
-installs from the same file the macOS laptop wrote. Without that list, `lock`
-resolves for the machine it runs on, and the runner meets:
+`block.lock` then has a URL and a SHA-256 per platform, and the Linux runner
+installs from the file the macOS laptop wrote. Without the list, `lock` resolves
+only for the machine it runs on, and the runner stops with:
 
 ```text
 block: BLK1005: block.lock is stale; run "block lock"
   foundry: block.lock has no artifact for linux/amd64
 ```
 
-deliberately, because installing something the lockfile does not name is the
-one thing `sync` must never do.
+because `sync` never installs anything the lockfile does not name.
 
-The opposite mistake — a list that leaves out the machine you are standing on
-— is a different message, because re-running `lock` would resolve the same
-platforms and write the same file back:
+A list that leaves out the current machine gets a different message, because
+re-running `lock` would write the same file back:
 
 ```text
 block: BLK1006: block.toml declares platforms darwin/arm64, and this machine is linux/amd64; add "linux/amd64" to that list and run "block lock"
 ```
 
 Supported values: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`,
-`windows/amd64`, `windows/arm64`. Which of them a given tool actually has is
-the upstream's decision, recorded in the registry — see the Platforms column in
+`windows/amd64`, `windows/arm64`. Which of them a tool has is up to the
+upstream and recorded in the registry; see the Platforms column in
 [Tools](/tools/).
 
 Adding a platform later is one line and one re-lock:
@@ -350,13 +337,13 @@ sed -i 's|^platforms = .*|platforms = ["darwin/arm64", "darwin/amd64", "linux/am
 block lock
 ```
 
-Dropping `platforms` again does not throw away what CI needs: `lock` keeps the
-platforms an existing lockfile already covers, so re-locking on a laptop cannot
-silently strip the Linux artifact.
+Removing `platforms` later keeps what CI needs: `lock` keeps the platforms the
+existing lockfile covers, so re-locking on a laptop cannot drop the Linux
+artifact.
 
 ## Reproduce the toolchain elsewhere
 
-On a fresh machine, or a fresh clone, there is nothing to configure:
+A fresh machine or clone needs no configuration:
 
 ```shell
 git clone <project> && cd <project>
@@ -370,10 +357,10 @@ hermes   1.13.3  installed
 commands: anvil, cast, chisel, forge, hermes
 ```
 
-`sync` reads `block.lock` and nothing else: no registry lookup, no GitHub API,
-no token. It downloads exactly the URLs written down, checks each against its
-recorded SHA-256, and installs. A second run with the store already populated
-is a few milliseconds and no network at all:
+`sync` reads only `block.lock`, with no registry lookup, GitHub API call or
+token. It downloads the listed URLs, checks each against its recorded SHA-256,
+and installs. With the store already populated, a second run takes a few
+milliseconds and uses no network:
 
 ```shell
 time block sync
@@ -400,9 +387,8 @@ foundry  1.7.1 -> 1.7.2
 hermes   1.13.3
 ```
 
-`locked X` is a new pin, `X -> Y` a moved one, and a bare version is one that
-did not move. Nothing else moves a pin — not `sync`, not `exec`, not a registry
-update, not time passing.
+`locked X` is a new pin, `X -> Y` a moved one, and a bare version did not move.
+`sync`, `exec`, a registry update or time passing never move a pin.
 
 Review the diff the way you review a dependency bump:
 
@@ -426,7 +412,7 @@ hermes   1.13.3 (up-to-date)
 | Exit | Meaning |
 |:-:|:--|
 | 0 | `block.lock` is current |
-| 2 | `block.lock` would change — a newer release, a tool added or removed, a new platform |
+| 2 | `block.lock` would change: a newer release, a tool added or removed, a new platform |
 | 1 | error (network, manifest, …) |
 
 A weekly job that opens a pull request when something moved:
@@ -471,13 +457,13 @@ jobs:
           branch: block/toolchain-update
 ```
 
-`--check` stops at version discovery: it never downloads an artifact, so a
-scheduled run costs a handful of GitHub API calls.
+`--check` never downloads an artifact, so a scheduled run costs a handful of
+GitHub API calls.
 
 ## Run tools by their own names
 
 `block sync` writes one small file per command into `$BLOCK_HOME/shims`. Put
-that directory on `PATH` once, by hand, and the commands are just commands:
+that directory on `PATH` once, by hand, and run the commands by name:
 
 ```shell
 # Unix, in ~/.bashrc or ~/.zshrc
@@ -498,20 +484,19 @@ hermes health-check
 
 Each shim is the block binary under another name. Run as `forge`, it finds the
 `block.toml` above the working directory, reads that project's `block.lock`,
-and executes the version pinned there. Nothing is stored in the shim, so there
-is one `forge` for every project, nothing to regenerate when you switch
-branches, and no shell hook, no `eval`, no `direnv`.
+and runs the version pinned there. The shim stores nothing, so one `forge`
+serves every project, nothing needs regenerating when you switch branches, and
+there is no shell hook, `eval` or `direnv`.
 
-Outside a block project — or for a command the current project does not lock —
-the shim steps aside and runs the next command of that name on `PATH`:
+Outside a block project, or for a command the project does not lock, the shim
+runs the next command of that name on `PATH`:
 
 ```shell
 cd /tmp && forge --version     # a forge installed some other way still runs
 ```
 
-Putting the directory on `PATH` cannot take a tool away from the rest of your
-system. In CI, keep using `block exec`: it needs no `PATH` setup and says
-exactly what is happening.
+So the shims directory cannot hide a tool from the rest of your system. In CI,
+keep using `block exec`, which needs no `PATH` setup.
 
 ## Two projects, two toolchains
 
@@ -533,8 +518,7 @@ cd ~/src/bridge && cat block.toml
 foundry = "1.7"
 ```
 
-With the shims on `PATH`, the version follows the directory you are standing
-in — no switching, no activation:
+With the shims on `PATH`, the version follows the current directory:
 
 ```shell
 cd ~/src/defi   && forge --version
@@ -552,8 +536,8 @@ cd ~/src/bridge && forge --version
 forge Version: 1.7.1
 ```
 
-Both installs live in one store and are shared with every other project that
-pins the same artifact, so the second project costs no second download.
+Both installs live in one store, shared with every project that pins the same
+artifact, so a second project pinning it downloads nothing.
 
 Commands find `block.toml` in the current directory or any parent, so this
 works from a sub-package of a monorepo too:
@@ -614,23 +598,22 @@ block lock foo
 block exec foo --version
 ```
 
-The lockfile also records a fingerprint of the definition, so editing the
-source later makes the pin stale rather than silently keeping the old artifact:
+The lockfile records a fingerprint of the definition, so editing the source
+later makes the pin stale:
 
 ```text
 block: BLK1005: block.lock is stale; run "block lock"
   foo: the source definition changed since block.lock was resolved
 ```
 
-Promoting the definition to
-[block-registry](https://github.com/nao1215/block-registry) once it is useful
-to more than one project is a copy — the model is identical. Nobody waits for a
-registry merge to get work done.
+When more than one project needs it, copy the definition to
+[block-registry](https://github.com/nao1215/block-registry); the fields are the
+same. Until then you do not have to wait for a registry merge.
 
 ## Pin a fork
 
-Same mechanism: a project-local source overrides the registry for that name, so
-the rest of the manifest and every `block exec` stay unchanged.
+A project-local source overrides the registry for that name, so the rest of
+the manifest and every `block exec` stay unchanged.
 
 ```toml
 [tools.foundry]
@@ -648,8 +631,7 @@ block lock foundry
 block exec forge --version
 ```
 
-Going back to upstream is deleting the `[tools.foundry.source]` table and
-re-locking.
+To go back to upstream, delete the `[tools.foundry.source]` table and re-lock.
 
 ## One repository, several chains
 
@@ -670,9 +652,9 @@ block sync
 block exec ./scripts/e2e.sh     # every command above is on PATH inside the script
 ```
 
-Anything that runs is fine — `block exec` puts the toolchain on `PATH` and gets
-out of the way, so build scripts, `make`, and test harnesses all see the locked
-versions without knowing block exists:
+`block exec` puts the toolchain on `PATH` for whatever it runs, so build
+scripts, `make` and test harnesses see the locked versions without knowing
+about block:
 
 ```shell
 block exec make integration-test
@@ -693,10 +675,9 @@ block exec anvil &                       # a local EVM node on 8545
 block exec forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545
 ```
 
-Signals reach the tool, not just block: `SIGINT` and `SIGTERM` are forwarded to
-the child, so `Ctrl-C` shuts a node down the way it would outside
-block, and block exits with the child's status — or `128+signal` when a signal
-ended it.
+block forwards `SIGINT` and `SIGTERM` to the child, so `Ctrl-C` shuts a node
+down as it would outside block. block exits with the child's status, or
+`128+signal` when a signal ended it.
 
 ```shell
 block exec anvil
@@ -704,8 +685,8 @@ block exec anvil
 echo $?     # 130
 ```
 
-The node's data directory, its ports and its files are ordinary local things.
-Nothing is mapped, mounted or forwarded.
+The node's data directory, ports and files are ordinary local ones; block maps,
+mounts and forwards nothing.
 
 ## GitHub Actions
 
@@ -719,7 +700,7 @@ Nothing is mapped, mounted or forwarded.
 
 [setup-block](https://nao1215.github.io/setup-block/) installs the CLI, verifies
 its checksum, exports `$BLOCK_HOME`, caches the store on your `block.lock`, and
-runs `sync`. Without the action, the same thing by hand:
+runs `sync`. Without the action:
 
 ```yaml
 - uses: actions/checkout@v6
@@ -737,13 +718,13 @@ runs `sync`. Without the action, the same thing by hand:
 - run: block exec forge test
 ```
 
-There is no CI flag and no CI mode. `block sync` means the same thing on a
-runner as on a laptop: install what the lockfile says, or fail.
+There is no CI mode. `block sync` does the same on a runner as on a laptop:
+install what the lockfile says, or fail.
 
 ## Cache the toolchain in CI
 
-Key the cache on `block.lock`, because that file names every artifact and
-digest the job will use:
+Key the cache on `block.lock`, which names every artifact and digest the job
+uses:
 
 ```yaml
 - uses: actions/cache@v4
@@ -752,10 +733,9 @@ digest the job will use:
     key: block-${{ runner.os }}-${{ hashFiles('block.lock') }}
 ```
 
-On a hit, `block sync` downloads nothing. A half-restored cache is not a
-hazard: the store is content-addressed and a cache hit is re-hashed before it
-is used, so a truncated archive is discarded and fetched again rather than
-installed.
+On a hit, `block sync` downloads nothing. The store is content-addressed and a
+cached file is re-hashed before use, so a truncated archive from a
+half-restored cache is fetched again instead of installed.
 
 Cache the same directory on any runner by pointing `BLOCK_HOME` at a path the
 CI system already caches:
@@ -768,15 +748,14 @@ export BLOCK_HOME="$CI_PROJECT_DIR/.block"
 
 `sync` already refuses when `block.toml` and `block.lock` disagree, so a pull
 request that edits the manifest without re-locking fails on the `sync` step. To
-say so earlier and more clearly:
+fail earlier, with a clearer step name:
 
 ```yaml
 - name: block.lock matches block.toml
   run: block sync
 ```
 
-To also learn when the pins have fallen behind upstream — without failing the
-build for it:
+To report pins that have fallen behind upstream without failing the build:
 
 ```yaml
 - name: Report toolchain updates
@@ -784,8 +763,8 @@ build for it:
   run: block lock --check
 ```
 
-`--check` exits 2 when something moved. Keep it out of the required checks: a
-release upstream is news, not a broken build.
+`--check` exits 2 when something moved. Keep it out of the required checks,
+since a new upstream release does not mean the build is broken.
 
 ## CI without GitHub Actions
 
@@ -826,8 +805,7 @@ and `exec` never do, so a CI job that only syncs needs no token at all.
 
 ## Docker
 
-`block sync` inside a `Dockerfile` gives an image whose tools are pinned by
-checksum rather than by whatever a base image tag pointed at that day:
+`block sync` inside a `Dockerfile` pins the image's tools by checksum:
 
 ```dockerfile
 FROM debian:bookworm-slim
@@ -843,9 +821,8 @@ COPY . .
 RUN block exec forge build
 ```
 
-Copying `block.toml` and `block.lock` before the rest of the source is what
-makes the toolchain layer cacheable — the same trick as `go.mod`/`go.sum` or
-`package-lock.json`.
+Copying `block.toml` and `block.lock` before the rest of the source makes the
+toolchain layer cacheable, as with `go.mod`/`go.sum` or `package-lock.json`.
 
 ## Makefiles and task runners
 
@@ -868,18 +845,17 @@ deploy: toolchain
 One `block exec` around a whole script is usually better than one per command:
 the toolchain is on `PATH` for everything inside it.
 
-A tool that wants the path of another tool rather than its name — an editor
-plugin, a linter's `--solc` flag, a Hardhat config — gets it from `block which`,
-which prints the absolute path `block exec` would run and never looks at
-`PATH`:
+An editor plugin, a linter's `--solc` flag or a Hardhat config that needs a
+tool's path can get it from `block which`, which prints the absolute path
+`block exec` would run and never looks at `PATH`:
 
 ```shell
 solhint --solc "$(block which solc)" 'contracts/**/*.sol'
 ```
 
-It fails where `exec` would — not synced, not locked — and, unlike `exec`, it
-refuses a command the project does not lock rather than falling through to
-`PATH`, so a Makefile that uses it cannot silently pick up a system copy.
+It fails where `exec` would (not synced, not locked). Unlike `exec`, it also
+refuses a command the project does not lock instead of falling back to `PATH`,
+so a Makefile that uses it cannot pick up a system copy.
 
 ```json
 {
@@ -892,13 +868,11 @@ refuses a command the project does not lock rather than falling through to
 
 ## Read a refusal
 
-block refuses in exactly the situations where guessing would defeat the point
-of locking. Every message names the command that fixes it, and no message ever
-means "block did it for you".
+block refuses where guessing would defeat the lock, and each message names the
+command that fixes it.
 
-Each refusal carries a code — `BLK1003`, `BLK3002` — which is the part that
-does not change when the sentence beside it is reworded. Look one up without
-leaving the terminal:
+Each refusal carries a code such as `BLK1003` or `BLK3002`, which stays the
+same when the sentence beside it is reworded. Look one up in the terminal:
 
 ```shell
 block explain BLK1003
@@ -908,9 +882,8 @@ The whole list, with what block observed and what to do about it, is at
 [Error codes](https://nao1215.github.io/block/errors/). The thousands digit
 says where the fix lives: `1` the project's own files, `2` resolving against an
 upstream, `3` the download, `4` the install, `5` running a command, `6` a
-refusal on security grounds. Every one of them exits 1; exit 2 belongs to
-`block lock --check` and means the lockfile would change, which is a result
-rather than an error.
+refusal on security grounds. All of them exit 1. Exit 2 is reserved for
+`block lock --check`, where it means the lockfile would change.
 
 Nothing has been locked yet:
 
@@ -919,7 +892,7 @@ block: BLK1003: block.lock not found; run "block lock" and "block sync"
 ```
 
 The manifest changed and the lockfile has not caught up. Every disagreement is
-listed, not just the first:
+listed:
 
 ```text
 block: BLK1005: block.lock is stale; run "block lock"
@@ -927,16 +900,16 @@ block: BLK1005: block.lock is stale; run "block lock"
   hermes is declared in block.toml but missing from block.lock
 ```
 
-The lockfile is current, but nothing is installed — a fresh clone, or a cleared
-store:
+The lockfile is current, but nothing is installed, as in a fresh clone or a
+cleared store:
 
 ```text
 block: BLK4004: foundry 1.7.1 is not installed; run "block sync"
 ```
 
 An install was interrupted. block writes a completion marker last and renames
-the directory into place atomically, so an install without that marker — or
-missing one of its executables — is replaced rather than run:
+the directory into place atomically, so an install without that marker, or
+missing one of its executables, is replaced instead of run:
 
 ```text
 block: BLK4003: foundry 1.7.1 is damaged: executable "cast" is missing; run "block sync"
@@ -954,19 +927,18 @@ A download does not match the digest recorded when the pin was made:
 block: BLK3002: foundry: checksum mismatch for https://github.com/foundry-rs/foundry/releases/download/v1.7.1/foundry_v1.7.1_linux_amd64.tar.gz: want sha256 0000…, got 9f86…
 ```
 
-That is the check working. Nothing is extracted and nothing is installed. Run
-it once more in case a proxy truncated the transfer; if it persists, the
-artifact at that URL is not the artifact that was locked, which is worth
-knowing before it is on your `PATH`.
+Nothing is extracted or installed. Run it once more in case a proxy truncated
+the transfer; if it persists, the artifact at that URL is not the one that was
+locked.
 
-The upstream ships no build for the machine you are on, and block says so
-rather than substituting something else:
+The upstream ships no build for this machine, and block does not substitute
+another:
 
 ```text
 block: BLK2007: maconly: unsupported platform linux/amd64 (available: darwin/arm64)
 ```
 
-The name is not in the registry — with the two ways forward:
+The name is not in the registry, and the message gives both ways forward:
 
 ```text
 block: BLK1007: unknown tool "solana": it is not in the registry (run "block list" to see the supported tools); define [tools.solana.source] in block.toml to use it anyway
@@ -985,17 +957,17 @@ an hour:
 block: BLK2005: foundry: github api: rate limit exceeded (set GITHUB_TOKEN to raise the limit); resets at 2023-11-14T22:13:20Z
 ```
 
-`sync` and `exec` never call the API, so this can only ever interrupt a
-re-lock — never a build.
+`sync` and `exec` never call the API, so this can interrupt a re-lock but not a
+build.
 
-A constraint that looks like a range is refused rather than guessed at:
+A constraint that looks like a range is refused:
 
 ```text
 block: BLK1002: block.toml: tool "foundry": invalid version constraint "^1.7": component "^1" is not a number
 ```
 
-Two tools claiming the same command name is reported, not resolved by `PATH`
-order:
+Two tools that provide the same command name are reported instead of resolved
+by `PATH` order:
 
 ```text
 block: BLK1009: tools "agave" and "my-solana-fork" both provide the command "solana"; remove one from block.toml
@@ -1008,10 +980,9 @@ name:
 block: BLK1009: tool "foo" lists "bin/foo" and "sbin/foo", which are both the command "foo"
 ```
 
-Command names are compared without regard to case, on every platform. Windows
-resolves a command on `PATH` that way, and a lockfile is committed and read
-everywhere, so a toolchain that installs on Linux and collides on Windows is
-refused by whoever runs `block lock` rather than by whoever runs Windows:
+Command names are compared case-insensitively on every platform, as Windows
+resolves them on `PATH`. A lockfile is read everywhere, so a toolchain that
+would collide on Windows is refused when anyone runs `block lock`, on any OS:
 
 ```text
 block: BLK1009: tool "foo" lists "foo" and "FOO", which are both the command "FOO"
@@ -1044,16 +1015,15 @@ ls ~/.local/share/block/tools        # what is installed
 Two projects that pin the same artifact share one download and one install.
 `XDG_DATA_HOME` is honoured when `BLOCK_HOME` is unset.
 
-Point it somewhere else for one command, one shell, or one CI job:
+Point it elsewhere for one command, a shell or a CI job:
 
 ```shell
 BLOCK_HOME=/tmp/block-scratch block sync
 export BLOCK_HOME="$CI_PROJECT_DIR/.block"
 ```
 
-Reclaiming the space is deleting the directory. Nothing else on your system
-refers into it except the `shims` entry on your `PATH`, and the next `block
-sync` rebuilds all of it from `block.lock`:
+To reclaim the space, delete the directory. Only the `shims` entry on your
+`PATH` refers into it, and the next `block sync` rebuilds it from `block.lock`:
 
 ```shell
 rm -rf ~/.local/share/block
@@ -1062,16 +1032,13 @@ block sync
 
 ## Verify a block release
 
-Every published artifact — the archives and the `.deb`, `.rpm` and `.apk`
-packages — is listed in `checksums.txt`, ships with an SPDX SBOM beside it,
-and carries SLSA build provenance attested through GitHub OIDC.
+Every published archive and `.deb`, `.rpm` and `.apk` package is listed in
+`checksums.txt`, has an SPDX SBOM beside it, and carries SLSA build provenance
+attested through GitHub OIDC.
 
-`checksums.txt` is the file cosign signs, keyless, and it is what the
-signature covers the rest through: verify the signature over the list, then
-check your download against the line that names it. Build provenance is
-attested per artifact, so `gh attestation verify` works directly on whichever
-file you downloaded.
-
+cosign signs `checksums.txt` keyless. Verify that signature, then check your
+download against its line in the list. Provenance is attested per artifact, so
+`gh attestation verify` works on whichever file you downloaded.
 
 ```shell
 cosign verify-blob \
@@ -1095,5 +1062,5 @@ registry df8fa5946e00 (51 recipes from https://github.com/nao1215/block-registry
 
 The recipes are vendored from
 [block-registry](https://github.com/nao1215/block-registry) at one revision and
-embedded, so a resolution can be traced back to a reviewed recipe, and `block
-list` and `block lock` work with no registry service in the loop.
+embedded, so a resolution traces back to a reviewed recipe, and `block list` and
+`block lock` need no registry service.

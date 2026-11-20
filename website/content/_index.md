@@ -3,11 +3,10 @@ title: block
 ---
 
 block is a reproducible toolchain manager for blockchain development. A
-blockchain project's build depends on binaries nobody declared: whichever
-Foundry the last person installed, whichever `solc` was on that runner,
-whichever relayer the integration test found. block makes that set explicit and
-reproducible — declared in `block.toml`, pinned by checksum in `block.lock`,
-and identical on every machine and every runner.
+blockchain project's build often depends on binaries nobody declared, such as
+whichever Foundry the last person installed or whichever `solc` was on that
+runner. With block you declare them in `block.toml`, and `block.lock` pins them
+by checksum so every machine and runner gets the same ones.
 
 ![block: two lines of block.toml, then lock, sync and a real tool running](/img/demo.gif)
 
@@ -30,12 +29,11 @@ commands: anvil, cast, chisel, forge
 forge Version: 1.7.1-v1.7.1
 ```
 
-`sync` is a step, not a formality: `exec` never installs anything, so it runs
-what `sync` put on disk or it refuses.
+`exec` never installs anything. It runs what `sync` put on disk, or it
+refuses.
 
-Foundry publishes Linux and macOS builds only, and block says so rather than
-substituting something else. On Windows, the same 30 seconds with a tool that
-does ship there:
+Foundry publishes Linux and macOS builds only, and block reports that instead
+of substituting something else. On Windows, use a tool that ships there:
 
 ```shell
 printf '[tools]\nsolc = "0.8"\n' > block.toml
@@ -44,10 +42,8 @@ go run github.com/nao1215/block@latest sync
 go run github.com/nao1215/block@latest exec solc --version
 ```
 
-What each CLI ships for is in [Tools](/tools/).
-
-Two files now say what your toolchain is. Commit both, and everyone else runs
-`block sync`.
+What each CLI ships for is in [Tools](/tools/). Commit `block.toml` and
+`block.lock`, and everyone else runs `block sync`.
 
 ## Three lifecycle commands, one direction
 
@@ -61,25 +57,23 @@ block sync   installs the locked toolchain.
 block exec   runs with the installed toolchain.
 ```
 
-`sync` never resolves. `exec` never installs. `lock` is the only operation that
-can move a pin — so a build cannot quietly pick up a release that happened
-overnight, and a stale lockfile is an error rather than a guess.
+`sync` never resolves and `exec` never installs. `lock` is the only operation
+that can move a pin, so a build cannot pick up a release that happened
+overnight, and a stale lockfile is an error.
 
 ## What can it install?
 
 51 tools across 17 blockchain systems, from Bitcoin Core and Foundry to Agave,
-Gaia, Hermes and Starknet Foundry. Ask the binary — offline, with no
+Gaia, Hermes and Starknet Foundry. The binary lists them offline, with no
 `block.toml` and no token:
 
 ![block list cosmos, and a misspelled ecosystem answering with the ones that exist](/img/list.gif)
 
-The whole catalogue, with commands and platform coverage: [Tools](/tools/). A
-tool that is not there — or a fork of one that is — is four lines in your own
-`block.toml`; nobody waits for a registry merge.
+The whole catalogue, with commands and platform coverage, is in
+[Tools](/tools/). A tool that is missing, or a fork of one that is listed, takes
+four lines in your own `block.toml`, with no registry merge to wait for.
 
 ## Why block?
-
-Pick the tool that fits the job:
 
 | You want | Use |
 |:--|:--|
@@ -87,17 +81,17 @@ Pick the tool that fits the job:
 | A whole operating system reproduced, or isolation from untrusted code | Docker, [Nix](https://nixos.org/) |
 | The blockchain CLIs one repository builds and tests with, pinned by checksum and shared across projects | block |
 
-block's emphasis is narrow on purpose: blockchain CLIs, project-local, verified
-on download, with no scripts in the recipes and no way for adding a tool to add
-a way to run something. It manages no language runtimes, and it is not trying
-to become a package manager. See [Compared to Docker](/comparison/) for the
-overlap, and where a container is still the better answer.
+block only handles blockchain CLIs, per project, verified on download. Recipes
+contain no scripts, so adding a tool cannot add a way to run something. It
+manages no language runtimes and is not a package manager.
+[Compared to Docker](/comparison/) covers the overlap and when a container is
+the better choice.
 
 ## One machine, one toolchain per project
 
 `block sync` writes one file per command into `$BLOCK_HOME/shims`. Put that
 directory on `PATH` once, by hand, and the version follows the directory you
-are standing in — no shell hook, no `eval`, no activation:
+are in. There is no shell hook, `eval` or activation step:
 
 ![two repositories pinning different Foundry versions, each running its own](/img/shims.gif)
 
@@ -106,15 +100,14 @@ the shim steps aside and runs the next command of that name on `PATH`.
 
 ## Next
 
-The [cookbook](/cookbook/) has the rest: locking for a platform you are not on,
+The [cookbook](/cookbook/) covers locking for a platform you are not on,
 caching the toolchain in CI, bringing your own tool, and reading a refusal.
-[Reference](/reference/) is the file formats and the machinery underneath them.
+[Reference](/reference/) describes the file formats and how they work.
 
-To start from something rather than a blank file,
 [examples/](https://github.com/nao1215/block/tree/main/examples) holds a
-`block.toml` for each of eight kinds of repository — EVM contracts, an Ethereum
-node pair, a Cosmos appchain, a Solana program, Bitcoin, Starknet, a
-multi-chain tree, and one that brings its own tool.
+`block.toml` for eight kinds of repository: EVM contracts, an Ethereum node
+pair, a Cosmos appchain, a Solana program, Bitcoin, Starknet, a multi-chain
+tree, and one that brings its own tool.
 
 ## Install
 
