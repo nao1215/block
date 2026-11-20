@@ -23,9 +23,10 @@ go test ./registry/  (every push)  +  make registry-live  (weekly, real upstream
 | check the copy is untouched | `make registry-verify` |
 | undo an accidental edit here | `git checkout -- registry/` |
 
-The copy is what makes `block list` and `block lock` work with no network,
-and `block version` prints the revision it carries so a resolution can be
-traced back to the recipes that produced it. block does not depend on
+The copy is what lets `block list` run with no network and `block lock` read
+its recipes without fetching them (lock still asks GitHub for the releases it
+resolves), and `block version` prints the revision it carries so a resolution
+can be traced back to the recipes that produced it. block does not depend on
 block-registry as a Go module: a `go install` of block resolves nothing but
 block itself.
 
