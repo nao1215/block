@@ -4,7 +4,7 @@ description: "The file formats block reads and writes, where it puts what it ins
 toc: true
 ---
 
-Four things are the whole system:
+block has four parts:
 
 | | Answers | Lives in |
 | --- | --- | --- |
@@ -13,8 +13,7 @@ Four things are the whole system:
 | `block.lock` | *what was decided* | your repository |
 | the store | *what is installed* | `$BLOCK_HOME`, shared by every project |
 
-[Commands](/commands/) is the per-command reference; this page is the formats
-and the machinery underneath them.
+Each command is described in [Commands](/commands/).
 
 ## block.toml
 
@@ -45,7 +44,7 @@ The last two are the same channel; only the first of them floats. See
 [Channels](#channels).
 
 Tool names are looked up in the built-in [Tools](/tools/). A tool that
-is not in the registry — or one you want to fetch from a fork — can be defined
+is not in the registry, or one you want to fetch from a fork, can be defined
 in the project itself:
 
 ```toml
@@ -65,16 +64,16 @@ bin = ["foo"]                                # executables inside the archive
 # [tools.foo.source.arch] amd64 = "x86_64"              # rename {arch}
 ```
 
-A project-local source uses exactly the same model as a registry recipe, so
-moving a definition into the registry is a copy. That is the intended path:
-define the tool in your project, use it, and promote it to the registry once
-it is useful to more than one project. Nobody waits for a registry merge.
+A project-local source uses the same model as a registry recipe, so moving a
+definition into the registry is a copy. Define the tool in your project, use
+it, and move it to the registry once more than one project needs it, without
+waiting for a registry merge.
 
 Supported platforms: `linux/amd64`, `linux/arm64`, `darwin/amd64`,
-`darwin/arm64`, `windows/amd64`, `windows/arm64`. Which of them a tool can be
-installed for is the upstream's decision, and the registry records it: most
-blockchain CLIs publish Unix builds only, and block says so rather than
-substituting something else.
+`darwin/arm64`, `windows/amd64`, `windows/arm64`. The upstream decides which
+of them a tool has, and the registry records it. Most blockchain CLIs publish
+Unix builds only, and block reports that instead of substituting something
+else.
 
 ## block.lock
 
@@ -100,20 +99,12 @@ url = "https://github.com/foundry-rs/foundry/releases/download/v1.7.1/foundry_v1
 sha256 = "…"
 ```
 
-Three files, three responsibilities:
-
-| | Answers | Lives in |
-| --- | --- | --- |
-| registry recipe | *how* to resolve a tool | `registry/*.toml` (embedded) |
-| `block.toml` | *what* you want | your repository |
-| `block.lock` | *what was decided* | your repository |
-
-The lock holds facts only — exact version, executables, URL and digest per
-platform. An artifact of a private repository additionally records the
-asset's API URL as `api_url`, which is where `block sync` downloads it from
-with `GITHUB_TOKEN`: the browser URL of a private asset answers a browser
-session alone. A public artifact records nothing more, whether or not a
-token was in hand when it was locked. A project-local source additionally records a fingerprint of its
+The lock holds the exact version, executables, and URL and digest per
+platform. An artifact of a private repository also records the asset's API
+URL as `api_url`, which `block sync` downloads from with `GITHUB_TOKEN`,
+because the browser URL of a private asset only works in a browser session.
+A public artifact records nothing more, whether or not a token was set when it
+was locked. A project-local source also records a fingerprint of its
 definition (`source = "sha256:…"`), so editing it makes the pin stale. A
 registry recipe change never affects an existing lock: `sync` needs only the
 URLs and digests already written down.
@@ -121,8 +112,8 @@ URLs and digests already written down.
 Where the checksum comes from depends on the upstream. GitHub records a
 sha256 for release assets uploaded since 2025, and `lock` writes that down
 without downloading anything. Otherwise `lock` downloads the artifact once
-and records what it got — trust on first use — and every later download, on
-every machine, must match. Re-locking reuses the recorded digest whenever the
+and records what it got (trust on first use), and every later download on
+every machine must match. Re-locking reuses the recorded digest whenever the
 URL is unchanged, so an unchanged artifact is never fetched twice.
 
 ## Store and cache
@@ -140,9 +131,9 @@ Two projects that pin the same artifact share one download and one install.
 Caching this directory in CI, keyed by `block.lock`, makes `sync` an offline
 operation. `XDG_DATA_HOME` is honored when `BLOCK_HOME` is unset.
 
-The store also holds the `shims` directory — one file per command, so that
-`forge` and friends can be run by name. It is the only directory you put on
-`PATH`, and it is the same one for every project.
+The `shims` directory holds one file per command, so that `forge` and the
+other tools can be run by name. It is the only directory you put on `PATH`,
+and it is the same for every project.
 
 ## How versions are resolved
 
@@ -155,10 +146,10 @@ git tags of the repository           (GET /repos/{repo}/git/matching-refs/tags/{
   → pick the asset named by the recipe for each platform
 ```
 
-Listing tags instead of paging through `/releases` matters for projects such
-as Foundry, whose release list is dominated by hundreds of nightly builds.
+block lists tags instead of paging through `/releases` because a project such
+as Foundry has hundreds of nightly builds in its release list.
 
-A channel — a release line published under a tag that moves — is resolved the
+A channel, a release line published under a tag that moves, is resolved the
 other way round, because there is nothing to list:
 
 ```text
@@ -168,13 +159,13 @@ the moving tag                       (GET /repos/{repo}/commits/{channel})
   → pick the asset named by the recipe's channel for each platform
 ```
 
-That tag never moves again, so what reaches `block.lock` is as immutable as a
-version: an identity, a URL and a SHA-256. An upstream that moves a tag and
-publishes nothing for the commit beneath it cannot be pinned, and block refuses
-rather than recording a URL whose contents change.
+That tag never moves again, so the entry in `block.lock` is as fixed as a
+version: an identity, a URL and a SHA-256. If an upstream moves a tag and
+publishes nothing for the commit beneath it, block refuses to pin it instead of
+recording a URL whose contents change.
 
-A recipe declares its channels, because a channel names its assets after
-itself rather than after a version:
+A recipe declares its channels, because a channel's assets are named after the
+channel instead of a version:
 
 ```toml
 [source.channels.nightly]
@@ -190,19 +181,19 @@ A channel can also be asked for by the tag of one of its releases:
 foundry = "nightly-e469863b1ac3f2d9d48f9d25d068a14861060cb3"
 ```
 
-Written that way there is nothing to dereference — the constraint already
-names the tag — so `lock` fetches that release and pins it:
+The constraint already names the tag, so `lock` fetches that release and pins
+it:
 
 ```text
 the named tag                        (GET /repos/{repo}/releases/tags/{channel}-{commit})
   → pick the asset named by the recipe's channel for each platform
 ```
 
-The two forms differ in what re-running `lock` does, and in nothing else:
+The two forms differ only in what re-running `lock` does:
 
 | Written | `block lock` resolves | Re-running `lock` |
 | --- | --- | --- |
-| `foundry = "nightly"` | wherever the moving tag points **now** | moves the pin when the upstream retagged |
+| `foundry = "nightly"` | wherever the moving tag points now | moves the pin when the upstream retagged |
 | `foundry = "nightly-<commit>"` | that release | writes the same pin back |
 
 A commit is seven to sixty-four lower-case hex digits, which is how git writes
@@ -212,9 +203,9 @@ name is at most 32 characters, and it becomes part of a directory name under
 `$BLOCK_HOME` by way of the tag it resolves to.
 
 Both forms need the channel declared by the recipe, because the asset names
-come from it. A pre-release flag is no objection to either — a nightly is a
-pre-release by definition — but a draft release is, since a draft publishes no
-assets.
+come from it. A release flagged as a pre-release is accepted, since a nightly
+is a pre-release by definition. A draft release is refused, since a draft
+publishes no assets.
 
 ## Registry and source types
 
@@ -244,37 +235,33 @@ arm64 = "aarch64"
 ```
 
 A recipe changes only when an upstream renames its assets or moves
-repositories. New releases need nothing. Recipes are data, never commands.
+repositories; new releases need no change. Recipes are data, never commands.
 
-Not every blockchain CLI is a GitHub Release asset, and block does not stop
-there. But where a recipe may download from is a rule, not a preference: the
-registry writes it down and its linter enforces it, so a catalogue that keeps
-growing cannot quietly grow the set of hosts block fetches binaries from.
+Some blockchain CLIs are not published as GitHub Release assets. The registry
+lists the hosts a recipe may download from and its linter enforces the list,
+so adding recipes cannot add hosts block fetches binaries from without review.
 
 | type | what it does | where it may point |
 | --- | --- | --- |
-| `github_release` | versions from git tags; download a release asset — a `.tar.gz` / `.tar.bz2` / `.zip` archive or a single raw executable — using GitHub's own sha256 when recorded | a release of the same repository the tags come from, and nowhere else |
+| `github_release` | versions from git tags; download a release asset (a `.tar.gz` / `.tar.bz2` / `.zip` archive or a single raw executable), using GitHub's own sha256 when recorded | a release of the same repository the tags come from, and nowhere else |
 | `http` | versions from git tags; download a prebuilt artifact over HTTPS; `{commit}` and `{target}` cover vendors that name builds by commit or by their own platform strings | only a host listed in [block-registry's `policy/hosts.toml`](https://github.com/nao1215/block-registry/blob/main/policy/hosts.toml), which names the one repository each host serves and why a release asset will not do |
 
-48 of the 51 recipes take the first; three — Bitcoin Core, geth and the
-go-ethereum tools — take the second, because those projects build binaries
-and publish them on their own server rather than attaching them to a GitHub
-release. A `github.com` URL wearing type `http` is refused: it would be
-spelling out by hand what `github_release` does properly, and would throw
-away the digest GitHub publishes beside the asset.
+48 of the 51 recipes use the first. Bitcoin Core, geth and the go-ethereum
+tools use the second, because those projects publish binaries on their own
+server instead of attaching them to a GitHub release. A `github.com` URL with
+type `http` is refused, because it would redo by hand what `github_release`
+does and drop the digest GitHub publishes beside the asset.
 
-There is no third type. No `install = "curl … | bash"`, no
-`command = "make install"`, no package-manager shell-out, and no
-arbitrary-script escape hatch — a recipe is data block interprets, and adding
-a tool can never add a way to run something. Building a tool from source is
-outside the model for the same reason; [Security](/security/#what-block-installs)
-says why block draws the line there. block also does not manage the
-Go, Rust, Node or Python toolchains themselves, which is where a
-general-purpose version manager belongs; a blockchain CLI distributed only
-through npm, PyPI or crates.io is therefore not in the registry.
+There is no third type: no `install = "curl … | bash"`, no
+`command = "make install"`, no package-manager shell-out and no script hook.
+A recipe is data block interprets, so adding a tool cannot add a way to run
+something. Building from source is excluded for the same reason;
+[Security](/security/#what-block-installs) explains why. block does not manage
+the Go, Rust, Node or Python toolchains themselves, so a blockchain CLI
+distributed only through npm, PyPI or crates.io is not in the registry.
 
-51 tools across 17 blockchain systems are installed today with those two
-types alone (`block list <ecosystem>` shows the same, from the binary):
+These two types cover 51 tools across 17 blockchain systems
+(`block list <ecosystem>` prints the same from the binary):
 
 | ecosystem | tools |
 | --- | --- |
@@ -290,25 +277,23 @@ types alone (`block list <ecosystem>` shows the same, from the binary):
 | icp / fabric | `dfx`, `fabric` |
 | zksync / zk / ipfs | `anvil-zksync`, `circom`, `kubo` |
 
-Which platforms each of them has is the upstream's decision, and the registry
-records it: `geth` and `erigon` ship Linux only, `lighthouse` has no macOS
-x86-64 build, `gaia` builds amd64 only. block reports anything else as an
-unsupported platform rather than substituting something else.
-[Tools](/tools/) is the full catalogue with commands and platform
-coverage per tool — generated from the recipes, so it cannot drift from what
-the binary will actually do. See [registry/README.md](https://github.com/nao1215/block/blob/main/registry/README.md) for
+The registry records each upstream's platforms: `geth` and `erigon` ship Linux
+only, `lighthouse` has no macOS x86-64 build, and `gaia` builds amd64 only.
+block reports any other platform as unsupported.
+[Tools](/tools/) lists the commands and platforms of every tool, generated from
+the recipes. See [registry/README.md](https://github.com/nao1215/block/blob/main/registry/README.md) for
 the recipe schema.
 
 The recipes are written and reviewed in their own repository,
 [block-registry](https://github.com/nao1215/block-registry). `registry/` here
-is a vendored copy of one revision of it — generated by `make registry-sync`,
-recorded in `registry/SNAPSHOT`, and checked on every push, so a recipe
-cannot be quietly fixed in the copy. block embeds that copy rather than
-depending on block-registry as a Go module, which is what keeps `go install
-github.com/nao1215/block@latest` a single self-contained download and
-`block list` and `block lock` usable with no network at all. A block version
-therefore always pairs with a registry revision it was tested against, and
-`block version` prints which one:
+is a vendored copy of one revision of it, generated by `make registry-sync`,
+recorded in `registry/SNAPSHOT` and checked on every push, so a recipe cannot
+be fixed in the copy alone. block embeds the copy instead of depending on
+block-registry as a Go module, so `go install
+github.com/nao1215/block@latest` is one self-contained download and
+`block list` and `block lock` need no network to read recipes. Each block
+version pairs with the registry revision it was tested against, and
+`block version` prints it:
 
 ```console
 $ block version
@@ -327,11 +312,10 @@ block deliberately does not:
 - generate Docker Compose files or manage Solidity library dependencies;
 - run scripts from the registry;
 - offer shell hooks or `eval`-style integration, `block env`, `block add`/
-  `remove`, or any command that resolves or installs implicitly — a completion
-  script is the whole of what block gives a shell;
-- grow into the tools beside the toolchain — a block explorer, a transaction
-  tracer, a devnet manager, an RPC doctor, a terminal UI, a test framework.
-  Each of those is somebody else's project, and every one of them would blur
-  what block is for.
+  `remove`, or any command that resolves or installs implicitly; a completion
+  script is all block gives a shell;
+- grow into the tools beside the toolchain, such as a block explorer, a
+  transaction tracer, a devnet manager, an RPC doctor, a terminal UI or a test
+  framework.
 
-If a feature would turn block into mise or aqua, it does not belong here.
+A feature that would turn block into mise or aqua does not belong here.

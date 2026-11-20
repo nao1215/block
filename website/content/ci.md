@@ -1,6 +1,6 @@
 ---
 title: CI
-description: "Reproducing a pinned blockchain toolchain on a runner — GitHub Actions, GitLab CI, CircleCI and Docker — and keeping it up to date without surprises."
+description: "Reproducing a pinned blockchain toolchain on GitHub Actions, GitLab CI, CircleCI and Docker, and keeping it up to date."
 toc: true
 ---
 
@@ -14,7 +14,7 @@ toc: true
 
 [setup-block](https://nao1215.github.io/setup-block/) installs the CLI,
 verifies its checksum, exports `$BLOCK_HOME`, caches the store on your
-`block.lock` and runs `sync`. Without the action, the same thing by hand:
+`block.lock` and runs `sync`. Without the action:
 
 ```yaml
 - uses: actions/checkout@v6
@@ -32,17 +32,17 @@ verifies its checksum, exports `$BLOCK_HOME`, caches the store on your
 - run: block exec forge test
 ```
 
-There is no CI-only flag and no CI mode. `block sync` means the same thing on a
-runner as on a laptop, and it fails rather than resolving anything when
+There is no CI mode. `block sync` behaves the same on a runner as on a laptop,
+and it fails without resolving anything when
 
 - `block.lock` is missing;
-- `block.toml` and `block.lock` disagree — a tool added or removed, a
-  constraint changed, a project-local source changed;
+- `block.toml` and `block.lock` disagree (a tool added or removed, a
+  constraint changed, a project-local source changed);
 - `block.lock` has no artifact for the runner's platform;
 - a downloaded artifact's SHA-256 does not match.
 
-Each of those is a message that names the command that fixes it. The
-[cookbook](/cookbook/#read-a-refusal) has them side by side.
+Each failure message names the command that fixes it. The
+[cookbook](/cookbook/#read-a-refusal) lists them side by side.
 
 ## Lock for every platform you use
 
@@ -54,15 +54,13 @@ declares both once:
 platforms = ["darwin/arm64", "linux/amd64"]
 ```
 
-Otherwise the runner stops with
+Otherwise the runner stops with this error, because `sync` never installs
+something the lockfile does not name:
 
 ```text
 block: BLK1005: block.lock is stale; run "block lock"
   foundry: block.lock has no artifact for linux/amd64
 ```
-
-deliberately, because installing something the lockfile does not name is the
-one thing `sync` must never do.
 
 A matrix needs every platform in that list, and nothing else:
 
@@ -83,17 +81,16 @@ steps:
 platforms = ["linux/amd64", "darwin/arm64"]
 ```
 
-Whether a given tool actually has a build for each of them is the upstream's
-decision, recorded in the registry — the Platforms column in
-[Tools](/tools/). A job on a platform an upstream does not ship for is a
-lockfile problem you find at `block lock` time, on your own machine, rather
-than at 3 a.m. on a runner.
+Whether a tool has a build for each of them is up to the upstream; the
+Platforms column in [Tools](/tools/) records it. A platform an upstream does not
+ship for fails at `block lock` time on your own machine, before any runner sees
+it.
 
 ## Caching
 
-Key the cache on `block.lock`: that file names every artifact and every digest
-the job will use, so a hit means the store already holds exactly what `sync`
-wants and the job downloads nothing.
+Key the cache on `block.lock`. It names every artifact and digest the job will
+use, so on a hit the store already holds what `sync` wants and the job
+downloads nothing.
 
 ```yaml
 - uses: actions/cache@v4
@@ -102,9 +99,9 @@ wants and the job downloads nothing.
     key: block-${{ runner.os }}-${{ hashFiles('block.lock') }}
 ```
 
-A partially restored cache is not a hazard. The store is content-addressed and
-a cache hit is re-hashed before it is used, so a truncated archive is discarded
-and fetched again rather than installed.
+The store is content-addressed and a cache hit is re-hashed before it is used,
+so a truncated archive from a partially restored cache is discarded and fetched
+again.
 
 On a runner whose cache action wants a path inside the workspace, move the
 store there:
@@ -117,15 +114,14 @@ env:
 ## Guarding the lockfile
 
 A pull request that edits `block.toml` without re-locking already fails on the
-`sync` step. Giving that its own step says so earlier and more clearly:
+`sync` step. A step of its own makes the failure easier to spot:
 
 ```yaml
 - name: block.lock matches block.toml
   run: block sync
 ```
 
-To also learn when the pins have fallen behind upstream, without failing the
-build for it:
+To report when the pins have fallen behind upstream without failing the build:
 
 ```yaml
 - name: Report toolchain updates
@@ -135,12 +131,12 @@ build for it:
 
 `block lock --check` resolves and writes nothing. It exits 0 when the lockfile
 is current, 2 when it would change, 1 on error. Keep it out of the required
-checks: a release upstream is news, not a broken build.
+checks, since a new upstream release does not break the build.
 
 ## Keeping up with upstream
 
-Moving a pin is a change to `block.lock`, so it belongs in a pull request, not
-in a job. A weekly workflow can open that pull request for you:
+Moving a pin changes `block.lock`, so do it in a pull request. A weekly
+workflow can open that pull request for you:
 
 ```yaml
 name: Toolchain updates
@@ -182,8 +178,8 @@ jobs:
           branch: block/toolchain-update
 ```
 
-The diff is `block.lock`, and it is reviewable: exact versions in, exact
-versions out, with a URL and a digest per platform.
+The diff is `block.lock`, with exact old and new versions and a URL and a
+digest per platform.
 
 ## Other CI systems
 
@@ -221,14 +217,14 @@ steps:
   - run: block exec forge test
 ```
 
-Anything else — Jenkins, Buildkite, a self-hosted runner — is the same three
-lines: fetch the binary, `block sync`, `block exec`.
+Jenkins, Buildkite or a self-hosted runner need the same three lines: fetch the
+binary, `block sync`, `block exec`.
 
 ## Inside a container image
 
 Copying `block.toml` and `block.lock` before the rest of the source makes the
-toolchain a cacheable layer that only changes when the lockfile does — the same
-trick as `go.mod`/`go.sum`:
+toolchain a cacheable layer that only changes when the lockfile does, as with
+`go.mod`/`go.sum`:
 
 ```dockerfile
 FROM debian:bookworm-slim
@@ -257,11 +253,11 @@ calls an hour, which a re-lock can exhaust.
 ```
 
 `block sync` and `block exec` never call the API, so a job that only builds and
-tests needs no token at all — and cannot be broken by a rate limit.
+tests needs no token and cannot hit a rate limit.
 
-The one exception is a tool from a private repository: its release asset is
-downloaded through the API, with the token, because the public download URL
-answers a browser session alone. `block sync` needs `GITHUB_TOKEN` for such a
-pin and says so (BLK3001) when it is missing. The token goes to the GitHub
-host it was given for and to no other host — not to the CDN a download
-redirects to, and not to a vendor's download server.
+The exception is a tool from a private repository. Its release asset is
+downloaded through the API with the token, because the public download URL only
+works for a browser session. `block sync` needs `GITHUB_TOKEN` for such a pin
+and reports BLK3001 when it is missing. The token goes only to the GitHub host
+it was given for, never to the CDN a download redirects to or to a vendor's
+download server.

@@ -5,8 +5,7 @@ toc: true
 ---
 
 block is a single static binary with no runtime dependencies. It does not need
-Go, Docker, or a package manager to do its job — those are only ways to get the
-binary itself.
+Go, Docker or a package manager to run; those are only ways to get the binary.
 
 ## go install
 
@@ -50,9 +49,9 @@ verifies its checksum, exports `$BLOCK_HOME` and caches the store on your
 
 ## Put the shims on PATH
 
-Optional, and done once. `block sync` writes one file per command into
-`$BLOCK_HOME/shims`; with that directory on `PATH`, `forge` and friends run as
-themselves and follow whichever project you are standing in.
+This is optional and done once. `block sync` writes one file per command into
+`$BLOCK_HOME/shims`; with that directory on `PATH`, you can run `forge` and the
+other tools by name, at the version of the project you are in.
 
 ```shell
 # Unix, in ~/.bashrc or ~/.zshrc
@@ -65,13 +64,13 @@ export PATH="$HOME/.local/share/block/shims:$PATH"
   "Path", "$env:LOCALAPPDATA\block\shims;$env:Path", "User")
 ```
 
-block writes nothing to your startup files and installs no shell hook. Skipping
-this step costs you nothing but four extra characters: `block exec forge test`.
+block writes nothing to your startup files and installs no shell hook. Without
+this step, you type `block exec forge test` instead.
 
 ## Shell completion
 
-Also optional. `block completion` prints a completion script for bash, zsh,
-fish or PowerShell; load it from your shell's startup file once:
+`block completion` prints a completion script for bash, zsh, fish or
+PowerShell. Load it from your shell's startup file:
 
 ```shell
 echo 'source <(block completion bash)' >> ~/.bashrc
@@ -100,20 +99,19 @@ registry df8fa5946e00 (51 recipes from https://github.com/nao1215/block-registry
 ```
 
 The second line is the [block-registry](https://github.com/nao1215/block-registry)
-revision whose recipes are compiled into that binary, so a resolution can always
-be traced back to a reviewed recipe.
+revision whose recipes are compiled into that binary, so you can trace a
+resolution back to a reviewed recipe.
 
 ## Verify what you downloaded
 
-Every published artifact — the archives and the `.deb`, `.rpm` and `.apk`
-packages — is listed in `checksums.txt`, ships with an SPDX SBOM beside it,
-and carries SLSA build provenance attested through GitHub OIDC.
+Every published artifact (the archives and the `.deb`, `.rpm` and `.apk`
+packages) is listed in `checksums.txt`, ships with an SPDX SBOM beside it, and
+carries SLSA build provenance attested through GitHub OIDC.
 
-`checksums.txt` is the file cosign signs, keyless, and it is what the
-signature covers the rest through: verify the signature over the list, then
+cosign signs `checksums.txt` keyless. Verify the signature over the list, then
 check your download against the line that names it. Build provenance is
-attested per artifact, so `gh attestation verify` works directly on whichever
-file you downloaded.
+attested per artifact, so `gh attestation verify` works on whichever file you
+downloaded.
 
 ```shell
 cosign verify-blob \
@@ -131,9 +129,9 @@ version you downloaded.
 gh attestation verify block_0.8.0_linux_amd64.tar.gz --repo nao1215/block
 ```
 
-The same provenance is also attached to the release as `multiple.intoto.jsonl`,
-so a downloaded archive can be checked against that file with
-[slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
+The same provenance is attached to the release as `multiple.intoto.jsonl`, and
+[slsa-verifier](https://github.com/slsa-framework/slsa-verifier) checks an
+archive against it:
 
 ```shell
 slsa-verifier verify-artifact block_0.8.0_linux_amd64.tar.gz \
