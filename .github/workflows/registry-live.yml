@@ -108,7 +108,9 @@ jobs:
 
       # reth's macOS build is dynamically linked against Homebrew's z3 and
       # aborts in dyld without it. The recipe says so; this is what lets the
-      # probe get past starting the process.
+      # probe get past starting the process. The build names one exact z3
+      # (libz3.5.3.dylib for reth v2.11.0), so once Homebrew moves past it the
+      # probe reports a skip naming the library rather than a broken recipe.
       - name: Install the libraries the macOS artifacts link against
         if: runner.os == 'macOS'
         continue-on-error: true

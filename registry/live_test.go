@@ -269,9 +269,60 @@ func probe(t *testing.T, bin string) {
 			return
 		}
 		attempts = append(attempts, fmt.Sprintf("%v: %v (%s)", args, err, firstLine(out)))
+		// dyld found the file, read it as a program for this machine, and
+		// stopped at a library the artifact does not carry. block installs
+		// what upstream published, not the libraries it was linked against,
+		// so this is the runner's state, not the recipe's: reth's macOS
+		// build names one exact Homebrew z3 (libz3.5.3.dylib), and the
+		// runner's Homebrew moves past it. A library the artifact should
+		// have carried itself is named through @rpath or @loader_path and
+		// still fails.
+		if lib, ok := missingSystemLibrary(out); ok {
+			t.Skipf("%s starts but needs %s, which the runner does not have and block does not install: %v",
+				filepath.Base(bin), lib, args)
+		}
 	}
 	t.Errorf("%s: none of --version, version, -version or --help worked:\n  %s",
 		filepath.Base(bin), strings.Join(attempts, "\n  "))
+}
+
+// missingSystemLibrary reports the library dyld could not load when it is an
+// absolute path outside the artifact, such as one under /opt/homebrew. A path
+// through @rpath, @loader_path or @executable_path points into the artifact
+// itself, so a miss there is the artifact's fault and is not reported.
+func missingSystemLibrary(out []byte) (string, bool) {
+	const marker = "Library not loaded: "
+	i := bytes.Index(out, []byte(marker))
+	if i < 0 {
+		return "", false
+	}
+	lib := out[i+len(marker):]
+	if j := bytes.IndexAny(lib, " \r\n)"); j >= 0 {
+		lib = lib[:j]
+	}
+	if !bytes.HasPrefix(lib, []byte("/")) {
+		return "", false
+	}
+	return string(lib), true
+}
+
+func TestMissingSystemLibrary(t *testing.T) {
+	for _, tc := range []struct {
+		out  string
+		want string
+		ok   bool
+	}{
+		{"dyld[6289]: Library not loaded: /opt/homebrew/opt/z3/lib/libz3.5.3.dylib\n  Referenced from: <...> /tmp/reth\n", "/opt/homebrew/opt/z3/lib/libz3.5.3.dylib", true},
+		{"dyld[1]: Library not loaded: @rpath/libfoo.dylib\n", "", false},
+		{"dyld[1]: Library not loaded: @loader_path/../lib/libfoo.dylib\n", "", false},
+		{"error: unknown flag --version\n", "", false},
+		{"", "", false},
+	} {
+		got, ok := missingSystemLibrary([]byte(tc.out))
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("missingSystemLibrary(%q) = %q, %v; want %q, %v", tc.out, got, ok, tc.want, tc.ok)
+		}
+	}
 }
 
 func firstLine(b []byte) string {
